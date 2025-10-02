@@ -6,7 +6,7 @@ import "@bananapus/core-v5/src/interfaces/IJBRulesets.sol";
 import '@bananapus/721-hook-v5/src/interfaces/IJB721Hook.sol';
 import '@bananapus/721-hook-v5/src/interfaces/IJB721TiersHookStore.sol';
 import '@bananapus/721-hook-v5/src/structs/JB721TiersMintReservesConfig.sol';
-import {JB721InitTiersConfig} from "@bananapus/721-hook-v5/src/structs/JB721InitTiersConfig.sol";
+import {JB721TierConfig} from "@bananapus/721-hook-v5/src/structs/JB721TierConfig.sol";
 import {DefifaTierRedemptionWeight} from "./../structs/DefifaTierRedemptionWeight.sol";
 import {DefifaDelegation} from "./../structs/DefifaDelegation.sol";
 import {IDefifaGamePhaseReporter} from "./IDefifaGamePhaseReporter.sol";
@@ -43,9 +43,7 @@ interface IDefifaDelegate is IJB721Hook {
 
     function baseProtocolToken() external view returns (IERC20);
 
-    function name() external view returns (string memory);
-
-    function redemptionWeightOf(uint256 tokenId) external view returns (uint256);
+    function cashOutWeightOf(uint256 tokenId) external view returns (uint256);
 
     function tierRedemptionWeights() external view returns (uint256[128] memory);
 
@@ -83,14 +81,14 @@ interface IDefifaDelegate is IJB721Hook {
 
     function getTierAttestationUnitsOf(address account, uint256 tier) external view returns (uint256);
 
-    function getPastTierAttestationUnitsOf(address account, uint256 tier, uint256 blockNumber)
+    function getPastTierAttestationUnitsOf(address account, uint256 tier, uint32 blockNumber)
         external
         view
         returns (uint256);
 
     function getTierTotalAttestationUnitsOf(uint256 tier) external view returns (uint256);
 
-    function getPastTierTotalAttestationUnitsOf(uint256 tier, uint256 blockNumber) external view returns (uint256);
+    function getPastTierTotalAttestationUnitsOf(uint256 tier, uint32 blockNumber) external view returns (uint256);
 
     function tokensClaimableFor(uint256[] memory _tokenIds) external view returns (uint256, uint256);
 
@@ -113,7 +111,7 @@ interface IDefifaDelegate is IJB721Hook {
         string memory baseUri,
         IJB721TokenUriResolver tokenUriResolver,
         string memory contractUri,
-        JB721InitTiersConfig [] memory tiers,
+        JB721TierConfig [] memory tiers,
         uint48 currency,
         IJB721TiersHookStore store,
         IDefifaGamePhaseReporter gamePhaseReporter,

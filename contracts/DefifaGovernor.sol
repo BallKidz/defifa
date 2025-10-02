@@ -1,6 +1,7 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.16;
 
+import "@prb/math/src/Common.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
 import {IDefifaDelegate} from "./interfaces/IDefifaDelegate.sol";
@@ -11,6 +12,10 @@ import {DefifaAttestations} from "./structs/DefifaAttestations.sol";
 import {DefifaTierRedemptionWeight} from "./structs/DefifaTierRedemptionWeight.sol";
 import {DefifaScorecardState} from "./enums/DefifaScorecardState.sol";
 import {DefifaDelegate} from "./DefifaDelegate.sol";
+
+import {IJBController} from '@bananapus/core-v5/src/interfaces/IJBController.sol';
+import {JBRulesetMetadata} from '@bananapus/core-v5/src/structs/JBRulesetMetadata.sol';
+import {JB721Tier} from '@bananapus/721-hook-v5/src/structs/JB721Tier.sol';
 
 /// @title DefifaGovernor
 /// @notice Manages the ratification of Defifa scorecards.
@@ -64,7 +69,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     //*********************************************************************//
 
     /// @notice The controller with which new projects should be deployed.
-    IJBController3_1 public immutable override controller;
+    IJBController public immutable override controller;
 
     //*********************************************************************//
     // -------------------- public stored properties --------------------- //
@@ -181,7 +186,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @return The quorum number of attestations.
     function quorum(uint256 _gameId) public view override returns (uint256) {
         // Get the game's current funding cycle along with its metadata.
-        (, JBFundingCycleMetadata memory _metadata) = controller.currentFundingCycleOf(_gameId);
+        (, JBRulesetMetadata memory _metadata) = controller.currentFundingCycleOf(_gameId);
 
         // Get a reference to the number of tiers.
         uint256 _numbeOfTiers = IDefifaDelegate(_metadata.dataSource).store().maxTierIdOf(_metadata.dataSource);
@@ -222,7 +227,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         returns (uint256 attestationPower)
     {
         // Get the game's current funding cycle along with its metadata.
-        (, JBFundingCycleMetadata memory _metadata) = controller.currentFundingCycleOf(_gameId);
+        (, JBRulesetMetadata memory _metadata) = controller.currentFundingCycleOf(_gameId);
 
         // Get a reference to the number of tiers.
         uint256 _numbeOfTiers = IDefifaDelegate(_metadata.dataSource).store().maxTierIdOf(_metadata.dataSource);
@@ -241,7 +246,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             // If there is tier attestation power, increment the result by the proportion of attestations the account has to the total, multiplied by the tier's maximum attestation power.
             unchecked {
                 if (_tierAttestationUnitsForAccount != 0) {
-                    attestationPower += PRBMath.mulDiv(
+                    attestationPower += mulDiv(
                         MAX_ATTESTATION_POWER_TIER,
                         _tierAttestationUnitsForAccount,
                         IDefifaDelegate(_metadata.dataSource).getPastTierTotalAttestationUnitsOf(_tierId, _blockNumber)
@@ -255,8 +260,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     //*********************************************************************//
     // -------------------------- constructor ---------------------------- //
     //*********************************************************************//
-
-    constructor(IJBController3_1 _controller, uint256 __blockTime) {
+    
+    // TODO: Who should be the owner?
+    constructor(IJBController _controller, uint256 __blockTime) Ownable(msg.sender) {
         controller = _controller;
         _blockTime = __blockTime;
     }
@@ -312,7 +318,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         uint256 _numberOfTierWeights = _tierWeights.length;
 
         // Get the game's current funding cycle along with its metadata.
-        (, JBFundingCycleMetadata memory _metadata) = controller.currentFundingCycleOf(_gameId);
+        (, JBRulesetMetadata memory _metadata) = controller.currentFundingCycleOf(_gameId);
 
         // Keep a reference to the tier being iterated on.
         JB721Tier memory _tier;
@@ -403,7 +409,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         if (ratifiedScorecardIdOf[_gameId] != 0) revert ALREADY_RATIFIED();
 
         // Get the game's current funding cycle along with its metadata.
-        (, JBFundingCycleMetadata memory _metadata) = controller.currentFundingCycleOf(_gameId);
+        (, JBRulesetMetadata memory _metadata) = controller.currentFundingCycleOf(_gameId);
 
         // Build the calldata to the target
         bytes memory _calldata = _buildScorecardCalldataFor(_tierWeights);

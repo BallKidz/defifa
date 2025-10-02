@@ -13,6 +13,7 @@ import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 
 import {JBConstants} from '@bananapus/core-v5/src/libraries/JBConstants.sol';
 import {IJB721TokenUriResolver} from '@bananapus/721-hook-v5/src/interfaces/IJB721TokenUriResolver.sol';
+import {ERC721} from '@bananapus/721-hook-v5/src/abstract/ERC721.sol';
 import {JB721Tier} from '@bananapus/721-hook-v5/src/structs/JB721Tier.sol';
 import {JBIpfsDecoder} from '@bananapus/721-hook-v5/src/libraries/JBIpfsDecoder.sol';
 
@@ -57,7 +58,7 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
         IDefifaDelegate _delegate = IDefifaDelegate(_nft);
 
         // Get the game ID.
-        uint256 _gameId = _delegate.projectId();
+        uint256 _gameId = _delegate.PROJECT_ID();
 
         // Keep a reference to the game phase text.
         string memory _gamePhaseText;
@@ -69,7 +70,8 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
         string memory _valueText;
 
         // Keep a reference to the game's name.
-        string memory _title = _delegate.name();
+        // TODO: Somehow make the `IDefifaDelegate` have the `name` function.
+        string memory _title = ERC721(address(_delegate)).name();
 
         // Keep a reference to the tier's name.
         string memory _team;
@@ -99,11 +101,11 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
                     '{"name":"',
                     _team,
                     '", "id": "',
-                    _tier.id.toString(),
+                    uint256(_tier.id).toString(),
                     '","description":"Team: ',
                     _team,
                     ", ID: ",
-                    _tier.id.toString(),
+                    uint256(_tier.id).toString(),
                     '.","image":"data:image/svg+xml;base64,'
                 )
             );
@@ -139,7 +141,7 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
                 }
 
                 // Keep a reference to the number of tokens outstanding from this tier.
-                uint256 _totalMinted = _tier.initialQuantity - _tier.remainingQuantity;
+                uint256 _totalMinted = _tier.initialSupply - _tier.remainingSupply;
 
                 if (_gamePhase == DefifaGamePhase.MINT) {
                     _rarityText = string(
@@ -155,7 +157,7 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
 
                 if (_gamePhase == DefifaGamePhase.SCORING || _gamePhase == DefifaGamePhase.COMPLETE) {
                     uint256 _potPortion = mulDiv(
-                        _gamePot, _delegate.redemptionWeightOf(_tokenId), _delegate.TOTAL_REDEMPTION_WEIGHT()
+                        _gamePot, _delegate.cashOutWeightOf(_tokenId), _delegate.TOTAL_REDEMPTION_WEIGHT()
                     );
                     _valueText = !_delegate.redemptionWeightIsSet()
                         ? "Awaiting scorecard..."
@@ -267,11 +269,11 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
         uint256 _fixedPoint = 10 ** _decimals;
 
         // Convert amount to a decimal format
-        string memory _integerPart = _amount.div(_fixedPoint).toString();
+        string memory _integerPart = (_amount /_fixedPoint).toString();
 
-        uint256 _remainder = _amount.mod(_fixedPoint);
-        uint256 _scaledRemainder = _remainder.mul(10 ** _fidelity);
-        uint256 _decimalPart = _scaledRemainder.div(_fixedPoint);
+        uint256 _remainder = _amount % _fixedPoint;
+        uint256 _scaledRemainder = _remainder * (10 ** _fidelity);
+        uint256 _decimalPart = _scaledRemainder / _fixedPoint;
 
         // Pad with zeros if necessary
         string memory _decimalPartStr = _decimalPart.toString();

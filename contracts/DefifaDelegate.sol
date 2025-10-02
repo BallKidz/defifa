@@ -17,7 +17,7 @@ import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 
 /// @title DefifaDelegate
 /// @notice A delegate that transforms Juicebox treasury interactions into a Defifa game.
-contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
+contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     using Checkpoints for Checkpoints.Trace224;
 
     //*********************************************************************//
@@ -73,6 +73,10 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
     /// @notice The amount of $DEFIFA and $BASE_PROTOCOL tokens this game was allocated from paying the network fee, packed into a uint256.
     uint256 internal _packedTokenAllocation;
 
+    /// @notice The first owner of each token ID, stored on first transfer out.
+    /// _tokenId The ID of the token to get the stored first owner of.
+    mapping(uint256 => address) internal _firstOwnerOf;
+
     /// @notice The names of each tier.
     /// @dev _tierId The ID of the tier to get a name for.
     mapping(uint256 => string) internal _tierNameOf;
@@ -112,6 +116,12 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
     /// @notice A flag indicating if the redemption weight has been set.
     bool public override redemptionWeightIsSet;
 
+    /// @notice The common base for the tokenUri's
+    string public override baseURI;
+
+    /// @notice Contract metadata uri.
+    string public override contractURI;
+
     /// @notice The address that'll be set as the attestation delegate by default.
     address public override defaultAttestationDelegate;
 
@@ -150,13 +160,13 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
     /// @param _account The address to check.
     /// @param _tier The tier to check within.
     /// @param _blockNumber the blocknumber to check the attestation power at.
-    function getPastTierAttestationUnitsOf(address _account, uint256 _tier, uint256 _blockNumber)
+    function getPastTierAttestationUnitsOf(address _account, uint256 _tier, uint32 _blockNumber)
         external
         view
         override
         returns (uint256)
     {
-        return _delegateTierCheckpoints[_account][_tier].getAtBlock(_blockNumber);
+        return _delegateTierCheckpoints[_account][_tier].at(_blockNumber)._value;
     }
 
     /// @notice Returns the total amount of attestation units that exists for a tier.
@@ -168,13 +178,13 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
     /// @notice Returns the total amount of attestation units that has existed for a tier.
     /// @param _tier The tier to check.
     /// @param _blockNumber The blocknumber to check the total attestation units at.
-    function getPastTierTotalAttestationUnitsOf(uint256 _tier, uint256 _blockNumber)
+    function getPastTierTotalAttestationUnitsOf(uint256 _tier, uint32 _blockNumber)
         external
         view
         override
         returns (uint256)
     {
-        return _totalTierCheckpoints[_tier].getAtBlock(_blockNumber);
+        return _totalTierCheckpoints[_tier].at(_blockNumber)._value;
     }
 
     /// @notice The first owner of each token ID, which corresponds to the address that originally contributed to the project to receive the NFT.
@@ -199,13 +209,6 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
     //*********************************************************************//
     // -------------------------- public views --------------------------- //
     //*********************************************************************//
-
-    /// @notice The total number of tokens owned by the given owner across all tiers.
-    /// @param _owner The address to check the balance of.
-    /// @return balance The number of tokens owned by the owner across all tiers.
-    function balanceOf(address _owner) public view override returns (uint256 balance) {
-        return store.balanceOf(address(this), _owner);
-    }
 
     /// @notice The metadata URI of the provided token ID.
     /// @dev Defer to the tokenUriResolver if set, otherwise, use the tokenUri set with the token's tier.
@@ -259,10 +262,10 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
         if (_weight == 0) return 0;
 
         // If no tiers were minted, nothing to redeem.
-        if (_tier.initialQuantity - _tier.remainingQuantity == 0) return 0;
+        if (_tier.initialSupply- _tier.remainingSupply == 0) return 0;
 
         // Calculate the percentage of the tier redemption amount a single token counts for.
-        return _weight / (_tier.initialQuantity - _tier.remainingQuantity + tokensRedeemedFrom[_tierId]);
+        return _weight / (_tier.initialSupply - _tier.remainingSupply + tokensRedeemedFrom[_tierId]);
     }
 
     /// @notice The combined cash out weight of all outstanding NFTs.
@@ -318,7 +321,7 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
         public
         view
         virtual
-        override
+        override(IJBRulesetDataHook, JB721Hook)
         returns (
             uint256 cashOutTaxRate,
             uint256 cashOutCount,
@@ -328,7 +331,7 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
     {
         // Make sure fungible project tokens aren't being redeemed too.
         // TODO: Proper error.
-        if (context.tokenCount > 0) revert();
+        if (context.cashOutCount > 0) revert();
 
         // Check the 4 bytes interfaceId and handle the case where the metadata was not intended for this contract
         // Skip 32 bytes reserved for generic extension parameters.
@@ -338,8 +341,8 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
         }
 
         // Set the only delegate allocation to be a callback to this contract.
-        hookSpecifications = new hookSpecifications[](1);
-        hookSpecifications[0] = hookSpecifications(this, 0, bytes(''));
+        hookSpecifications = new JBCashOutHookSpecification[](1);
+        hookSpecifications[0] = JBCashOutHookSpecification(this, 0, bytes(''));
 
         // Decode the metadata
         (,, uint256[] memory _decodedTokenIds) = abi.decode(context.metadata, (bytes32, bytes4, uint256[]));
@@ -363,7 +366,7 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
             }
             
             // TODO: Check if this is correct.
-            return (context.cashOutTaxRate, cashOutCount, context.surplus.amount, hookSpecifications);
+            return (context.cashOutTaxRate, cashOutCount, context.surplus.value, hookSpecifications);
         }
 
         // Return the weighted amount.
@@ -371,7 +374,7 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
             context.cashOutTaxRate,
             // TODO: Check if this is correct after changing from v3 -> v5
             mulDiv(
-                context.surplus.amount + amountRedeemed, cashOutWeightOf(_decodedTokenIds, context), TOTAL_REDEMPTION_WEIGHT
+                context.surplus.value + amountRedeemed, cashOutWeightOf(_decodedTokenIds, context), TOTAL_REDEMPTION_WEIGHT
             ),
             TOTAL_REDEMPTION_WEIGHT,
             hookSpecifications 
@@ -429,8 +432,8 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
     /// @notice Indicates if this contract adheres to the specified interface.
     /// @dev See {IERC165-supportsInterface}.
     /// @param _interfaceId The ID of the interface to check for adherence to.
-    function supportsInterface(bytes4 _interfaceId) public view override returns (bool) {
-        return _interfaceId == type(IDefifaDelegate).interfaceId || super.supportsInterface(_interfaceId);
+    function supportsInterface(bytes4 _interfaceId) public view override(IERC165, JB721Hook) returns (bool) {
+        return _interfaceId == type(IDefifaDelegate).interfaceId || JB721Hook.supportsInterface(_interfaceId);
     }
 
     //*********************************************************************//
@@ -439,7 +442,7 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
 
     /// @notice The $DEFIFA token that is expected to be issued from paying fees.
     /// @notice The $BASE_PROTOCOL token that is expected to be issued from paying fees.
-    constructor(IERC20 _defifaToken, IERC20 _baseProtocolToken) {
+    constructor(IJBDirectory _directory, IERC20 _defifaToken, IERC20 _baseProtocolToken) Ownable(address(0)) JB721Hook(_directory) {
         codeOrigin = address(this);
         defifaToken = _defifaToken;
         baseProtocolToken = _baseProtocolToken;
@@ -474,7 +477,7 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
         string memory _baseUri,
         IJB721TokenUriResolver _tokenUriResolver,
         string memory _contractUri,
-        JB721InitTiersConfig[] memory _tiers,
+        JB721TierConfig[] memory _tiers,
         uint48 _currency,
         IJB721TiersHookStore _store,
         IDefifaGamePhaseReporter _gamePhaseReporter,
@@ -489,7 +492,7 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
         if (address(store) != address(0)) revert();
 
         // Initialize the superclass.
-        JB721Hook._initialize({projectId: _gameId, _name: _name, _symbol: _symbol});
+        JB721Hook._initialize({projectId: _gameId, name: _name, symbol: _symbol});
 
         // Store stuff.
         fundingCycleStore = _fundingCycleStore;
@@ -536,13 +539,13 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
     function mintReservesFor(uint256 _tierId, uint256 _count) public override {
         // Minting reserves must not be paused.
         if (
-            JB721TiersRulesetMetadataResolver.mintingReservesPaused(
-                (JB721TiersRulesetMetadataResolver.metadata(fundingCycleStore.currentOf(PROJECT_ID)))
+            JB721TiersRulesetMetadataResolver.mintPendingReservesPaused(
+                (JBRulesetMetadataResolver.metadata(fundingCycleStore.currentOf(PROJECT_ID)))
             )
         ) revert RESERVED_TOKEN_MINTING_PAUSED();
 
         // Keep a reference to the reserved token beneficiary.
-        address _reservedTokenBeneficiary = store.reservedTokenBeneficiaryOf(address(this), _tierId);
+        address _reservedTokenBeneficiary = store.reserveBeneficiaryOf(address(this), _tierId);
 
         // Get a reference to the old delegate.
         address _oldDelegate = _tierDelegation[_reservedTokenBeneficiary][_tierId];
@@ -660,7 +663,8 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
         external
         payable
         virtual
-        override
+        // TODO:Check if we need to make any changes here as we are overriding the new JB721Hook instead.
+        override(IJBCashOutHook, JB721Hook)
     {
         // Make sure the caller is a terminal of the project, and the call is being made on behalf of an interaction with the correct project.
         // TODO: Proper error.
@@ -674,13 +678,13 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
 
         // Check the 4 bytes interfaceId and handle the case where the metadata was not intended for this contract
         // Skip 32 bytes reserved for generic extension parameters.
-        if (context.metadata.length < 36 || bytes4(context.metadata[32:36]) != type(IDefifaDelegate).interfaceId) {
+        if (context.cashOutMetadata.length < 36 || bytes4(context.cashOutMetadata[32:36]) != type(IDefifaDelegate).interfaceId) {
             // TODO: Proper error.
             revert();
         }
 
         // Decode the metadata.
-        (,, uint256[] memory _decodedTokenIds) = abi.decode(context.metadata, (bytes32, bytes4, uint256[]));
+        (,, uint256[] memory _decodedTokenIds) = abi.decode(context.cashOutMetadata, (bytes32, bytes4, uint256[]));
 
         // Get a reference to the number of token IDs being checked.
         uint256 _numberOfTokenIds = _decodedTokenIds.length;
@@ -802,13 +806,13 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
 
         // Skip the first 32 bytes which are used by the JB protocol to pass the paying project's ID when paying from a JBSplit.
         // Check the 4 bytes interfaceId to verify the metadata is intended for this contract.
-        if (context.metadata.length > 68 && bytes4(context.metadata[64:68]) == type(IDefifaDelegate).interfaceId) {
+        if (context.payerMetadata.length > 68 && bytes4(context.payerMetadata[64:68]) == type(IDefifaDelegate).interfaceId) {
             // Keep a reference to the the specific tier IDs to mint.
             uint16[] memory _tierIdsToMint;
 
             // Decode the metadata.
             (,,, _attestationDelegate, _tierIdsToMint) =
-                abi.decode(context.metadata, (bytes32, bytes32, bytes4, address, uint16[]));
+                abi.decode(context.payerMetadata, (bytes32, bytes32, bytes4, address, uint16[]));
 
             // Set the payer as the attestation delegate by default.
             if (_attestationDelegate == address(0)) {
@@ -913,11 +917,16 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
         internal
         virtual
     {
-        // If minting, add to the total tier checkpoints.
-        if (_from == address(0)) _totalTierCheckpoints[_tierId].push(_add, _amount);
+        if (_from == address(0) || _to == address(0)) {
+            // Get the current total for the tier.
+            uint224 _current = _totalTierCheckpoints[_tierId].latest();
 
-        // If burning, subtract from the total tier checkpoints.
-        if (_to == address(0)) _totalTierCheckpoints[_tierId].push(_subtract, _amount);
+            // If minting, add to the total tier checkpoints.
+            if (_from == address(0)) _totalTierCheckpoints[_tierId].push(uint32(block.number), _current + uint224(_amount));
+
+            // If burning, subtract from the total tier checkpoints.
+            if (_to == address(0)) _totalTierCheckpoints[_tierId].push(uint32(block.number), _current - uint224(_amount));
+        }
 
         // Move delegated attestations.
         _moveTierDelegateAttestations(_tierDelegation[_from][_tierId], _tierDelegation[_to][_tierId], _tierId, _amount);
@@ -932,15 +941,22 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
         // Nothing to do if moving to the same account, or no amount is being moved.
         if (_from == _to || _amount == 0) return;
 
+
         // If not moving from the zero address, update the checkpoints to subtract the amount.
         if (_from != address(0)) {
-            (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_from][_tierId].push(_subtract, _amount);
+            // Get the current amount for the sending delegate.
+            uint224 _current = _delegateTierCheckpoints[_from][_tierId].latest();
+            // Set the new amount for the sending delegate.
+            (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_from][_tierId].push(uint32(block.timestamp), _current - uint224(_amount));
             emit TierDelegateAttestationsChanged(_from, _tierId, _oldValue, _newValue, msg.sender);
         }
 
         // If not moving to the zero address, update the checkpoints to add the amount.
         if (_to != address(0)) {
-            (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_to][_tierId].push(_add, _amount);
+            // Get the current amount for the receiving delegate.
+            uint224 _current = _delegateTierCheckpoints[_to][_tierId].latest();
+            // Set the new amount for the receiving delegate.
+            (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_to][_tierId].push(uint32(block.timestamp), _current + uint224(_amount));
             emit TierDelegateAttestationsChanged(_to, _tierId, _oldValue, _newValue, msg.sender);
         }
     }
@@ -1018,64 +1034,45 @@ contract DefifaDelegate is JB721TiersHook, Ownable, IDefifaDelegate {
         emit ClaimedTokens(_beneficiary, _defifaTokenAmount, _baseProtocolTokenAmount, msg.sender);
     }
 
-    /// @notice User the hook to register the first owner if it's not yet registered.
-    /// @param _from The address where the transfer is originating.
-    /// @param _to The address to which the transfer is being made.
-    /// @param _tokenId The ID of the token being transferred.
-    function _beforeTokenTransfer(address _from, address _to, uint256 _tokenId) internal virtual override {
-        // Transferred must not be paused when not minting or burning.
-        if (_from != address(0)) {
-            // Get a reference to the tier.
-            JB721Tier memory _tier = store.tierOfTokenId(address(this), _tokenId, false);
+    /// @notice Before transferring an NFT, register its first owner (if necessary).
+    /// @param to The address the NFT is being transferred to.
+    /// @param tokenId The token ID of the NFT being transferred.
+    function _update(address to, uint256 tokenId, address auth) internal virtual override returns (address from) {
+        // Get a reference to the tier.
+        // slither-disable-next-line calls-loop
+        JB721Tier memory tier = store.tierOfTokenId({hook: address(this), tokenId: tokenId, includeResolvedUri: false});
 
-            // Transfers from the tier must be pausable.
-            if (_tier.transfersPausable) {
-                // Get a reference to the project's current funding cycle.
-                JBRuleset memory _fundingCycle = fundingCycleStore.currentOf(PROJECT_ID);
+        // Record the transfers and keep a reference to where the token is coming from.
+        from = super._update(to, tokenId, auth);
 
+        // Transfers must not be paused (when not minting or burning).
+        if (from != address(0)) {
+            // If transfers are pausable, check if they're paused.
+            if (tier.transfersPausable) {
+                // Get a reference to the project's current ruleset.
+                JBRuleset memory ruleset = fundingCycleStore.currentOf(PROJECT_ID);
+
+                // If transfers are paused and the NFT isn't being transferred to the zero address, revert.
                 if (
-                    // TODO: This is likely incorrect since the v3 -> v5 change.
-                    _to != address(0)
-                        && JB721TiersRulesetMetadataResolver.transfersPaused(
-                            (JBRulesetMetadataResolver.metadata(_fundingCycle))
-                        )
+                    to != address(0)
+                        && JB721TiersRulesetMetadataResolver.transfersPaused((JBRulesetMetadataResolver.metadata(ruleset)))
                 ) revert TRANSFERS_PAUSED();
             }
 
-            // If there's no stored first owner, and the transfer isn't originating from the zero address as expected for mints, store the first owner.
-            if (_firstOwnerOf[_tokenId] == address(0)) _firstOwnerOf[_tokenId] = _from;
+            // If the token isn't already associated with a first owner, store the sender as the first owner.
+            // slither-disable-next-line calls-loop
+            if (_firstOwnerOf[tokenId] == address(0)) _firstOwnerOf[tokenId] = from;
         }
 
-        super._beforeTokenTransfer(_from, _to, _tokenId);
-    }
-
-    /// @notice Transfer attestation units after the transfer of a token.
-    /// @param _from The address where the transfer is originating.
-    /// @param _to The address to which the transfer is being made.
-    /// @param _tokenId The ID of the token being transferred.
-    function _afterTokenTransfer(address _from, address _to, uint256 _tokenId) internal virtual override {
-        // Get a reference to the tier.
-        JB721Tier memory _tier = store.tierOfTokenId(address(this), _tokenId, false);
-
         // Record the transfer.
-        store.recordTransferForTier(_tier.id, _from, _to);
+        // slither-disable-next-line reentrency-events,calls-loop
+        store.recordTransferForTier(tier.id, from, to);
 
-        // Handle any other accounting (ex. account for governance attestation units)
-        _afterTokenTransferAccounting(_from, _to, _tier);
-
-        super._afterTokenTransfer(_from, _to, _tokenId);
-    }
-
-    /// @notice Handles the tier attestation accounting
-    /// @param _from The account to transfer attestation units from.
-    /// @param _to The account to transfer attestation units to.
-    /// @param _tier The tier the token ID is part of.
-    function _afterTokenTransferAccounting(address _from, address _to, JB721Tier memory _tier) internal virtual {
         // Dont transfer on mint since the delegation will be transferred more efficiently in _processPayment.
-        if (_from == address(0)) return;
+        if (from == address(0)) return from;
 
         // Transfer the attestation units.
-        _transferTierAttestationUnits(_from, _to, _tier.id, _tier.votingUnits);
+        _transferTierAttestationUnits(from, to, tier.id, tier.votingUnits);
     }
 
     // Utils OZ extension that is being reused for tier delegation.

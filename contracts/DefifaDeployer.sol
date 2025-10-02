@@ -35,6 +35,9 @@ import {JB721Tier} from '@bananapus/721-hook-v5/src/structs/JB721Tier.sol';
 import {JB721TierConfig} from '@bananapus/721-hook-v5/src/structs/JB721TierConfig.sol';
 import {IJBDirectory} from '@bananapus/core-v5/src/interfaces/IJBDirectory.sol';
 import {JBSplitHookContext} from '@bananapus/core-v5/src/structs/JBSplitHookContext.sol';
+import {JBFundAccessLimitGroup} from '@bananapus/core-v5/src/structs/JBFundAccessLimitGroup.sol';
+import {JB721TiersRulesetMetadata, JB721TiersRulesetMetadataResolver} from '@bananapus/721-hook-v5/src/libraries/JB721TiersRulesetMetadataResolver.sol';
+import {JBRulesetConfig} from '@bananapus/core-v5/src/structs/JBRulesetConfig.sol';
 import "@bananapus/core-v5/src/interfaces/IJBRulesets.sol";
 
 
@@ -149,14 +152,15 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         address _token = _opsOf[_gameId].token;
 
         // Get a reference to the terminal.
-        IJBTerminal _terminal = controller.directory().primaryTerminalOf(_gameId, _token);
+        IJBTerminal _terminal = controller.DIRECTORY().primaryTerminalOf(_gameId, _token);
 
         // Get the accounting context for the project.
         JBAccountingContext memory _context = _terminal.accountingContextForTokenOf(_gameId, _token);
 
         // Get the current balance.
-        uint256 _pot = IJBMultiTerminal(address(_terminal)).store().balanceOf(
-            address(_terminal), _gameId
+        uint256 _pot = IJBMultiTerminal(address(_terminal)).STORE().balanceOf(
+            // TODO: Should we only check native token here?
+            address(_terminal), _gameId, JBConstants.NATIVE_TOKEN
         );
 
         // Add any fulfilled commitments.
@@ -170,13 +174,13 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @return Whether or not the next phase still needs queuing.
     function nextPhaseNeedsQueueing(uint256 _gameId) external view override returns (bool) {
         // Get the game's current funding cycle along with its metadata.
-        JBRuleset memory _currentFundingCycle = controller.fundingCycleStore().currentOf(_gameId);
+        JBRuleset memory _currentFundingCycle = controller.RULESETS().currentOf(_gameId);
         // Get the game's queued funding cycle along with its metadata.
-        JBRuleset memory _queuedFundingCycle = controller.fundingCycleStore().queuedOf(_gameId);
+        (JBRuleset memory _queuedFundingCycle,) = controller.RULESETS().latestQueuedOf(_gameId);
 
         // If the configurations are the same and the game hasn't ended, queueing is still needed.
         return _currentFundingCycle.duration != 0
-            && _currentFundingCycle.configuration == _queuedFundingCycle.configuration;
+            && _currentFundingCycle.id == _queuedFundingCycle.id;
     }
 
     //*********************************************************************//
@@ -190,16 +194,16 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     function currentGamePhaseOf(uint256 _gameId) public view override returns (DefifaGamePhase) {
         // Get the game's current funding cycle along with its metadata.
         (JBRuleset memory _currentFundingCycle, JBRulesetMetadata memory _metadata) =
-            controller.currentFundingCycleOf(_gameId);
+            controller.currentRulesetOf(_gameId);
 
-        if (_currentFundingCycle.number == 0) return DefifaGamePhase.COUNTDOWN;
-        if (_currentFundingCycle.number == 1) return DefifaGamePhase.MINT;
+        if (_currentFundingCycle.cycleNumber == 0) return DefifaGamePhase.COUNTDOWN;
+        if (_currentFundingCycle.cycleNumber == 1) return DefifaGamePhase.MINT;
         if (_noContestIsSet[_gameId]) return DefifaGamePhase.NO_CONTEST;
         if (_noContestInevitable(_gameId, _currentFundingCycle)) return DefifaGamePhase.NO_CONTEST_INEVITABLE;
-        if (_currentFundingCycle.number == 2 && _opsOf[_gameId].refundPeriodDuration != 0) {
+        if (_currentFundingCycle.cycleNumber == 2 && _opsOf[_gameId].refundPeriodDuration != 0) {
             return DefifaGamePhase.REFUND;
         }
-        if (IDefifaDelegate(_metadata.dataSource).redemptionWeightIsSet()) return DefifaGamePhase.COMPLETE;
+        if (IDefifaDelegate(_metadata.dataHook).redemptionWeightIsSet()) return DefifaGamePhase.COMPLETE;
         return DefifaGamePhase.SCORING;
     }
 
@@ -271,7 +275,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         ) revert INVALID_GAME_CONFIGURATION();
 
         // Get the game ID, optimistically knowing it will be one greater than the current count.
-        gameId = controller.projects().count() + 1;
+        gameId = controller.PROJECTS().count() + 1;
 
         {
             // Store the timestamps that'll define the game phases.
@@ -301,21 +305,20 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
                 // Add a split for the fee.
                 _splits[_numberOfSplits] = JBSplit({
-                    preferClaimed: true,
                     preferAddToBalance: false,
-                    percent: JBConstants.SPLITS_TOTAL_PERCENT / feeDivisor,
-                    projectId: defifaProjectId,
+                    percent: uint32(JBConstants.SPLITS_TOTAL_PERCENT / feeDivisor),
+                    projectId: uint64(defifaProjectId),
                     beneficiary: payable(address(this)),
                     lockedUntil: 0,
-                    allocator: IJBSplitHook(address(0))
+                    hook: IJBSplitHook(address(0))
                 });
 
                 // Store the splits.
                 JBSplitGroup[] memory _groupedSplits = new JBSplitGroup[](1);
-                _groupedSplits[0] = JBSplitGroup({group: splitGroup, splits: _splits});
+                _groupedSplits[0] = JBSplitGroup({groupId: splitGroup, splits: _splits});
 
                 // This contract must have SET_SPLITS (index 18) operator permissions.
-                controller.splitsStore().set(defifaProjectId, gameId, _groupedSplits);
+                controller.SPLITS().setSplitGroupsOf(defifaProjectId, gameId, _groupedSplits);
             }
         }
 
@@ -340,16 +343,20 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             // Set the tier.
             _delegateTiers[_i] = JB721TierConfig({
                 price: _defifaTier.price,
-                initialQuantity: 999_999_999, // The max allowed value.
+                initialSupply: 999_999_999, // The max allowed value.
                 votingUnits: 1,
-                reservedRate: _defifaTier.reservedRate,
-                reservedTokenBeneficiary: _defifaTier.reservedTokenBeneficiary,
+                reserveFrequency: _defifaTier.reservedRate,
+                reserveBeneficiary: _defifaTier.reservedTokenBeneficiary,
                 encodedIPFSUri: _defifaTier.encodedIPFSUri,
                 category: 0,
-                allowManualMint: false,
-                shouldUseReservedTokenBeneficiaryAsDefault: _defifaTier.shouldUseReservedTokenBeneficiaryAsDefault,
+                discountPercent: 0,
+                allowOwnerMint: false,
+                useReserveBeneficiaryAsDefault: _defifaTier.shouldUseReservedTokenBeneficiaryAsDefault,
                 transfersPausable: false,
-                useVotingUnits: true
+                useVotingUnits: true,
+                // TODO: Are the below (new) values correct?
+                cannotBeRemoved: true,
+                cannotIncreaseDiscountPercent: true
             });
 
             // Set the name.
@@ -369,10 +376,10 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         _delegate.initialize({
             _gameId: gameId,
-            _directory: controller.directory(),
+            _directory: controller.DIRECTORY(),
             _name: _launchProjectData.name,
             _symbol: string.concat("DEFIFA #", gameId.toString()),
-            _fundingCycleStore: controller.fundingCycleStore(),
+            _fundingCycleStore: controller.RULESETS(),
             _baseUri: _launchProjectData.baseUri,
             _tokenUriResolver: _uriResolver,
             _contractUri: _launchProjectData.contractUri,
@@ -711,19 +718,17 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             // Project is owned by this contract.
             address(this),
             _launchProjectData.projectMetadata,
-            JBFundingCycleData({
+            JBRulesetConfig({
                 duration: _launchProjectData.mintPeriodDuration,
                 // Don't mint project tokens.
                 weight: 0,
                 discountRate: 0,
-                ballot: IJBFundingCycleBallot(address(0))
+                ballot: IJBRulesetApprovalHook(address(0))
             }),
-            JBFundingCycleMetadata({
-                global: JBGlobalFundingCycleMetadata({
-                    allowSetTerminals: false,
-                    allowSetController: false,
-                    pauseTransfers: false
-                }),
+            JBRulesetMetadata({
+                allowSetTerminals: false,
+                allowSetController: false,
+                pauseTransfers: false,
                 reservedRate: 0,
                 // Full refunds.
                 redemptionRate: JBConstants.MAX_REDEMPTION_RATE,
@@ -741,17 +746,17 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 useDataSourceForPay: true,
                 useDataSourceForRedeem: true,
                 dataSource: _dataSource,
-                metadata: JBTiered721FundingCycleMetadataResolver.packFundingCycleGlobalMetadata(
-                    JBTiered721FundingCycleMetadata({
-                        pauseTransfers: false,
-                        // Reserved tokens can't be minted during this funding cycle.
-                        pauseMintingReserves: true
-                    })
-                    )
+                metadata: JB721TiersRulesetMetadataResolver.packFundingCycleGlobalMetadata(
+                    JB721TiersRulesetMetadata({
+                    pauseTransfers: false,
+                    // Reserved tokens can't be minted during this funding cycle.
+                    pauseMintPendingReserves: true
+                })
+                )
             }),
             _launchProjectData.start - _launchProjectData.mintPeriodDuration - _launchProjectData.refundPeriodDuration,
-            new JBGroupedSplits[](0),
-            new JBFundAccessConstraints[](0),
+            new JBSplitGroup[](0),
+            new JBFundAccessLimitGroup[](0),
             _terminals,
             "Defifa mint phase."
         );
@@ -768,19 +773,17 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         return controller.reconfigureFundingCyclesOf(
             _gameId,
-            JBFundingCycleData({
+            JBRulesetConfig({
                 duration: _ops.refundPeriodDuration,
                 // Don't mint project tokens.
                 weight: 0,
                 discountRate: 0,
-                ballot: IJBFundingCycleBallot(address(0))
+                ballot: IJBRulesetApprovalHook(address(0))
             }),
-            JBFundingCycleMetadata({
-                global: JBGlobalFundingCycleMetadata({
-                    allowSetTerminals: false,
-                    allowSetController: false,
-                    pauseTransfers: false
-                }),
+            JBRulesetMetadata({
+                allowSetTerminals: false,
+                allowSetController: false,
+                pauseTransfers: false,
                 reservedRate: 0,
                 // Full refunds.
                 redemptionRate: JBConstants.MAX_REDEMPTION_RATE,
@@ -800,17 +803,17 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 useDataSourceForPay: true,
                 useDataSourceForRedeem: true,
                 dataSource: _dataSource,
-                metadata: JBTiered721FundingCycleMetadataResolver.packFundingCycleGlobalMetadata(
-                    JBTiered721FundingCycleMetadata({
-                        pauseTransfers: false,
-                        // Reserved tokens can't be minted during this funding cycle.
-                        pauseMintingReserves: true
-                    })
-                    )
+                metadata: JB721TiersRulesetMetadataResolver.packFundingCycleGlobalMetadata(
+                    JB721TiersRulesetMetadata({
+                    pauseTransfers: false,
+                    // Reserved tokens can't be minted during this funding cycle.
+                    pauseMintPendingReserves: true
+                })
+                )
             }),
             0, // mustStartAtOrAfter should be ASAP
-            new JBGroupedSplits[](0),
-            new JBFundAccessConstraints[](0),
+            new JBSplitGroup[](0),
+            new JBFundAccessLimitGroup[](0),
             "Defifa refund phase."
         );
     }
@@ -825,11 +828,11 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         address _token = _opsOf[_gameId].token;
 
         // Get a reference to the terminal.
-        IJBPaymentTerminal _terminal = controller.directory().primaryTerminalOf(_gameId, _token);
+        IJBTerminal _terminal = controller.directory().primaryTerminalOf(_gameId, _token);
 
         // Set fund access constraints.
-        JBFundAccessConstraints[] memory fundAccessConstraints = new JBFundAccessConstraints[](1);
-        fundAccessConstraints[0] = JBFundAccessConstraints({
+        JBFundAccessLimitGroup[] memory fundAccessConstraints = new JBFundAccessLimitGroup[](1);
+        fundAccessConstraints[0] = JBFundAccessLimitGroup({
             terminal: _terminal,
             token: _token,
             distributionLimit: 0,
@@ -841,19 +844,17 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         configuration = controller.reconfigureFundingCyclesOf(
             _gameId,
-            JBFundingCycleData({
+            JBRulesetConfig({
                 duration: 0,
                 // Don't mint project tokens.
                 weight: 0,
                 discountRate: 0,
-                ballot: IJBFundingCycleBallot(address(0))
+                ballot: IJBRulesetApprovalHook(address(0))
             }),
-            JBFundingCycleMetadata({
-                global: JBGlobalFundingCycleMetadata({
-                    allowSetTerminals: false,
-                    allowSetController: false,
-                    pauseTransfers: false
-                }),
+            JBRulesetMetadata({
+                allowSetTerminals: false,
+                allowSetController: false,
+                pauseTransfers: false,
                 reservedRate: 0,
                 // Linear redemptions.
                 redemptionRate: JBConstants.MAX_REDEMPTION_RATE,
@@ -873,12 +874,16 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 useDataSourceForPay: true,
                 useDataSourceForRedeem: true,
                 dataSource: _dataSource,
-                metadata: JBTiered721FundingCycleMetadataResolver.packFundingCycleGlobalMetadata(
-                    JBTiered721FundingCycleMetadata({pauseTransfers: false, pauseMintingReserves: false})
-                    )
+                metadata: JB721TiersRulesetMetadataResolver.packFundingCycleGlobalMetadata(
+                    JB721TiersRulesetMetadata({
+                    pauseTransfers: false,
+                    // Reserved tokens can't be minted during this funding cycle.
+                    pauseMintPendingReserves: false 
+                })
+                )
             }),
             0, // mustStartAtOrAfter should be ASAP
-            new JBGroupedSplits[](0),
+            new JBSplitGroup[](0),
             fundAccessConstraints,
             "Defifa scoring phase."
         );
@@ -892,20 +897,18 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     function _queueNoContest(uint256 _gameId, address _dataSource) internal returns (uint256 configuration) {
         configuration = controller.reconfigureFundingCyclesOf(
             _gameId,
-            JBFundingCycleData({
+            JBRulesetConfig({
                 // No duration, lasts indefinately.
                 duration: 0,
                 // Don't mint project tokens.
                 weight: 0,
                 discountRate: 0,
-                ballot: IJBFundingCycleBallot(address(0))
+                ballot: IJBRulesetApprovalHook(address(0))
             }),
-            JBFundingCycleMetadata({
-                global: JBGlobalFundingCycleMetadata({
-                    allowSetTerminals: false,
-                    allowSetController: false,
-                    pauseTransfers: false
-                }),
+            JBRulesetMetadata({
+                allowSetTerminals: false,
+                allowSetController: false,
+                pauseTransfers: false,
                 reservedRate: 0,
                 // Full refunds.
                 redemptionRate: JBConstants.MAX_REDEMPTION_RATE,
@@ -925,17 +928,17 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 useDataSourceForPay: true,
                 useDataSourceForRedeem: true,
                 dataSource: _dataSource,
-                metadata: JBTiered721FundingCycleMetadataResolver.packFundingCycleGlobalMetadata(
-                    JBTiered721FundingCycleMetadata({
-                        pauseTransfers: false,
-                        // Reserved tokens can't be minted during this funding cycle.
-                        pauseMintingReserves: true
-                    })
-                    )
+                metadata: JB721TiersRulesetMetadataResolver.packFundingCycleGlobalMetadata(
+                    JB721TiersRulesetMetadata({
+                    pauseTransfers: false,
+                    // Reserved tokens can't be minted during this funding cycle.
+                    pauseMintPendingReserves: true
+                })
+                )
             }),
             0, // mustStartAtOrAfter should be ASAP
-            new JBGroupedSplits[](0),
-            new JBFundAccessConstraints[](0),
+            new JBSplitGroup[](0),
+            new JBFundAccessLimitGroup[](0),
             "Defifa no contest."
         );
 
