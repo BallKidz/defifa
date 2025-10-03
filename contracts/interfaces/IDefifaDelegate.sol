@@ -81,14 +81,14 @@ interface IDefifaDelegate is IJB721Hook {
 
     function getTierAttestationUnitsOf(address account, uint256 tier) external view returns (uint256);
 
-    function getPastTierAttestationUnitsOf(address account, uint256 tier, uint32 blockNumber)
+    function getPastTierAttestationUnitsOf(address account, uint256 tier, uint256 blockNumber)
         external
         view
         returns (uint256);
 
     function getTierTotalAttestationUnitsOf(uint256 tier) external view returns (uint256);
 
-    function getPastTierTotalAttestationUnitsOf(uint256 tier, uint32 blockNumber) external view returns (uint256);
+    function getPastTierTotalAttestationUnitsOf(uint256 tier, uint256 blockNumber) external view returns (uint256);
 
     function tokensClaimableFor(uint256[] memory _tokenIds) external view returns (uint256, uint256);
 
@@ -104,7 +104,6 @@ interface IDefifaDelegate is IJB721Hook {
 
     function initialize(
         uint256 gameId,
-        IJBDirectory directory,
         string memory name,
         string memory symbol,
         IJBRulesets fundingCycleStore,

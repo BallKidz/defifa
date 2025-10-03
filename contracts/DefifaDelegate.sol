@@ -160,13 +160,13 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     /// @param _account The address to check.
     /// @param _tier The tier to check within.
     /// @param _blockNumber the blocknumber to check the attestation power at.
-    function getPastTierAttestationUnitsOf(address _account, uint256 _tier, uint32 _blockNumber)
+    function getPastTierAttestationUnitsOf(address _account, uint256 _tier, uint256 _blockNumber)
         external
         view
         override
         returns (uint256)
     {
-        return _delegateTierCheckpoints[_account][_tier].at(_blockNumber)._value;
+        return _delegateTierCheckpoints[_account][_tier].at(uint32(_blockNumber))._value;
     }
 
     /// @notice Returns the total amount of attestation units that exists for a tier.
@@ -178,13 +178,13 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     /// @notice Returns the total amount of attestation units that has existed for a tier.
     /// @param _tier The tier to check.
     /// @param _blockNumber The blocknumber to check the total attestation units at.
-    function getPastTierTotalAttestationUnitsOf(uint256 _tier, uint32 _blockNumber)
+    function getPastTierTotalAttestationUnitsOf(uint256 _tier, uint256 _blockNumber)
         external
         view
         override
         returns (uint256)
     {
-        return _totalTierCheckpoints[_tier].at(_blockNumber)._value;
+        return _totalTierCheckpoints[_tier].at(uint32(_blockNumber))._value;
     }
 
     /// @notice The first owner of each token ID, which corresponds to the address that originally contributed to the project to receive the NFT.
@@ -442,7 +442,8 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
 
     /// @notice The $DEFIFA token that is expected to be issued from paying fees.
     /// @notice The $BASE_PROTOCOL token that is expected to be issued from paying fees.
-    constructor(IJBDirectory _directory, IERC20 _defifaToken, IERC20 _baseProtocolToken) Ownable(address(0)) JB721Hook(_directory) {
+    // TODO: Change this initial owner (prob).
+    constructor(IJBDirectory _directory, IERC20 _defifaToken, IERC20 _baseProtocolToken) Ownable(msg.sender) JB721Hook(_directory) {
         codeOrigin = address(this);
         defifaToken = _defifaToken;
         baseProtocolToken = _baseProtocolToken;
@@ -454,7 +455,6 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
 
     /// @notice Initialize a clone of this contract.
     /// @param _gameId The ID of the project this contract's functionality applies to.
-    /// @param _directory The directory of terminals and controllers for projects.
     /// @param _name The name of the token.
     /// @param _symbol The symbol that the token should be represented by.
     /// @param _fundingCycleStore A contract storing all funding cycle configurations.
@@ -470,7 +470,6 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     /// @param _tierNames The names of each tier.
     function initialize(
         uint256 _gameId,
-        IJBDirectory _directory,
         string memory _name,
         string memory _symbol,
         IJBRulesets _fundingCycleStore,

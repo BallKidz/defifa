@@ -40,13 +40,13 @@ contract DefifaProjectOwner is IERC721Receiver {
         if (msg.sender != address(projects)) revert();
 
         // Set the correct permission.
-        uint256[] memory _permissionIndexes = new uint256[](1);
-        _permissionIndexes[0] = JBPermissionIds.SET_SPLITS;
+        uint8[] memory _permissionIds = new uint8[](1);
+        _permissionIds[0] = JBPermissionIds.SET_SPLIT_GROUPS;
 
         // Give the defifa deployer contract permission to set splits on this contract's behalf.
         permissions.setPermissionsFor(
             address(this),
-            JBPermissionsData({operator: address(deployer), projectId: _tokenId, permissionIndexes: _permissionIndexes})
+            JBPermissionsData({operator: address(deployer), projectId: uint64(_tokenId), permissionIds: _permissionIds})
         );
 
         return IERC721Receiver.onERC721Received.selector;
