@@ -20,6 +20,7 @@ import {DefifaOpsData} from "./structs/DefifaOpsData.sol";
 import {DefifaDelegate} from "./DefifaDelegate.sol";
 import {DefifaTokenUriResolver} from "./DefifaTokenUriResolver.sol";
 
+import {IJBToken} from '@bananapus/core-v5/src/interfaces/IJBToken.sol';
 import {IJB721TokenUriResolver} from '@bananapus/721-hook-v5/src/interfaces/IJB721TokenUriResolver.sol';
 import {IJBController, JBRulesetConfig, JBTerminalConfig} from '@bananapus/core-v5/src/interfaces/IJBController.sol';
 import {IJBAddressRegistry} from '@bananapus/address-registry-v5/src/interfaces/IJBAddressRegistry.sol';
@@ -526,6 +527,15 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         
         // Update the ruleset to the final one.
         controller.queueRulesetsOf(_gameId, rulesetConfigs, 'Defifa game has finished.');
+
+        // NOTE: Consider making it so the dataHook temporarily becomes the projectOwner so we can redirect the feeTokens to it directly.
+        IERC20 baseProtocolToken = IERC20(address(controller.TOKENS().tokenOf(baseProtocolProjectId)));
+        uint256 balance = baseProtocolToken.balanceOf(address(this));
+        if (balance > 0) {
+            baseProtocolToken.safeTransfer(_metadata.dataHook, balance);
+        }
+
+        // TODO: Emit event?
     }
 
 
@@ -929,7 +939,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 })
                 ))
             }),
-            splitGroups: _buildSplits(_gameId, _launchProjectData.token.token, _launchProjectData.splits),
+            splitGroups: _buildSplits(_gameId, _dataSource, _launchProjectData.token.token, _launchProjectData.splits),
             fundAccessLimitGroups: fundAccessConstraints 
         });
 
@@ -937,13 +947,13 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         return controller.launchProjectFor({
             owner: address(this),
             projectUri: _launchProjectData.projectUri,
-            rulesetConfigurations: new JBRulesetConfig[](0),
+            rulesetConfigurations: rulesetConfigs,
             terminalConfigurations: terminalConfigs, 
             memo: 'Launching Defifa game.'
         });
     }
 
-    function _buildSplits(uint256 _gameId, address _token, JBSplit[] memory _initialSplits) internal view returns (JBSplitGroup[] memory) {
+    function _buildSplits(uint256 _gameId, address _datasource, address _token, JBSplit[] memory _initialSplits) internal view returns (JBSplitGroup[] memory) {
         uint256 _numberOfSplits = _initialSplits.length;
         uint256 _totalPercent;
 
@@ -961,7 +971,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             preferAddToBalance: false,
             percent: uint32(JBConstants.SPLITS_TOTAL_PERCENT / feeDivisor),
             projectId: uint64(defifaProjectId),
-            beneficiary: payable(address(this)),
+            // Have the fee be paid directly to the datasource of the project.
+            beneficiary: payable(address(_datasource)),
             lockedUntil: 0,
             hook: IJBSplitHook(address(0))
         });

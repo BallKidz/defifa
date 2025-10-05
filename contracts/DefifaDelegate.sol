@@ -166,7 +166,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         override
         returns (uint256)
     {
-        return _delegateTierCheckpoints[_account][_tier].at(uint32(_blockNumber))._value;
+        return _delegateTierCheckpoints[_account][_tier].upperLookup(uint32(_blockNumber));
     }
 
     /// @notice Returns the total amount of attestation units that exists for a tier.
@@ -184,7 +184,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         override
         returns (uint256)
     {
-        return _totalTierCheckpoints[_tier].at(uint32(_blockNumber))._value;
+        return _totalTierCheckpoints[_tier].upperLookup(uint32(_blockNumber));
     }
 
     /// @notice The first owner of each token ID, which corresponds to the address that originally contributed to the project to receive the NFT.
@@ -946,7 +946,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             // Get the current amount for the sending delegate.
             uint224 _current = _delegateTierCheckpoints[_from][_tierId].latest();
             // Set the new amount for the sending delegate.
-            (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_from][_tierId].push(uint32(block.timestamp), _current - uint224(_amount));
+            (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_from][_tierId].push(uint32(block.number), _current - uint224(_amount));
             emit TierDelegateAttestationsChanged(_from, _tierId, _oldValue, _newValue, msg.sender);
         }
 
@@ -955,7 +955,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             // Get the current amount for the receiving delegate.
             uint224 _current = _delegateTierCheckpoints[_to][_tierId].latest();
             // Set the new amount for the receiving delegate.
-            (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_to][_tierId].push(uint32(block.timestamp), _current + uint224(_amount));
+            (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_to][_tierId].push(uint32(block.number), _current + uint224(_amount));
             emit TierDelegateAttestationsChanged(_to, _tierId, _oldValue, _newValue, msg.sender);
         }
     }
