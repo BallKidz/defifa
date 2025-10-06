@@ -481,7 +481,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             token: _token,
             amount: _pot,
             // TODO: Is this the correct currency?
-            currency: uint32(uint160(_token)),
+            currency: _token == JBConstants.NATIVE_TOKEN ? _metadata.baseCurrency : uint32(uint160(_token)),
             minTokensPaidOut: _pot
         });
 

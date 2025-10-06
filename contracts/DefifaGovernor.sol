@@ -429,8 +429,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         Address.verifyCallResult(success, returndata);
 
         // Fulfill any commitments for the game.
-        // TODO: re-enable.
-        // IDefifaDeployer(controller.PROJECTS().ownerOf(_gameId)).fulfillCommitmentsOf(_gameId);
+        IDefifaDeployer(controller.PROJECTS().ownerOf(_gameId)).fulfillCommitmentsOf(_gameId);
 
         emit ScorecardRatified(_gameId, scorecardId, msg.sender);
     }

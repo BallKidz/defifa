@@ -38,7 +38,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     error REDEMPTION_WEIGHTS_ALREADY_SET();
     error RESERVED_TOKEN_MINTING_PAUSED();
     error TRANSFERS_PAUSED();
-    error UNAUTHORIZED();
+    error UNAUTHORIZED(uint256 tokenId, address owner, address caller);
 
     //*********************************************************************//
     // --------------------- public constant properties ------------------ //
@@ -700,7 +700,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             _tokenId = _decodedTokenIds[_i];
 
             // Make sure the token's owner is correct.
-            if (_owners[_tokenId] != context.holder) revert UNAUTHORIZED();
+            if (_owners[_tokenId] != context.holder) revert UNAUTHORIZED(_tokenId, _owners[_tokenId], context.holder);
 
             // Burn the token.
             _burn(_tokenId);
