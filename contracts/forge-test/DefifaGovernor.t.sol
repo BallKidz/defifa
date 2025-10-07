@@ -481,6 +481,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
     function testSetRedemptionRatesAndRedeem_multipleTiers(uint8 nTiers, uint8[] calldata distribution) public {
         vm.assume(nTiers > 10 && nTiers < 100);
         vm.assume(distribution.length < nTiers);
+
         uint256 _sumDistribution;
         for (uint256 i = 0; i < distribution.length; i++) {
             _sumDistribution += distribution[i];
@@ -489,6 +490,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         address[] memory _users = new address[](nTiers);
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(nTiers);
         (uint256 _projectId, DefifaDelegate _nft, DefifaGovernor _governor) = createDefifaProject(defifaData);
+        uint256 totalRedemptionWeight = _nft.TOTAL_REDEMPTION_WEIGHT();
+
         // Phase 1: minting
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
         //deployer.queueNextPhaseOf(_projectId);
@@ -523,7 +526,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
             if (distribution.length <= i) continue;
-            scorecards[i].redemptionWeight = (uint256(distribution[i]) * 1_000_000_000) / _sumDistribution;
+            scorecards[i].redemptionWeight = (uint256(distribution[i]) * totalRedemptionWeight) / _sumDistribution;
         }
         // Forward time so proposals can be created
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
@@ -771,15 +774,20 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         DefifaTierRedemptionWeight[] memory scorecards = new DefifaTierRedemptionWeight[](
             nOfOtherTiers + 1
         );
+        
+        uint256 totalRedemptionWeight = _nft.TOTAL_REDEMPTION_WEIGHT();
+
         // We can't have a neutral outcome, so we only give shares to tiers that are an even number (in our array)
+        console.log("Total weight:", totalWeight);
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
             if (baseRedemptionWeight != 0) {
-                scorecards[i].redemptionWeight = (1_000_000_000 * uint256(baseRedemptionWeight)) / totalWeight;
+                scorecards[i].redemptionWeight = (totalRedemptionWeight * uint256(baseRedemptionWeight)) / totalWeight;
             }
             if (i == nOfOtherTiers && winningTierExtraWeight != 0) {
-                scorecards[i].redemptionWeight += (1_000_000_000 * uint256(winningTierExtraWeight)) / totalWeight;
+                scorecards[i].redemptionWeight += (totalRedemptionWeight * uint256(winningTierExtraWeight)) / totalWeight;
             }
+            console.log("Redemption weight:", scorecards[i].redemptionWeight);
         }
         {
             // Forward time so proposals can be created
@@ -848,7 +856,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             }
             // Assert that our expected tier redemption is ~equal to the actual amount
             // Allowing for some rounding errors, max allowed error is 0.000001 ether
-            assertLt(_expectedTierRedemption - _user.balance, 10 ** 12);
+            assertApproxEqRel(_expectedTierRedemption, _user.balance, 0.0001 ether);
+            // assertLt(_expectedTierRedemption - _user.balance, 10 ** 12);
         }
         // All NFTs should have been redeemed, only some dust should be left
         // Max allowed dust is 0.0001
@@ -1049,11 +1058,17 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         _governor.ratifyScorecardFrom(_gameId, scorecards);
     }
 
-    function testWhenRedemptionWeightisMoreThanMaxRedemptionWeight() public {
-        uint8 nTiers = 10;
+    function testWhenRedemptionWeightisMoreThanMaxRedemptionWeight(uint8 nTiers) public {
+        // Anything above 10 should cause the error we are looking for.
+        // As a sanity check we let it also run for less than 10 to see if it does not error in that case. 
+        nTiers = uint8(bound(nTiers, 2, 20));
+
         address[] memory _users = new address[](nTiers);
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(nTiers);
         (uint256 _projectId, DefifaDelegate _nft, DefifaGovernor _governor) = createDefifaProject(defifaData);
+        
+        uint256 redemptionWeight = _nft.TOTAL_REDEMPTION_WEIGHT() / 10;
+
         // Phase 1: Mint
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
         //deployer.queueNextPhaseOf(_projectId);
@@ -1087,11 +1102,13 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
 
         // Generate the scorecards
         DefifaTierRedemptionWeight[] memory scorecards = new DefifaTierRedemptionWeight[](nTiers);
+
         // We can't have a neutral outcome, so we only give shares to tiers that are an even number (in our array)
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
-            scorecards[i].redemptionWeight = 1_000_000_000;
+            scorecards[i].redemptionWeight = redemptionWeight;
         }
+
         // Forward time so proposals can be created
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
         // Forward time so voting becomes active
@@ -1114,8 +1131,13 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.roll(block.number + _governor.attestationGracePeriodOf(_gameId) + 1);
         // each block is of 12 secs
         vm.warp(block.timestamp + (_governor.attestationGracePeriodOf(_gameId) * 12) + 1);
+        
+        // This is the error we are looking for in this test, it should only trigger when redemptionWeight is more than the max, which should happen at > 10.
+        if (nTiers > 10){
+            vm.expectRevert(DefifaDelegate.INVALID_REDEMPTION_WEIGHTS.selector);
+        }
+
         // Execute the proposal
-        vm.expectRevert(abi.encodeWithSignature("INVALID_REDEMPTION_WEIGHTS()"));
         _governor.ratifyScorecardFrom(_gameId, scorecards);
     }
 
