@@ -778,7 +778,9 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         uint256 totalRedemptionWeight = _nft.TOTAL_REDEMPTION_WEIGHT();
 
         // We can't have a neutral outcome, so we only give shares to tiers that are an even number (in our array)
-        console.log("Total weight:", totalWeight);
+        console.log("Total weight:", totalRedemptionWeight);
+        console.log("internal weight:", totalWeight);
+        uint256 sumOfWeights;
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
             if (baseRedemptionWeight != 0) {
@@ -787,8 +789,11 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             if (i == nOfOtherTiers && winningTierExtraWeight != 0) {
                 scorecards[i].redemptionWeight += (totalRedemptionWeight * uint256(winningTierExtraWeight)) / totalWeight;
             }
+            sumOfWeights += scorecards[i].redemptionWeight;
             console.log("Redemption weight:", scorecards[i].redemptionWeight);
         }
+
+        console.log("sum:", sumOfWeights);
         {
             // Forward time so proposals can be created
             uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
@@ -816,6 +821,13 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
 
         _governor.ratifyScorecardFrom(_gameId, scorecards);
         vm.roll(block.number + 1);
+
+        uint256 _pot = jbMultiTerminal().currentSurplusOf(_projectId,
+             jbMultiTerminal().accountingContextsOf(_projectId),
+            18,
+             JBCurrencyIds.ETH
+                                                         );
+
         // Verify that the redemptionWeights actually changed
         for (uint256 i = 0; i < _users.length; i++) {
             address _user = _users[i];
@@ -833,6 +845,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
                 uint256 _tierWeight = _tier == nOfOtherTiers + 1
                     ? uint256(baseRedemptionWeight) + uint256(winningTierExtraWeight)
                     : baseRedemptionWeight;
+
                     // If the redemption is 0 this will revert
                     if (_tierWeight == 0) vm.expectRevert(abi.encodeWithSignature("NOTHING_TO_CLAIM()"));
                     vm.prank(_user);
@@ -846,7 +859,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
                         metadata: redemptionMetadata
                     });
                     // We calculate the expected output based on the given distribution and how much is in the pot
-                    _expectedTierRedemption = (uint256(_users.length) * 1 ether * _tierWeight) / totalWeight;
+                    _expectedTierRedemption = (_pot * _tierWeight) / totalWeight;
             }
             {
                 // If this is the winning tier then the amount is divided among the nUsersWithWinningTier

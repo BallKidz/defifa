@@ -264,8 +264,11 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         // If no tiers were minted, nothing to redeem.
         if (_tier.initialSupply- _tier.remainingSupply == 0) return 0;
 
+        uint256 _totalTokensForCashoutInTier = _tier.initialSupply - _tier.remainingSupply
+            - (store.numberOfBurnedFor(address(this), _tierId ) + tokensRedeemedFrom[_tierId]);
+
         // Calculate the percentage of the tier redemption amount a single token counts for.
-        return _weight / (_tier.initialSupply - _tier.remainingSupply + tokensRedeemedFrom[_tierId]);
+        return _weight / _totalTokensForCashoutInTier;
     }
 
     /// @notice The combined cash out weight of all outstanding NFTs.
@@ -376,7 +379,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             mulDiv(
                 context.surplus.value + amountRedeemed, cashOutWeightOf(_decodedTokenIds, context), TOTAL_REDEMPTION_WEIGHT
             ),
-            TOTAL_REDEMPTION_WEIGHT,
+            context.surplus.value + amountRedeemed,
             hookSpecifications 
         );
     }
