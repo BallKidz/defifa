@@ -548,6 +548,10 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
              JBCurrencyIds.ETH
                                                          );
         assertApproxEqAbs(remainingSurplus, _pot * (totalRedemptionWeight - assignedRedemptionWeight) / totalRedemptionWeight, 10 ** 14);
+
+        // There should be no fee tokens left in the delegate.
+        assertEq(IERC20(_protocolFeeProjectTokenAccount).balanceOf(address(_nft)), 0);
+        assertEq(IERC20(_defifaProjectTokenAccount).balanceOf(address(_nft)), 0);
     }
 
     function testVotingPowerDecreasesAfterRefund() public {

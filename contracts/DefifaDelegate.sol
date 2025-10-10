@@ -82,6 +82,10 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     /// @notice The names of each tier.
     /// @dev _tierId The ID of the tier to get a name for.
     mapping(uint256 => string) internal _tierNameOf;
+    
+    /// @notice The total cost to mint all tokens in the game.
+    /// @dev This is not the amount that was actually paid in, reserved tokens are also counted towards this but they were not paid for.
+    uint256 internal _totalMintCost;
 
     //*********************************************************************//
     // ---------------- public immutable stored properties --------------- //
@@ -342,10 +346,6 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         (bool metadataExists, bytes memory metadata) =
             JBMetadataResolver.getDataFor(JBMetadataResolver.getId("cashOut", codeOrigin), context.metadata);
 
-        // Use this contract as the only cash out hook.
-        hookSpecifications = new JBCashOutHookSpecification[](1);
-        hookSpecifications[0] = JBCashOutHookSpecification(this, 0, bytes(""));
-
         uint256[] memory decodedTokenIds;
 
         // Decode the metadata.
@@ -354,20 +354,25 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         // Get the current gae phase.
         DefifaGamePhase _gamePhase = gamePhaseReporter.currentGamePhaseOf(context.projectId);
 
+        // Keep a reference to the number of tokens.
+        uint256 _numberOfTokenIds = decodedTokenIds.length;
+
+        // Calculate the amount paid to mint the tokens that are being burned. 
+        uint256 _cumulativeMintPrice;
+        for (uint256 _i; _i < _numberOfTokenIds; _i++) {
+            _cumulativeMintPrice += store.tierOfTokenId(address(this), decodedTokenIds[_i], false).price;
+        }
+
+        // Use this contract as the only cash out hook.
+        hookSpecifications = new JBCashOutHookSpecification[](1);
+        hookSpecifications[0] = JBCashOutHookSpecification(this, 0, abi.encode(_cumulativeMintPrice, context.surplus.value + amountRedeemed));
+
         // If the game is in its minting, refund, or no contest phase, reclaim amount is the same as it costed to mint.
         if (
             _gamePhase == DefifaGamePhase.MINT || _gamePhase == DefifaGamePhase.REFUND
                 || _gamePhase == DefifaGamePhase.NO_CONTEST || _gamePhase == DefifaGamePhase.NO_CONTEST_INEVITABLE
         ) {
-            // Keep a reference to the number of tokens.
-            uint256 _numberOfTokenIds = decodedTokenIds.length;
-
-            for (uint256 _i; _i < _numberOfTokenIds;) {
-                unchecked {
-                    cashOutCount += store.tierOfTokenId(address(this), decodedTokenIds[_i], false).price;
-                    _i++;
-                }
-            }
+            cashOutCount = _cumulativeMintPrice;
         } else {
             // If the game is in its scoring or complete phase, reclaim amount is based on the tier weights.
             cashOutCount = mulDiv(
@@ -564,6 +569,12 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
 
         // Keep a reference to the token ID being iterated on.
         uint256 _tokenId;
+        
+        // Fetch the tier details.
+        JB721Tier memory _tier = store.tierOf(address(this), _tierId, false);
+
+        // Increment the total mint cost.
+        _totalMintCost += _tier.price * _tokenIds.length;
 
         for (uint256 _i; _i < _count;) {
             // Set the token ID.
@@ -584,7 +595,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             address(0),
             _reservedTokenBeneficiary,
             _tierId,
-            store.tierOf(address(this), _tierId, false).votingUnits * _tokenIds.length
+            _tier.votingUnits * _tokenIds.length
         );
     }
 
@@ -685,7 +696,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             revert();
         }
 
-        // Decode the metadata.
+        // Decode the CashOut metadata.
         (uint256[] memory _decodedTokenIds) = abi.decode(metadata, (uint256[]));
 
         // Get a reference to the number of token IDs being checked.
@@ -698,7 +709,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         bool _isComplete = gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) == DefifaGamePhase.COMPLETE;
 
         // Iterate through all tokens, burning them if the owner is correct.
-        for (uint256 _i; _i < _numberOfTokenIds;) {
+        for (uint256 _i; _i < _numberOfTokenIds; _i++) {
             // Set the token's ID.
             _tokenId = _decodedTokenIds[_i];
 
@@ -708,22 +719,36 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             // Burn the token.
             _burn(_tokenId);
 
-            unchecked {
-                if (_isComplete) ++tokensRedeemedFrom[store.tierIdOfToken(_tokenId)];
-                ++_i;
+            if (_isComplete) {
+                unchecked {
+                    ++tokensRedeemedFrom[store.tierIdOfToken(_tokenId)];
+                }
             }
         }
 
         // Call the hook.
         _didBurn(_decodedTokenIds);
 
+        // Decode the metadata passed by the hook.
+        (uint256 _cumulativeMintPrice, uint256 _totalPot) = abi.decode(context.hookMetadata, (uint256, uint256));
+
         // Increment the amount redeemed if this is the complete phase.
         if (_isComplete) {
             amountRedeemed += context.reclaimedAmount.value;
+            
+            // Claim the $DEFIFA and $NANA tokens for the user.
+            _claimTokensFor(
+                context.holder, _cumulativeMintPrice, _totalMintCost 
+            );
 
-            // Claim any $DEFIFA and $BASE_PROTOCOL tokens available.
-            _claimTokensFor(context.holder, _decodedTokenIds);
+
+
+            // // Claim any $DEFIFA and $BASE_PROTOCOL tokens available.
+            // _claimTokensFor(context.holder, _decodedTokenIds);
         }
+
+        // Decrement the total mint cost by the cumulative mint price of the tokens being burned.
+        _totalMintCost -= _cumulativeMintPrice;
     }
 
     /// @notice Mint reserved tokens within the tier for the provided value.
@@ -992,6 +1017,9 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
 
         // Keep a reference to the token ID being iterated on.
         uint256 _tokenId;
+        
+        // Increment the total mint cost.
+        _totalMintCost += _amount;
 
         // Loop through each token ID and mint.
         for (uint256 _i; _i < _mintsLength;) {
@@ -1007,6 +1035,18 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
                 ++_i;
             }
         }
+    }
+
+    function _claimTokensFor(address _beneficiary, uint256 shareToBeneficiary, uint256 outOfTotal) internal {
+        defifaToken.transfer(
+            _beneficiary,
+            defifaToken.balanceOf(address(this)) * shareToBeneficiary / outOfTotal
+        );
+
+        baseProtocolToken.transfer(
+            _beneficiary,
+            baseProtocolToken.balanceOf(address(this)) * shareToBeneficiary / outOfTotal
+        );
     }
 
     /// @notice Claim $DEFIFA and $BASE_PROTOCOL tokens to an account for a certain redeemed amount.
