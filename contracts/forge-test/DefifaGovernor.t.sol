@@ -426,21 +426,24 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         address[] memory _users = new address[](nTiers);
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(nTiers);
         (uint256 _projectId, DefifaDelegate _nft, DefifaGovernor _governor) = createDefifaProject(defifaData);
-        uint256 totalRedemptionWeight = _nft.TOTAL_REDEMPTION_WEIGHT();
 
         // Phase 1: minting
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
-        //deployer.queueNextPhaseOf(_projectId);
         for (uint256 i = 0; i < nTiers; i++) {
             // Generate a new address for each tier
             _users[i] = address(bytes20(keccak256(abi.encode("user", Strings.toString(i)))));
         // fund user
         vm.deal(_users[i], 1 ether);
+
         // Build metadata to buy specific NFT
-        uint16[] memory rawMetadata = new uint16[](1);
-        rawMetadata[0] = uint16(i + 1); // reward tier, 1 indexed
-        bytes memory metadata =
-            _buildPayMetadata(abi.encode(_users[i], rawMetadata));
+        bytes memory metadata;
+        {
+            uint16[] memory rawMetadata = new uint16[](1);
+            rawMetadata[0] = uint16(i + 1); // reward tier, 1 indexed
+            metadata =
+                _buildPayMetadata(abi.encode(_users[i], rawMetadata));
+        }
+
         // Pay to the project and mint an NFT
         vm.prank(_users[i]);
         jbMultiTerminal().pay{value: 1 ether}(_projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata);
@@ -463,7 +466,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
             if (distribution.length <= i) continue;
-            scorecards[i].redemptionWeight = (uint256(distribution[i]) * totalRedemptionWeight) / _sumDistribution;
+            scorecards[i].redemptionWeight = (uint256(distribution[i]) * _nft.TOTAL_REDEMPTION_WEIGHT()) / _sumDistribution;
             assignedRedemptionWeight += scorecards[i].redemptionWeight;
         }
         // Forward time so proposals can be created
@@ -512,10 +515,6 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             uint256 _nanaBalance = IERC20(_protocolFeeProjectTokenAccount).balanceOf(_user);
             uint256 _defifaBalance = IERC20(_defifaProjectTokenAccount).balanceOf(_user);
 
-            // If the redemption is 0 this will revert
-            if (scorecards[i].redemptionWeight == 0) {
-                vm.expectRevert(abi.encodeWithSignature("NOTHING_TO_CLAIM()"));
-            }
             vm.prank(_user);
             JBMultiTerminal(address(jbMultiTerminal())).cashOutTokensOf({
                 holder: _user,
@@ -526,11 +525,12 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
                 beneficiary: payable(_user),
                 metadata: redemptionMetadata
             });
-            if (scorecards[i].redemptionWeight == 0) continue;
 
             // Assert that the user received some of the fee tokens.
             assertGt(IERC20(_protocolFeeProjectTokenAccount).balanceOf(_user), _nanaBalance);
             assertGt(IERC20(_defifaProjectTokenAccount).balanceOf(_user), _defifaBalance);
+
+            if (scorecards[i].redemptionWeight == 0) continue;
 
             // We calculate the expected output based on the given distribution and how much is in the pot
             uint256 _expectedTierRedemption = _pot;
@@ -538,16 +538,15 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             // Assert that our expected tier redemption is ~equal to the actual amount
             // Allowing for some rounding errors, max allowed error is 0.000001 ether
             assertApproxEqRel(_expectedTierRedemption, _user.balance, 0.001 ether);
-            // assertLt(_expectedTierRedemption - _user.balance, 10 ** 12);
         }
         // All NFTs should have been redeemed, only some dust should be left
         // Max allowed dust is 0.0001
         uint256 remainingSurplus = jbMultiTerminal().currentSurplusOf(_projectId,
-             jbMultiTerminal().accountingContextsOf(_projectId),
+            jbMultiTerminal().accountingContextsOf(_projectId),
             18,
-             JBCurrencyIds.ETH
-                                                         );
-        assertApproxEqAbs(remainingSurplus, _pot * (totalRedemptionWeight - assignedRedemptionWeight) / totalRedemptionWeight, 10 ** 14);
+            JBCurrencyIds.ETH
+        );
+        assertApproxEqAbs(remainingSurplus, _pot * (_nft.TOTAL_REDEMPTION_WEIGHT() - assignedRedemptionWeight) / _nft.TOTAL_REDEMPTION_WEIGHT(), 10 ** 14);
 
         // There should be no fee tokens left in the delegate.
         assertEq(IERC20(_protocolFeeProjectTokenAccount).balanceOf(address(_nft)), 0);
@@ -805,7 +804,6 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
                     : baseRedemptionWeight;
 
                     // If the redemption is 0 this will revert
-                    if (_tierWeight == 0) vm.expectRevert(abi.encodeWithSignature("NOTHING_TO_CLAIM()"));
                     vm.prank(_user);
                     JBMultiTerminal(address(jbMultiTerminal())).cashOutTokensOf({
                         holder: _user,

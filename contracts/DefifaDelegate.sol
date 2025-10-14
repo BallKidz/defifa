@@ -365,7 +365,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
 
         // Use this contract as the only cash out hook.
         hookSpecifications = new JBCashOutHookSpecification[](1);
-        hookSpecifications[0] = JBCashOutHookSpecification(this, 0, abi.encode(_cumulativeMintPrice, context.surplus.value + amountRedeemed));
+        hookSpecifications[0] = JBCashOutHookSpecification(this, 0, abi.encode(_cumulativeMintPrice));
 
         // If the game is in its minting, refund, or no contest phase, reclaim amount is the same as it costed to mint.
         if (
@@ -683,9 +683,6 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             msg.value != 0 || !DIRECTORY.isTerminalOf(PROJECT_ID, IJBTerminal(msg.sender))
                 || context.projectId != PROJECT_ID 
         ) revert JB721Hook_InvalidCashOut();
-        
-        // If there's nothing being claimed, revert to prevent burning for nothing.
-        if (context.reclaimedAmount.value == 0) revert NOTHING_TO_CLAIM();
 
         // Fetch the cash out hook metadata using the corresponding metadata ID.
         (bool metadataExists, bytes memory metadata) = JBMetadataResolver.getDataFor(
@@ -730,22 +727,21 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         _didBurn(_decodedTokenIds);
 
         // Decode the metadata passed by the hook.
-        (uint256 _cumulativeMintPrice, uint256 _totalPot) = abi.decode(context.hookMetadata, (uint256, uint256));
+        (uint256 _cumulativeMintPrice) = abi.decode(context.hookMetadata, (uint256));
 
         // Increment the amount redeemed if this is the complete phase.
+        bool _beneficiaryReceivedTokens;
         if (_isComplete) {
             amountRedeemed += context.reclaimedAmount.value;
             
             // Claim the $DEFIFA and $NANA tokens for the user.
-            _claimTokensFor(
+            _beneficiaryReceivedTokens = _claimTokensFor(
                 context.holder, _cumulativeMintPrice, _totalMintCost 
             );
-
-
-
-            // // Claim any $DEFIFA and $BASE_PROTOCOL tokens available.
-            // _claimTokensFor(context.holder, _decodedTokenIds);
         }
+
+        // If there's nothing being claimed and we did not distribute fee tokens, revert to prevent burning for nothing.
+        if (context.reclaimedAmount.value == 0 && !_beneficiaryReceivedTokens) revert NOTHING_TO_CLAIM();
 
         // Decrement the total mint cost by the cumulative mint price of the tokens being burned.
         _totalMintCost -= _cumulativeMintPrice;
@@ -1037,16 +1033,16 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         }
     }
 
-    function _claimTokensFor(address _beneficiary, uint256 shareToBeneficiary, uint256 outOfTotal) internal {
-        defifaToken.transfer(
-            _beneficiary,
-            defifaToken.balanceOf(address(this)) * shareToBeneficiary / outOfTotal
-        );
+    function _claimTokensFor(address _beneficiary, uint256 shareToBeneficiary, uint256 outOfTotal) internal returns (bool beneficiaryReceivedTokens) {
+        // Calculate the share of $DEFIFA and $BASE_PROTOCOL tokens to send.
+        uint256 baseProtocolAmount = baseProtocolToken.balanceOf(address(this)) * shareToBeneficiary / outOfTotal;
+        uint256 defifaAmount = defifaToken.balanceOf(address(this)) * shareToBeneficiary / outOfTotal;
 
-        baseProtocolToken.transfer(
-            _beneficiary,
-            baseProtocolToken.balanceOf(address(this)) * shareToBeneficiary / outOfTotal
-        );
+        // If there is an amount we should send, send it.
+        if (defifaAmount != 0)  defifaToken.transfer(_beneficiary, defifaAmount);
+        if (baseProtocolAmount != 0) baseProtocolToken.transfer(_beneficiary, baseProtocolAmount);
+        
+        return (defifaAmount != 0 || baseProtocolAmount != 0);
     }
 
     /// @notice Claim $DEFIFA and $BASE_PROTOCOL tokens to an account for a certain redeemed amount.
