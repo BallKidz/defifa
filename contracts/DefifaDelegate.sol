@@ -262,16 +262,26 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
 
         // If there's no weight there's nothing to redeem.
         if (_weight == 0) return 0;
+        
+        // Get the amount of tokens that have already been burned.
+        uint256 _burnedTokens = store.numberOfBurnedFor(address(this), _tierId );
 
         // If no tiers were minted, nothing to redeem.
-        if (_tier.initialSupply- _tier.remainingSupply == 0) return 0;
+        if (_tier.initialSupply - (_tier.remainingSupply + _burnedTokens) == 0) return 0;
         
         // Calculate the amount of tokens that existed at the start of the last phase.
         uint256 _totalTokensForCashoutInTier = _tier.initialSupply - _tier.remainingSupply
-            - (store.numberOfBurnedFor(address(this), _tierId ) - tokensRedeemedFrom[_tierId]);
+            - (_burnedTokens - tokensRedeemedFrom[_tierId]);
 
         // Calculate the percentage of the tier cashOut amount a single token counts for.
         return _weight / _totalTokensForCashoutInTier;
+    }
+
+    /// @notice The amount of tokens of a tier that are currently in circulation.
+    /// @param _tierId The ID of the tier to get the current supply of.
+    function currentSupplyOfTier(uint256 _tierId) public view returns (uint256) {
+        JB721Tier memory _tier = store.tierOf(address(this), _tierId, false);
+        return _tier.initialSupply - (_tier.remainingSupply + store.numberOfBurnedFor(address(this), _tierId));
     }
 
     /// @notice The combined cash out weight of all outstanding NFTs.

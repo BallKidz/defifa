@@ -141,7 +141,7 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
                 }
 
                 // Keep a reference to the number of tokens outstanding from this tier.
-                uint256 _totalMinted = _tier.initialSupply - _tier.remainingSupply;
+                uint256 _totalMinted = _delegate.currentSupplyOfTier(_tier.id);
 
                 if (_gamePhase == DefifaGamePhase.MINT) {
                     _rarityText = string(

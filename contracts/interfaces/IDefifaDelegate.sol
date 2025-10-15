@@ -51,6 +51,8 @@ interface IDefifaDelegate is IJB721Hook {
 
     function cashOutWeightIsSet() external view returns (bool);
 
+    function currentSupplyOfTier(uint256 _tierId) external view returns (uint256);
+
     function store() external view returns (IJB721TiersHookStore);
 
     function rulesets() external view returns (IJBRulesets);

@@ -15,6 +15,7 @@ import {DefifaDelegate} from "./DefifaDelegate.sol";
 
 import {IJBController} from '@bananapus/core-v5/src/interfaces/IJBController.sol';
 import {JBRulesetMetadata} from '@bananapus/core-v5/src/structs/JBRulesetMetadata.sol';
+import {IJB721TiersHookStore} from '@bananapus/721-hook-v5/src/interfaces/IJB721TiersHookStore.sol';
 import {JB721Tier} from '@bananapus/721-hook-v5/src/structs/JB721Tier.sol';
 
 /// @title DefifaGovernor
@@ -189,25 +190,16 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(_gameId);
 
         // Get a reference to the number of tiers.
-        uint256 _numbeOfTiers = IDefifaDelegate(_metadata.dataHook).store().maxTierIdOf(_metadata.dataHook);
-
-        // Keep a reference to the tier being iterated on.
-        JB721Tier memory _tier;
+        uint256 _numberOfTiers = IDefifaDelegate(_metadata.dataHook).store().maxTierIdOf(_metadata.dataHook);
 
         // Keep a reference to the total elligible tier weight.
         uint256 _elligibleTierWeights;
 
-        for (uint256 _i; _i < _numbeOfTiers;) {
-            // Get a reference to the tier.
-            _tier = IDefifaDelegate(_metadata.dataHook).store().tierOf(_metadata.dataHook, _i + 1, false);
-
+        for (uint256 _i; _i < _numberOfTiers; _i++) {
             // If there are tokens minted from the tier, take its voting power into consideration.
-            if (_tier.initialSupply > _tier.remainingSupply) {
+            // @NOTE: This should be double checked to make sure its correct.
+            if (IDefifaDelegate(_metadata.dataHook).currentSupplyOfTier(_i + 1) != 0) {
                 _elligibleTierWeights += MAX_ATTESTATION_POWER_TIER;
-            }
-
-            unchecked {
-                ++_i;
             }
         }
 
@@ -230,14 +222,11 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(_gameId);
 
         // Get a reference to the number of tiers.
-        uint256 _numbeOfTiers = IDefifaDelegate(_metadata.dataHook).store().maxTierIdOf(_metadata.dataHook);
+        uint256 _numberOfTiers = IDefifaDelegate(_metadata.dataHook).store().maxTierIdOf(_metadata.dataHook);
 
-        // Keep a reference to the tier being iterated on.
-        uint256 _tierId;
-
-        for (uint256 _i; _i < _numbeOfTiers;) {
+        for (uint256 _i; _i < _numberOfTiers; _i++) {
             // Tier's are 1 indexed;
-            _tierId = _i + 1;
+            uint256 _tierId = _i + 1;
 
             // Keep a reference to the number of tier attestations for the account.
             uint256 _tierAttestationUnitsForAccount =
@@ -252,7 +241,6 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                         IDefifaDelegate(_metadata.dataHook).getPastTierTotalAttestationUnitsOf(_tierId, _blockNumber)
                     );
                 }
-                ++_i;
             }
         }
     }
@@ -320,21 +308,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Get the game's current funding cycle along with its metadata.
         (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(_gameId);
 
-        // Keep a reference to the tier being iterated on.
-        JB721Tier memory _tier;
-
-        for (uint256 _i; _i < _numberOfTierWeights;) {
-            // Get a reference to the tier.
-            _tier =
-                IDefifaDelegate(_metadata.dataHook).store().tierOf(_metadata.dataHook, _tierWeights[_i].id, false);
-
-            // If there's a weight assigned to the tier, make sure there is a token backed by it.
-            if (_tier.initialSupply == _tier.remainingSupply && _tierWeights[_i].cashOutWeight > 0) {
+        // If there's a weight assigned to the tier, make sure there is a token backed by it.
+        for (uint256 _i; _i < _numberOfTierWeights; _i++) {
+            if (_tierWeights[_i].cashOutWeight > 0 && IDefifaDelegate(_metadata.dataHook).currentSupplyOfTier(_tierWeights[_i].id) == 0) {
                 revert UNOWNED_PROPOSED_CASHOUT_VALUE();
-            }
-
-            unchecked {
-                ++_i;
             }
         }
 
