@@ -14,7 +14,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IDefifaDelegate} from "./interfaces/IDefifaDelegate.sol";
 import {IDefifaGamePhaseReporter} from "./interfaces/IDefifaGamePhaseReporter.sol";
 import {IDefifaGamePotReporter} from "./interfaces/IDefifaGamePotReporter.sol";
-import {DefifaTierRedemptionWeight} from "./structs/DefifaTierRedemptionWeight.sol";
+import {DefifaTierCashOutWeight} from "./structs/DefifaTierCashOutWeight.sol";
 import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 
 /// @title DefifaDelegate
@@ -31,13 +31,13 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     error DELEGATE_CHANGES_UNAVAILABLE_IN_THIS_PHASE();
     error GAME_ISNT_SCORING_YET();
     error INVALID_TIER_ID();
-    error INVALID_REDEMPTION_WEIGHTS();
+    error INVALID_CASHOUT_WEIGHTS();
     error NOTHING_TO_CLAIM();
     error NOTHING_TO_MINT();
     error WRONG_CURRENCY();
     error NO_CONTEST();
     error OVERSPENDING();
-    error REDEMPTION_WEIGHTS_ALREADY_SET();
+    error CASHOUT_WEIGHTS_ALREADY_SET();
     error RESERVED_TOKEN_MINTING_PAUSED();
     error TRANSFERS_PAUSED();
     error UNAUTHORIZED(uint256 tokenId, address owner, address caller);
@@ -46,17 +46,16 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     // --------------------- public constant properties ------------------ //
     //*********************************************************************//
 
-    /// @notice
-    /// The total redemption weight that can be divided among tiers.
-    uint256 public constant override TOTAL_REDEMPTION_WEIGHT = 1_000_000_000_000_000_000;
+    /// @notice The total cashOut weight that can be divided among tiers.
+    uint256 public constant override TOTAL_CASHOUT_WEIGHT = 1_000_000_000_000_000_000;
 
     //*********************************************************************//
     // -------------------- internal stored properties ------------------- //
     //*********************************************************************//
 
-    /// @notice The redemption weight for each tier.
+    /// @notice The cashOut weight for each tier.
     /// @dev Tiers are limited to ID 128
-    uint256[128] internal _tierRedemptionWeights;
+    uint256[128] internal _tierCashOutWeights;
 
     /// @notice The delegation status for each address and for each tier.
     /// _delegator The delegator.
@@ -105,7 +104,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     IJB721TiersHookStore public override store;
 
     /// @notice The contract storing all funding cycle configurations.
-    IJBRulesets public override fundingCycleStore;
+    IJBRulesets public override rulesets;
 
     /// @notice The contract reporting game phases.
     IDefifaGamePhaseReporter public override gamePhaseReporter;
@@ -116,8 +115,8 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     /// @notice The currency that is accepted when minting tier NFTs.
     uint256 public override pricingCurrency;
 
-    /// @notice A flag indicating if the redemption weight has been set.
-    bool public override redemptionWeightIsSet;
+    /// @notice A flag indicating if the cashout weights has been set.
+    bool public override cashOutWeightIsSet;
 
     /// @notice The common base for the tokenUri's
     string public override baseURI;
@@ -139,10 +138,10 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     // ------------------------- external views -------------------------- //
     //*********************************************************************//
 
-    /// @notice The redemption weight for each tier.
+    /// @notice The cashOut weight for each tier.
     /// @return The array of weights, indexed by tier.
-    function tierRedemptionWeights() external view override returns (uint256[128] memory) {
-        return _tierRedemptionWeights;
+    function tierCashOutWeights() external view override returns (uint256[128] memory) {
+        return _tierCashOutWeights;
     }
 
     /// @notice Returns the delegate of an account for specific tier.
@@ -222,8 +221,8 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         return store.tokenUriResolverOf(address(this)).tokenUriOf(address(this), _tokenId);
     }
 
-    /// @notice The cumulative weight the given token IDs have in redemptions compared to the `_totalRedemptionWeight`.
-    /// @param tokenIds The IDs of the tokens to get the cumulative redemption weight of.
+    /// @notice The cumulative weight the given token IDs have in cashOuts compared to the `_totalCashOutWeight`.
+    /// @param tokenIds The IDs of the tokens to get the cumulative cashOut weight of.
     /// @return cumulativeWeight The weight.
     function cashOutWeightOf(
         uint256[] memory tokenIds,
@@ -239,7 +238,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         uint256 _tokenCount = tokenIds.length;
 
         for (uint256 _i; _i < _tokenCount;) {
-            // Calculate what percentage of the tier redemption amount a single token counts for.
+            // Calculate what percentage of the tier cashOut amount a single token counts for.
             cumulativeWeight += cashOutWeightOf(tokenIds[_i]);
 
             unchecked {
@@ -248,8 +247,8 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         }
     }
 
-    /// @notice The weight the given token ID has in redemptions.
-    /// @param _tokenId The ID of the token to get the redemption weight of.
+    /// @notice The weight the given token ID has in cashOuts.
+    /// @param _tokenId The ID of the token to get the cashOut weight of.
     /// @return The weight.
     function cashOutWeightOf(uint256 _tokenId) public view override returns (uint256) {
         // Keep a reference to the token's tier ID.
@@ -259,7 +258,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         JB721Tier memory _tier = store.tierOf(address(this), _tierId, false);
 
         // Get the tier's weight.
-        uint256 _weight = _tierRedemptionWeights[_tierId - 1];
+        uint256 _weight = _tierCashOutWeights[_tierId - 1];
 
         // If there's no weight there's nothing to redeem.
         if (_weight == 0) return 0;
@@ -271,7 +270,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         uint256 _totalTokensForCashoutInTier = _tier.initialSupply - _tier.remainingSupply
             - (store.numberOfBurnedFor(address(this), _tierId ) - tokensRedeemedFrom[_tierId]);
 
-        // Calculate the percentage of the tier redemption amount a single token counts for.
+        // Calculate the percentage of the tier cashOut amount a single token counts for.
         return _weight / _totalTokensForCashoutInTier;
     }
 
@@ -285,7 +284,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         override
         returns (uint256)
     {
-        return TOTAL_REDEMPTION_WEIGHT;
+        return TOTAL_CASHOUT_WEIGHT;
     }
 
     /// @notice The amount of $DEFIFA and $BASE_PROTOCOL tokens this game was allocated from paying the network fee.
@@ -360,7 +359,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         } else {
             // If the game is in its scoring or complete phase, reclaim amount is based on the tier weights.
             cashOutCount = mulDiv(
-                context.surplus.value + amountRedeemed, cashOutWeightOf(decodedTokenIds, context), TOTAL_REDEMPTION_WEIGHT
+                context.surplus.value + amountRedeemed, cashOutWeightOf(decodedTokenIds, context), TOTAL_CASHOUT_WEIGHT
             );
         }
         
@@ -380,7 +379,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         view
         returns (uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount)
     {
-        // Keep track of whether the redemption is happening during the complete phase.
+        // Keep track of whether the cashOut is happening during the complete phase.
         bool _isComplete = gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) == DefifaGamePhase.COMPLETE;
         
         // If the game isn't complete, we do not have any tokens to claim.
@@ -437,7 +436,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     /// @param _gameId The ID of the project this contract's functionality applies to.
     /// @param _name The name of the token.
     /// @param _symbol The symbol that the token should be represented by.
-    /// @param _fundingCycleStore A contract storing all funding cycle configurations.
+    /// @param _rulesets A contract storing all ruleset configurations.
     /// @param _baseUri A URI to use as a base for full token URIs.
     /// @param _tokenUriResolver A contract responsible for resolving the token URI for each token ID.
     /// @param _contractUri A URI where contract metadata can be found.
@@ -452,7 +451,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         uint256 _gameId,
         string memory _name,
         string memory _symbol,
-        IJBRulesets _fundingCycleStore,
+        IJBRulesets _rulesets,
         string memory _baseUri,
         IJB721TokenUriResolver _tokenUriResolver,
         string memory _contractUri,
@@ -474,7 +473,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         JB721Hook._initialize({projectId: _gameId, name: _name, symbol: _symbol});
 
         // Store stuff.
-        fundingCycleStore = _fundingCycleStore;
+        rulesets = _rulesets;
         store = _store;
         pricingCurrency = _currency;
         gamePhaseReporter = _gamePhaseReporter;
@@ -519,7 +518,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         // Minting reserves must not be paused.
         if (
             JB721TiersRulesetMetadataResolver.mintPendingReservesPaused(
-                (JBRulesetMetadataResolver.metadata(fundingCycleStore.currentOf(PROJECT_ID)))
+                (JBRulesetMetadataResolver.metadata(rulesets.currentOf(PROJECT_ID)))
             )
         ) revert RESERVED_TOKEN_MINTING_PAUSED();
 
@@ -577,10 +576,10 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     // ---------------------- external transactions ---------------------- //
     //*********************************************************************//
 
-    /// @notice Stores the redemption weights that should be used in the end game phase.
-    /// @dev Only this contract's owner can set tier redemption weights.
+    /// @notice Stores the cashOut weights that should be used in the end game phase.
+    /// @dev Only this contract's owner can set tier cashOut weights.
     /// @param _tierWeights The tier weights to set.
-    function setTierRedemptionWeightsTo(DefifaTierRedemptionWeight[] memory _tierWeights) external override onlyOwner {
+    function setTierCashOutWeightsTo(DefifaTierCashOutWeight[] memory _tierWeights) external override onlyOwner {
         // Get a reference to the game phase.
         DefifaGamePhase _gamePhase = gamePhaseReporter.currentGamePhaseOf(PROJECT_ID);
 
@@ -589,8 +588,8 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             revert GAME_ISNT_SCORING_YET();
         }
 
-        // Make sure the redemption weights haven't already been set.
-        if (redemptionWeightIsSet) revert REDEMPTION_WEIGHTS_ALREADY_SET();
+        // Make sure the cashOut weights haven't already been set.
+        if (cashOutWeightIsSet) revert CASHOUT_WEIGHTS_ALREADY_SET();
 
         // Make sure the game is not in no contest.
         if (_gamePhase == DefifaGamePhase.NO_CONTEST || _gamePhase == DefifaGamePhase.NO_CONTEST_INEVITABLE) {
@@ -601,7 +600,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         uint256 _maxTierId = store.maxTierIdOf(address(this));
 
         // Keep a reference to the cumulative amounts.
-        uint256 _cumulativeRedemptionWeight;
+        uint256 _cumulativeCashOutWeight;
 
         // Keep a reference to the number of tier weights.
         uint256 _numberOfTierWeights = _tierWeights.length;
@@ -613,30 +612,30 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             // Get the tier.
             _tier = store.tierOf(address(this), _tierWeights[_i].id, false);
 
-            // Can't set a redemption weight for tiers not in category 0.
+            // Can't set a cashOut weight for tiers not in category 0.
             if (_tier.category != 0) revert INVALID_TIER_ID();
 
-            // Attempting to set the redemption weight for a tier that does not exist (yet) reverts.
+            // Attempting to set the cashOut weight for a tier that does not exist (yet) reverts.
             if (_tier.id > _maxTierId) revert INVALID_TIER_ID();
 
             // Save the tier weight. Tier's are 1 indexed and should be stored 0 indexed.
-            _tierRedemptionWeights[_tier.id - 1] = _tierWeights[_i].redemptionWeight;
+            _tierCashOutWeights[_tier.id - 1] = _tierWeights[_i].cashOutWeight;
 
             // Increment the cumulative amount.
-            _cumulativeRedemptionWeight += _tierWeights[_i].redemptionWeight;
+            _cumulativeCashOutWeight += _tierWeights[_i].cashOutWeight;
 
             unchecked {
                 ++_i;
             }
         }
 
-        // Make sure the cumulative amount is contained within the total redemption weight.
-        if (_cumulativeRedemptionWeight > TOTAL_REDEMPTION_WEIGHT) revert INVALID_REDEMPTION_WEIGHTS();
+        // Make sure the cumulative amount is contained within the total cashOut weight.
+        if (_cumulativeCashOutWeight > TOTAL_CASHOUT_WEIGHT) revert INVALID_CASHOUT_WEIGHTS();
 
-        // Mark the redemption weight as set.
-        redemptionWeightIsSet = true;
+        // Mark the cashOut weight as set.
+        cashOutWeightIsSet = true;
 
-        emit TierRedemptionWeightsSet(_tierWeights, msg.sender);
+        emit TierCashOutWeightsSet(_tierWeights, msg.sender);
     }
 
     /// @notice Burns the specified NFTs upon token holder cash out, reclaiming funds from the project's balance for
@@ -676,7 +675,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         // Keep a reference to the token ID being iterated on.
         uint256 _tokenId;
 
-        // Keep track of whether the redemption is happening during the complete phase.
+        // Keep track of whether the cashOut is happening during the complete phase.
         bool _isComplete = gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) == DefifaGamePhase.COMPLETE;
 
         // Iterate through all tokens, burning them if the owner is correct.
@@ -956,7 +955,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         }
     }
 
-    /// @notice A function that will run when tokens are burned via redemption.
+    /// @notice A function that will run when tokens are burned via cashOut.
     /// @param _tokenIds The IDs of the tokens that were burned.
     function _didBurn(uint256[] memory _tokenIds) internal virtual override {
         // Add to burned counter.
@@ -1037,7 +1036,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             // If transfers are pausable, check if they're paused.
             if (tier.transfersPausable) {
                 // Get a reference to the project's current ruleset.
-                JBRuleset memory ruleset = fundingCycleStore.currentOf(PROJECT_ID);
+                JBRuleset memory ruleset = rulesets.currentOf(PROJECT_ID);
 
                 // If transfers are paused and the NFT isn't being transferred to the zero address, revert.
                 if (

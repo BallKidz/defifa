@@ -179,13 +179,13 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @return Whether or not the next phase still needs queuing.
     function nextPhaseNeedsQueueing(uint256 _gameId) external view override returns (bool) {
         // Get the game's current funding cycle along with its metadata.
-        JBRuleset memory _currentFundingCycle = controller.RULESETS().currentOf(_gameId);
+        JBRuleset memory _currentRuleset = controller.RULESETS().currentOf(_gameId);
         // Get the game's queued funding cycle along with its metadata.
-        (JBRuleset memory _queuedFundingCycle,) = controller.RULESETS().latestQueuedOf(_gameId);
+        (JBRuleset memory _queuedRuleset,) = controller.RULESETS().latestQueuedOf(_gameId);
 
         // If the configurations are the same and the game hasn't ended, queueing is still needed.
-        return _currentFundingCycle.duration != 0
-            && _currentFundingCycle.id == _queuedFundingCycle.id;
+        return _currentRuleset.duration != 0
+            && _currentRuleset.id == _queuedRuleset.id;
     }
 
     //*********************************************************************//
@@ -198,18 +198,18 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @return The game phase.
     function currentGamePhaseOf(uint256 _gameId) public view override returns (DefifaGamePhase) {
         // Get the game's current funding cycle along with its metadata.
-        (JBRuleset memory _currentFundingCycle, JBRulesetMetadata memory _metadata) =
+        (JBRuleset memory _currentRuleset, JBRulesetMetadata memory _metadata) =
             controller.currentRulesetOf(_gameId);
 
-        if (_currentFundingCycle.cycleNumber == 0) return DefifaGamePhase.COUNTDOWN;
-        if (_currentFundingCycle.cycleNumber == 1) return DefifaGamePhase.MINT;
+        if (_currentRuleset.cycleNumber == 0) return DefifaGamePhase.COUNTDOWN;
+        if (_currentRuleset.cycleNumber == 1) return DefifaGamePhase.MINT;
         // TODO: Do we need these two states?
         // if (_noContestIsSet[_gameId]) return DefifaGamePhase.NO_CONTEST;
-        // if (_noContestInevitable(_gameId, _currentFundingCycle)) return DefifaGamePhase.NO_CONTEST_INEVITABLE;
-        if (_currentFundingCycle.cycleNumber == 2 && _opsOf[_gameId].refundPeriodDuration != 0) {
+        // if (_noContestInevitable(_gameId, _currentRuleset)) return DefifaGamePhase.NO_CONTEST_INEVITABLE;
+        if (_currentRuleset.cycleNumber == 2 && _opsOf[_gameId].refundPeriodDuration != 0) {
             return DefifaGamePhase.REFUND;
         }
-        if (IDefifaDelegate(_metadata.dataHook).redemptionWeightIsSet()) return DefifaGamePhase.COMPLETE;
+        if (IDefifaDelegate(_metadata.dataHook).cashOutWeightIsSet()) return DefifaGamePhase.COMPLETE;
         return DefifaGamePhase.SCORING;
     }
 
@@ -384,7 +384,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             _gameId: gameId,
             _name: _launchProjectData.name,
             _symbol: string.concat("DEFIFA #", gameId.toString()),
-            _fundingCycleStore: controller.RULESETS(),
+            _rulesets: controller.RULESETS(),
             _baseUri: _launchProjectData.baseUri,
             _tokenUriResolver: _uriResolver,
             _contractUri: _launchProjectData.contractUri,
@@ -417,42 +417,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         emit LaunchGame(gameId, _delegate, governor, _uriResolver, msg.sender);
     }
 
-    /// @notice Queues the funding cycle that represents the next phase of the game, if it isn't queued already.
-    /// @param _gameId The ID of the project having funding cycles reconfigured.
-    /// @return configuration The configuration of the funding cycle that was successfully reconfigured.
-    // function queueNextPhaseOf(uint256 _gameId) external override returns (uint256 configuration) {
-    //     // Get the game's current funding cycle along with its metadata.
-    //     (JBRuleset memory _currentFundingCycle, JBRulesetMetadata memory _metadata) =
-    //         controller.currentRulesetOf(_gameId);
-    //
-    //     // No more queuing once duration is set to 0.
-    //     if (_noContestIsSet[_gameId] || _currentFundingCycle.duration == 0) revert GAME_OVER();
-    //
-    //     // Check for no contest.
-    //     if (_noContestInevitable(_gameId, _currentFundingCycle)) {
-    //         emit QueuedNoContest(_gameId, msg.sender);
-    //         return _queueNoContest(_gameId, _metadata.dataHook);
-    //     }
-    //
-    //     // Get the game's queued funding cycle.
-    //     (JBRuleset memory _queuedFundingCycle,) = controller.queuedFundingCycleOf(_gameId);
-    //
-    //     // Make sure the next game phase isn't already queued.
-    //     if (_currentFundingCycle.configuration != _queuedFundingCycle.configuration) {
-    //         revert PHASE_ALREADY_QUEUED();
-    //     }
-    //
-    //     // Queue the next phase of the game.
-    //     if (_currentFundingCycle.number == 1 && _opsOf[_gameId].refundPeriodDuration != 0) {
-    //         emit QueuedRefundPhase(_gameId, msg.sender);
-    //         return _queueRefundPhase(_gameId, _metadata.dataSource);
-    //     } else {
-    //         emit QueuedScoringPhase(_gameId, msg.sender);
-    //         return _queueGamePhase(_gameId, _metadata.dataSource);
-    //     }
-    // }
-
-
     /// @notice Fulfill split amounts between all splits for a game.
     /// @param _gameId The ID of the game to fulfill splits for.
     function fulfillCommitmentsOf(uint256 _gameId) external virtual override {
@@ -466,7 +430,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             controller.currentRulesetOf(_gameId);
 
         // Make sure the game's commitments can be fulfilled.
-        if (!IDefifaDelegate(_metadata.dataHook).redemptionWeightIsSet()) {
+        if (!IDefifaDelegate(_metadata.dataHook).cashOutWeightIsSet()) {
             revert CANT_FULFILL_YET();
         }
         
@@ -541,252 +505,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         // TODO: Emit event?
     }
-
-
-    /// @notice Fulfill split amounts between all splits for a game.
-    /// @param _gameId The ID of the game to fulfill splits for.
-    // function fulfillCommitmentsOf(uint256 _gameId) external virtual override {
-    //     // Make sure commitments haven't already been fulfilled.
-    //     if (fulfilledCommitmentsOf[_gameId] != 0) return;
-    //
-    //     // Make sure the game's commitments can be fulfilled.
-    //     {
-    //         DefifaGamePhase _currentGamePhase = currentGamePhaseOf(_gameId);
-    //         if (_currentGamePhase != DefifaGamePhase.SCORING && _currentGamePhase != DefifaGamePhase.COMPLETE) {
-    //             revert CANT_FULFILL_YET();
-    //         }
-    //     }
-    //
-    //     // Temporarily set the commitments value to prevent duplicate fulfillments in re-entrance.
-    //     fulfilledCommitmentsOf[_gameId] = 1;
-    //
-    //     // Get the splits for the game.
-    //     JBSplit[] memory _splits = controller.SPLITS().splitsOf(defifaProjectId, _gameId, splitGroup);
-    //
-    //     if (_splits.length == 0) {
-    //         // Add a split for the fee if it isn't included already.
-    //         _splits = new JBSplit[](1);
-    //         _splits[0] = JBSplit({
-    //             preferClaimed: true,
-    //             preferAddToBalance: false,
-    //             percent: JBConstants.SPLITS_TOTAL_PERCENT / feeDivisor,
-    //             projectId: defifaProjectId,
-    //             beneficiary: payable(address(this)),
-    //             lockedUntil: 0,
-    //             allocator: IJBSplitHook(address(0))
-    //         });
-    //     }
-    //
-    //     // Get a reference to the token being used by the game.
-    //     address _token = _opsOf[_gameId].token;
-    //
-    //     // Keep a reference to the directory.
-    //     IJBDirectory _directory = controller.directory();
-    //
-    //     // Get a reference to the terminal being used.
-    //     IJBTerminal _terminal = _directory.primaryTerminalOf(_gameId, _token);
-    //
-    //     // Get the current pot.
-    //     uint256 _pot = IJBMultiTerminal(address(_terminal)).store().balanceOf(
-    //         address(_terminal), _gameId
-    //     );
-    //
-    //     // Get the decimals that make up the pot fixed point number.
-    //     uint256 _decimals  = _terminal.accountingContextForTokenOf(_gameId, _token).decimals;
-    //
-    //     // Distribute the overflow allowance.
-    //     uint256 _leftoverAmount = IJBMultiTerminal(address(_terminal)).useAllowanceOf({
-    //         _projectId: _gameId,
-    //         _amount: _pot,
-    //         _currency: _terminal.currencyForToken(_token),
-    //         _token: _token,
-    //         _minReturnedTokens: _pot,
-    //         _beneficiary: payable(address(this)),
-    //         _memo: string.concat("Settling Defifa game #", _gameId.toString(), "."),
-    //         _metadata: bytes("")
-    //     });
-    //
-    //     // Settle between all splits.
-    //     for (uint256 i; i < _splits.length;) {
-    //         // Get a reference to the split being iterated on.
-    //         JBSplit memory _split = _splits[i];
-    //
-    //         // The amount to send towards the split.
-    //         uint256 _splitAmount = mulDiv(_pot, _split.percent, JBConstants.SPLITS_TOTAL_PERCENT);
-    //
-    //         if (_splitAmount > 0) {
-    //             // Transfer tokens to the split.
-    //             // If there's an allocator set, transfer to its `allocate` function.
-    //             if (_split.allocator != IJBSplitHook(address(0))) {
-    //                 // Create the data to send to the allocator.
-    //                 JBSplitHookContext memory _data = JBSplitHookContext(
-    //                     _token, _splitAmount, _decimals, _gameId, 0, _split
-    //                 );
-    //
-    //                 // Approve the `_amount` of tokens for the split allocator to transfer tokens from this contract.
-    //                 if (_token != JBConstants.NATIVE_TOKEN) {
-    //                     IERC20(_token).safeApprove(address(_split.allocator), _splitAmount);
-    //                 }
-    //
-    //                 // If the token is ETH, send it in msg.value.
-    //                 uint256 _payableValue = _token == JBConstants.NATIVE_TOKEN ? _splitAmount : 0;
-    //
-    //                 // Trigger the allocator's `allocate` function.
-    //                 try _split.allocator.allocate{value: _payableValue}(_data) {}
-    //                 catch (bytes memory) {
-    //                     if (_token != JBConstants.NATIVE_TOKEN) {
-    //                         IERC20(_token).safeDecreaseAllowance(address(_split.allocator), _splitAmount);
-    //                     }
-    //                     _splitAmount = 0;
-    //                 }
-    //
-    //                 // Otherwise, if a project is specified, make a payment to it.
-    //             } else if (_split.projectId != 0) {
-    //                 // Find the terminal for the specified project.
-    //                 IJBTerminal _splitTerminal = _directory.primaryTerminalOf(_split.projectId, _token);
-    //
-    //                 // There must be a terminal.
-    //                 if (
-    //                     _splitTerminal == IJBTerminal(address(0))
-    //                         || _splitTerminal.accountingContextForTokenOf(_split.projectId, _token).decimals != _decimals
-    //                 ) {
-    //                     _splitAmount = 0;
-    //                 } else {
-    //                     // Send the projectId in the metadata.
-    //                     bytes memory _referralMetadata = new bytes(32);
-    //                     _referralMetadata = bytes(abi.encodePacked(_gameId));
-    //
-    //                     // Approve the `_amount` of tokens from the destination terminal to transfer tokens from this contract.
-    //                     if (_token != JBConstants.NATIVE_TOKEN) IERC20(_token).safeApprove(address(_splitTerminal), _splitAmount);
-    //
-    //                     // If the token is ETH, send it in msg.value.
-    //                     uint256 _payableValue = _token == JBConstants.NATIVE_TOKEN ? _splitAmount : 0;
-    //
-    //                     if (_split.preferAddToBalance) {
-    //                         // Add to balance so tokens don't get issued.
-    //                         try _splitTerminal.addToBalanceOf{value: _payableValue}(
-    //                             _split.projectId,
-    //                             _splitAmount,
-    //                             _token,
-    //                             string.concat("Deposit from Defifa game #", _gameId.toString(), "."),
-    //                             _referralMetadata
-    //                         ) {} catch (bytes memory) {
-    //                             if (_token != JBConstants.NATIVE_TOKEN) {
-    //                                 IERC20(_token).safeDecreaseAllowance(address(_splitTerminal), _splitAmount);
-    //                             }
-    //                             _splitAmount = 0;
-    //                         }
-    //                     } else {
-    //                         // Send funds to the terminal.
-    //                         // If the token is ETH, send it in msg.value.
-    //                         try _splitTerminal.pay{value: _payableValue}(
-    //                             _split.projectId,
-    //                             _splitAmount,
-    //                             _token,
-    //                             _split.beneficiary,
-    //                             0,
-    //                             _split.preferClaimed,
-    //                             string.concat("Payout from Defifa game #", _gameId.toString(), "."),
-    //                             _referralMetadata
-    //                         ) {} catch (bytes memory) {
-    //                             if (_token != JBConstants.NATIVE_TOKEN) {
-    //                                 IERC20(_token).safeDecreaseAllowance(address(_splitTerminal), _splitAmount);
-    //                             }
-    //                             _splitAmount = 0;
-    //                         }
-    //                     }
-    //                 }
-    //             } else if (_split.beneficiary != address(0)) {
-    //                 // Transfer the ETH.
-    //                 if (_token == JBConstants.NATIVE_TOKEN) {
-    //                     Address.sendValue(
-    //                         // Get a reference to the address receiving the tokens. If there's a beneficiary, send the funds directly to the beneficiary.
-    //                         _split.beneficiary,
-    //                         _splitAmount
-    //                     );
-    //                 }
-    //                 // Or, transfer the ERC20.
-    //                 else {
-    //                     IERC20(_token).safeTransfer(
-    //                         // Get a reference to the address receiving the tokens. If there's a beneficiary, send the funds directly to the beneficiary.
-    //                         _split.beneficiary,
-    //                         _splitAmount
-    //                     );
-    //                 }
-    //             } else {
-    //                 // Don't split.
-    //                 _splitAmount = 0;
-    //             }
-    //
-    //             // Subtract from the amount to be sent to the beneficiary.
-    //             _leftoverAmount = _leftoverAmount - _splitAmount;
-    //         }
-    //
-    //         emit DistributeToSplit(_split, _splitAmount, msg.sender);
-    //
-    //         unchecked {
-    //             ++i;
-    //         }
-    //     }
-    //
-    //     if (_leftoverAmount != 0) {
-    //         // Approve the `_amount` of tokens from the destination terminal to transfer tokens from this contract.
-    //         if (_token != JBConstants.NATIVE_TOKEN) IERC20(_token).safeApprove(address(_terminal), _leftoverAmount);
-    //
-    //         // If the token is ETH, send it in msg.value.
-    //         uint256 _payableValue = _token == JBConstants.NATIVE_TOKEN ? _leftoverAmount : 0;
-    //
-    //         // Add leftover amount back into the game's pot.
-    //         _terminal.addToBalanceOf{value: _payableValue}(
-    //             _gameId,
-    //             _leftoverAmount,
-    //             _token,
-    //             string.concat("Defifa game #", _gameId.toString(), " has been settled."),
-    //             bytes("")
-    //         );
-    //     }
-    //
-    //     // Get the game's current metadata.
-    //     (, JBRulesetMetadata memory _metadata) = controller.currentFundingCycleOf(_gameId);
-    //
-    //     // Get a reference to the $DEFIFA token.
-    //     IERC20 _defifaToken = IDefifaDelegate(_metadata.dataSource).defifaToken();
-    //
-    //     // Get a reference to the $DEFIFA token balance in this contract.
-    //     uint256 _defifaTokenBalance = _defifaToken.balanceOf(address(this));
-    //
-    //     // Transfer the amount of $DEFIFA tokens aquired to the delegate.
-    //     if (_defifaTokenBalance != 0) {
-    //         _defifaToken.transfer(_metadata.dataSource, _defifaToken.balanceOf(address(this)));
-    //     }
-    //
-    //     // Get a reference to any unclaimed base protocol tokens.
-    //     uint256 _unclaimedBaseProtocolTokens =
-    //         controller.tokenStore().unclaimedBalanceOf(address(this), baseProtocolProjectId);
-    //
-    //     // Claim any $JBX that's unclaimed.
-    //     if (_unclaimedBaseProtocolTokens != 0) {
-    //         controller.tokenStore().claimFor(address(this), baseProtocolProjectId, _unclaimedBaseProtocolTokens);
-    //     }
-    //
-    //     // Get a reference to the $BASE_PROTOCOL token.
-    //     IERC20 _baseProtocolToken = IDefifaDelegate(_metadata.dataSource).baseProtocolToken();
-    //
-    //     // Get the $BASE_PROTOCOL token balance.
-    //     uint256 _baseProtocolBalance = _baseProtocolToken.balanceOf(address(this));
-    //
-    //     // Transfer the amount of $JBX tokens aquired to the delegate.
-    //     if (_baseProtocolBalance != 0) {
-    //         _baseProtocolToken.transfer(_metadata.dataSource, _baseProtocolBalance);
-    //     }
-    //
-    //     // Set the amount of fulfillments for this game.
-    //     fulfilledCommitmentsOf[_gameId] = _pot - _leftoverAmount;
-    //
-    //     emit FulfilledCommitments(
-    //         _gameId, _pot, _splits, _leftoverAmount, _defifaTokenBalance, _baseProtocolBalance, msg.sender
-    //     );
-    // }
 
     /// @notice Allows this contract to receive 721s.
     function onERC721Received(address, address, uint256, bytes calldata) external pure override returns (bytes4) {
@@ -1011,264 +729,4 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         return _groupedSplits;
     }
-
-    /// @notice Launches a Defifa project with the minting phase configured.
-    /// @param _launchProjectData Project data used for launching a Defifa game.
-    /// @param _dataSource The address of the Defifa data source.
-    // function _queueMintPhase(DefifaLaunchProjectData memory _launchProjectData, address _dataSource) internal {
-    //     // Initialize the terminal array .
-    //     IJBTerminal[] memory _terminals = new IJBTerminal[](1);
-    //     _terminals[0] = _launchProjectData.terminal;
-    //
-    //     // Launch the project with params for phase 1 of the game.
-    //     controller.launchProjectFor(
-    //         // Project is owned by this contract.
-    //         address(this),
-    //         _launchProjectData.projectMetadata,
-    //         JBRulesetConfig({
-    //             duration: _launchProjectData.mintPeriodDuration,
-    //             // Don't mint project tokens.
-    //             weight: 0,
-    //             discountRate: 0,
-    //             ballot: IJBRulesetApprovalHook(address(0))
-    //         }),
-    //         JBRulesetMetadata({
-    //             allowSetTerminals: false,
-    //             allowSetController: false,
-    //             pauseTransfers: false,
-    //             reservedRate: 0,
-    //             // Full refunds.
-    //             redemptionRate: JBConstants.MAX_REDEMPTION_RATE,
-    //             ballotRedemptionRate: JBConstants.MAX_REDEMPTION_RATE,
-    //             pausePay: false,
-    //             pauseDistributions: false,
-    //             pauseRedeem: false,
-    //             pauseBurn: false,
-    //             allowMinting: false,
-    //             allowTerminalMigration: false,
-    //             allowControllerMigration: false,
-    //             holdFees: false,
-    //             preferClaimedTokenOverride: false,
-    //             useTotalOverflowForRedemptions: false,
-    //             useDataSourceForPay: true,
-    //             useDataSourceForRedeem: true,
-    //             dataSource: _dataSource,
-    //             metadata: JB721TiersRulesetMetadataResolver.packFundingCycleGlobalMetadata(
-    //                 JB721TiersRulesetMetadata({
-    //                 pauseTransfers: false,
-    //                 // Reserved tokens can't be minted during this funding cycle.
-    //                 pauseMintPendingReserves: true
-    //             })
-    //             )
-    //         }),
-    //         _launchProjectData.start - _launchProjectData.mintPeriodDuration - _launchProjectData.refundPeriodDuration,
-    //         new JBSplitGroup[](0),
-    //         new JBFundAccessLimitGroup[](0),
-    //         _terminals,
-    //         "Defifa mint phase."
-    //     );
-    // }
-
-    /// @notice Gets reconfiguration data for the refund phase of the game.
-    /// @dev This phase freezes mints, but continues to allow refund redemptions.
-    /// @param _gameId The ID of the project that's being reconfigured.
-    /// @param _dataSource The data source to use.
-    /// @return configuration The configuration of the funding cycle that was successfully reconfigured.
-    // function _queueRefundPhase(uint256 _gameId, address _dataSource) internal returns (uint256 configuration) {
-    //     // Get a reference to the game's ops.
-    //     DefifaOpsData memory _ops = _opsOf[_gameId];
-    //
-    //     return controller.reconfigureFundingCyclesOf(
-    //         _gameId,
-    //         JBRulesetConfig({
-    //             duration: _ops.refundPeriodDuration,
-    //             // Don't mint project tokens.
-    //             weight: 0,
-    //             discountRate: 0,
-    //             ballot: IJBRulesetApprovalHook(address(0))
-    //         }),
-    //         JBRulesetMetadata({
-    //             allowSetTerminals: false,
-    //             allowSetController: false,
-    //             pauseTransfers: false,
-    //             reservedRate: 0,
-    //             // Full refunds.
-    //             redemptionRate: JBConstants.MAX_REDEMPTION_RATE,
-    //             ballotRedemptionRate: JBConstants.MAX_REDEMPTION_RATE,
-    //             // No more payments.
-    //             pausePay: true,
-    //             pauseDistributions: false,
-    //             // Allow redemptions.
-    //             pauseRedeem: false,
-    //             pauseBurn: false,
-    //             allowMinting: false,
-    //             allowTerminalMigration: false,
-    //             allowControllerMigration: false,
-    //             holdFees: false,
-    //             preferClaimedTokenOverride: false,
-    //             useTotalOverflowForRedemptions: false,
-    //             useDataSourceForPay: true,
-    //             useDataSourceForRedeem: true,
-    //             dataSource: _dataSource,
-    //             metadata: JB721TiersRulesetMetadataResolver.packFundingCycleGlobalMetadata(
-    //                 JB721TiersRulesetMetadata({
-    //                 pauseTransfers: false,
-    //                 // Reserved tokens can't be minted during this funding cycle.
-    //                 pauseMintPendingReserves: true
-    //             })
-    //             )
-    //         }),
-    //         0, // mustStartAtOrAfter should be ASAP
-    //         new JBSplitGroup[](0),
-    //         new JBFundAccessLimitGroup[](0),
-    //         "Defifa refund phase."
-    //     );
-    // }
-
-    /// @notice Gets reconfiguration data for the game phase.
-    /// @dev The game phase freezes the treasury and activates the pre-programmed distribution limit to the specified splits.
-    /// @param _gameId The ID of the project that's being reconfigured.
-    /// @param _dataSource The data source to use.
-    /// @return configuration The configuration of the funding cycle that was successfully reconfigured.
-    // function _queueGamePhase(uint256 _gameId, address _dataSource) internal returns (uint256 configuration) {
-    //     // Get a reference to the token being used by the project.
-    //     address _token = _opsOf[_gameId].token;
-    //
-    //     // Get a reference to the terminal.
-    //     IJBTerminal _terminal = controller.directory().primaryTerminalOf(_gameId, _token);
-    //
-    //     // Set fund access constraints.
-    //     JBFundAccessLimitGroup[] memory fundAccessConstraints = new JBFundAccessLimitGroup[](1);
-    //     fundAccessConstraints[0] = JBFundAccessLimitGroup({
-    //         terminal: _terminal,
-    //         token: _token,
-    //         distributionLimit: 0,
-    //         distributionLimitCurrency: 0,
-    //         // Allow a max overflow allowance so that this contract can pull funds to distribute to splits and for fees.
-    //         overflowAllowance: type(uint232).max,
-    //         overflowAllowanceCurrency: _terminal.currencyForToken(_token)
-    //     });
-    //
-    //     configuration = controller.reconfigureFundingCyclesOf(
-    //         _gameId,
-    //         JBRulesetConfig({
-    //             duration: 0,
-    //             // Don't mint project tokens.
-    //             weight: 0,
-    //             discountRate: 0,
-    //             ballot: IJBRulesetApprovalHook(address(0))
-    //         }),
-    //         JBRulesetMetadata({
-    //             allowSetTerminals: false,
-    //             allowSetController: false,
-    //             pauseTransfers: false,
-    //             reservedRate: 0,
-    //             // Linear redemptions.
-    //             redemptionRate: JBConstants.MAX_REDEMPTION_RATE,
-    //             ballotRedemptionRate: JBConstants.MAX_REDEMPTION_RATE,
-    //             // No more payments.
-    //             pausePay: true,
-    //             pauseDistributions: false,
-    //             // Redemptions allowed.
-    //             pauseRedeem: false,
-    //             pauseBurn: false,
-    //             allowMinting: false,
-    //             allowTerminalMigration: false,
-    //             allowControllerMigration: false,
-    //             holdFees: false,
-    //             preferClaimedTokenOverride: false,
-    //             useTotalOverflowForRedemptions: false,
-    //             useDataSourceForPay: true,
-    //             useDataSourceForRedeem: true,
-    //             dataSource: _dataSource,
-    //             metadata: JB721TiersRulesetMetadataResolver.packFundingCycleGlobalMetadata(
-    //                 JB721TiersRulesetMetadata({
-    //                 pauseTransfers: false,
-    //                 // Reserved tokens can't be minted during this funding cycle.
-    //                 pauseMintPendingReserves: false 
-    //             })
-    //             )
-    //         }),
-    //         0, // mustStartAtOrAfter should be ASAP
-    //         new JBSplitGroup[](0),
-    //         fundAccessConstraints,
-    //         "Defifa scoring phase."
-    //     );
-    // }
-
-    /// @notice Gets reconfiguration data for if the game resolves in no contest.
-    /// @dev If the game resolves in no contest, funds are made available to minters at the same price that was initially paid.
-    /// @param _gameId The ID of the project that's being reconfigured.
-    /// @param _dataSource The data source to use.
-    /// @return configuration The configuration of the funding cycle that was successfully reconfigured.
-    // function _queueNoContest(uint256 _gameId, address _dataSource) internal returns (uint256 configuration) {
-    //     configuration = controller.reconfigureFundingCyclesOf(
-    //         _gameId,
-    //         JBRulesetConfig({
-    //             // No duration, lasts indefinately.
-    //             duration: 0,
-    //             // Don't mint project tokens.
-    //             weight: 0,
-    //             discountRate: 0,
-    //             ballot: IJBRulesetApprovalHook(address(0))
-    //         }),
-    //         JBRulesetMetadata({
-    //             allowSetTerminals: false,
-    //             allowSetController: false,
-    //             pauseTransfers: false,
-    //             reservedRate: 0,
-    //             // Full refunds.
-    //             redemptionRate: JBConstants.MAX_REDEMPTION_RATE,
-    //             ballotRedemptionRate: JBConstants.MAX_REDEMPTION_RATE,
-    //             // No more payments.
-    //             pausePay: true,
-    //             pauseDistributions: false,
-    //             // Allow redemptions.
-    //             pauseRedeem: false,
-    //             pauseBurn: false,
-    //             allowMinting: false,
-    //             allowTerminalMigration: false,
-    //             allowControllerMigration: false,
-    //             holdFees: false,
-    //             preferClaimedTokenOverride: false,
-    //             useTotalOverflowForRedemptions: false,
-    //             useDataSourceForPay: true,
-    //             useDataSourceForRedeem: true,
-    //             dataSource: _dataSource,
-    //             metadata: JB721TiersRulesetMetadataResolver.packFundingCycleGlobalMetadata(
-    //                 JB721TiersRulesetMetadata({
-    //                 pauseTransfers: false,
-    //                 // Reserved tokens can't be minted during this funding cycle.
-    //                 pauseMintPendingReserves: true
-    //             })
-    //             )
-    //         }),
-    //         0, // mustStartAtOrAfter should be ASAP
-    //         new JBSplitGroup[](0),
-    //         new JBFundAccessLimitGroup[](0),
-    //         "Defifa no contest."
-    //     );
-    //
-    //     // Set no contest.
-    //     _noContestIsSet[_gameId] = true;
-    // }
-
-    // /// @notice Given a current funding cycle, determine if the game is in no contest.
-    // /// @param _gameId The ID of the game to check for no contest for.
-    // /// @param _currentFundingCycle The cycle to check for no contest against.
-    // /// @return A flag indicating if a game with the current funding cycle is in no contest.
-    // function _noContestInevitable(uint256 _gameId, JBRuleset memory _currentFundingCycle)
-    //     internal
-    //     view
-    //     returns (bool)
-    // {
-    //     // Get the game's previously configured funding cycle.
-    //     (JBRuleset memory _previouslyConfiguredFundingCycle,) =
-    //         controller.getFundingCycleOf(_gameId, _currentFundingCycle.basedOn);
-    //
-    //     // If a funding cycle has rolled over, it's in No Contest.
-    //     if (_currentFundingCycle.number != _previouslyConfiguredFundingCycle.number + 1) return true;
-    //
-    //     return false;
-    // }
 }

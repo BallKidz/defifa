@@ -7,7 +7,7 @@ import '@bananapus/721-hook-v5/src/interfaces/IJB721Hook.sol';
 import '@bananapus/721-hook-v5/src/interfaces/IJB721TiersHookStore.sol';
 import '@bananapus/721-hook-v5/src/structs/JB721TiersMintReservesConfig.sol';
 import {JB721TierConfig} from "@bananapus/721-hook-v5/src/structs/JB721TierConfig.sol";
-import {DefifaTierRedemptionWeight} from "./../structs/DefifaTierRedemptionWeight.sol";
+import {DefifaTierCashOutWeight} from "./../structs/DefifaTierCashOutWeight.sol";
 import {DefifaDelegation} from "./../structs/DefifaDelegation.sol";
 import {IDefifaGamePhaseReporter} from "./IDefifaGamePhaseReporter.sol";
 import {IDefifaGamePotReporter} from "./IDefifaGamePotReporter.sol";
@@ -35,9 +35,9 @@ interface IDefifaDelegate is IJB721Hook {
         address indexed beneficiary, uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount, address caller
     );
 
-    event TierRedemptionWeightsSet(DefifaTierRedemptionWeight[] _tierWeights, address caller);
+    event TierCashOutWeightsSet(DefifaTierCashOutWeight[] _tierWeights, address caller);
 
-    function TOTAL_REDEMPTION_WEIGHT() external view returns (uint256);
+    function TOTAL_CASHOUT_WEIGHT() external view returns (uint256);
 
     function defifaToken() external view returns (IERC20);
 
@@ -45,15 +45,15 @@ interface IDefifaDelegate is IJB721Hook {
 
     function cashOutWeightOf(uint256 tokenId) external view returns (uint256);
 
-    function tierRedemptionWeights() external view returns (uint256[128] memory);
+    function tierCashOutWeights() external view returns (uint256[128] memory);
 
     function codeOrigin() external view returns (address);
 
-    function redemptionWeightIsSet() external view returns (bool);
+    function cashOutWeightIsSet() external view returns (bool);
 
     function store() external view returns (IJB721TiersHookStore);
 
-    function fundingCycleStore() external view returns (IJBRulesets);
+    function rulesets() external view returns (IJBRulesets);
 
     function gamePhaseReporter() external view returns (IDefifaGamePhaseReporter);
 
@@ -96,7 +96,7 @@ interface IDefifaDelegate is IJB721Hook {
 
     function setTierDelegatesTo(DefifaDelegation[] memory delegations) external;
 
-    function setTierRedemptionWeightsTo(DefifaTierRedemptionWeight[] memory tierWeights) external;
+    function setTierCashOutWeightsTo(DefifaTierCashOutWeight[] memory tierWeights) external;
 
     function mintReservesFor(JB721TiersMintReservesConfig[] memory mintReservesForTiersData) external;
 
@@ -106,7 +106,7 @@ interface IDefifaDelegate is IJB721Hook {
         uint256 gameId,
         string memory name,
         string memory symbol,
-        IJBRulesets fundingCycleStore,
+        IJBRulesets rulesets,
         string memory baseUri,
         IJB721TokenUriResolver tokenUriResolver,
         string memory contractUri,

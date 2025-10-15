@@ -9,7 +9,7 @@ import {IDefifaGovernor} from "./interfaces/IDefifaGovernor.sol";
 import {IDefifaDeployer} from "./interfaces/IDefifaDeployer.sol";
 import {DefifaScorecard} from "./structs/DefifaScorecard.sol";
 import {DefifaAttestations} from "./structs/DefifaAttestations.sol";
-import {DefifaTierRedemptionWeight} from "./structs/DefifaTierRedemptionWeight.sol";
+import {DefifaTierCashOutWeight} from "./structs/DefifaTierCashOutWeight.sol";
 import {DefifaScorecardState} from "./enums/DefifaScorecardState.sol";
 import {DefifaDelegate} from "./DefifaDelegate.sol";
 
@@ -30,7 +30,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     error DUPLICATE_SCORECARD();
     error INCORRECT_TIER_ORDER();
     error UNKNOWN_PROPOSAL();
-    error UNOWNED_PROPOSED_REDEMPTION_VALUE();
+    error UNOWNED_PROPOSED_CASHOUT_VALUE();
 
     //*********************************************************************//
     // ---------------- immutable internal stored properties ------------- //
@@ -107,7 +107,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @notice The ID of a scorecard representing the provided tier weights.
     /// @param _gameDelegate The address where the game is being played.
     /// @param _tierWeights The weights of each tier in the scorecard.
-    function scorecardIdOf(address _gameDelegate, DefifaTierRedemptionWeight[] calldata _tierWeights)
+    function scorecardIdOf(address _gameDelegate, DefifaTierCashOutWeight[] calldata _tierWeights)
         external
         pure
         virtual
@@ -303,7 +303,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @notice Submits a scorecard to be attested to.
     /// @param _tierWeights The weights of each tier in the scorecard.
     /// @return scorecardId The scorecard's ID.
-    function submitScorecardFor(uint256 _gameId, DefifaTierRedemptionWeight[] calldata _tierWeights)
+    function submitScorecardFor(uint256 _gameId, DefifaTierCashOutWeight[] calldata _tierWeights)
         external
         override
         returns (uint256 scorecardId)
@@ -329,8 +329,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                 IDefifaDelegate(_metadata.dataHook).store().tierOf(_metadata.dataHook, _tierWeights[_i].id, false);
 
             // If there's a weight assigned to the tier, make sure there is a token backed by it.
-            if (_tier.initialSupply == _tier.remainingSupply && _tierWeights[_i].redemptionWeight > 0) {
-                revert UNOWNED_PROPOSED_REDEMPTION_VALUE();
+            if (_tier.initialSupply == _tier.remainingSupply && _tierWeights[_i].cashOutWeight > 0) {
+                revert UNOWNED_PROPOSED_CASHOUT_VALUE();
             }
 
             unchecked {
@@ -400,7 +400,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @notice Ratifies a scorecard that has been approved.
     /// @param _tierWeights The weights of each tier in the approved scorecard.
     /// @return scorecardId The scorecard ID that was ratified.
-    function ratifyScorecardFrom(uint256 _gameId, DefifaTierRedemptionWeight[] calldata _tierWeights)
+    function ratifyScorecardFrom(uint256 _gameId, DefifaTierCashOutWeight[] calldata _tierWeights)
         external
         override
         returns (uint256 scorecardId)
@@ -441,13 +441,13 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @notice Build the normalized calldata.
     /// @param _tierWeights The weights of each tier in the scorecard data.
     /// @return The calldata to send allongside the transactions.
-    function _buildScorecardCalldataFor(DefifaTierRedemptionWeight[] calldata _tierWeights)
+    function _buildScorecardCalldataFor(DefifaTierCashOutWeight[] calldata _tierWeights)
         internal
         pure
         returns (bytes memory)
     {
         // Build the calldata from the tier weights.
-        return abi.encodeWithSelector(DefifaDelegate.setTierRedemptionWeightsTo.selector, (_tierWeights));
+        return abi.encodeWithSelector(DefifaDelegate.setTierCashOutWeightsTo.selector, (_tierWeights));
     }
 
     /// @notice A value representing the contents of a scorecard.

@@ -149,7 +149,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _user, block.number - 1));
     }
 
-    // redemptions can happen after mint phase
+    // cashOuts can happen after mint phase
     // function testRefund_fails_afterMintPhase() external {
     //   uint8 nTiers = 10;
     //   address[] memory _users = new address[](nTiers);
@@ -197,11 +197,11 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
     //   for (uint256 i = 0; i < _users.length; i++) {
     //     address _user = _users[i];
     //     // Craft the metadata: redeem the tokenId
-    //     bytes memory redemptionMetadata;
+    //     bytes memory cashOutMetadata;
     //     {
-    //       uint256[] memory redemptionId = new uint256[](1);
-    //       redemptionId[0] = _generateTokenId(i + 1, 1);
-    //       redemptionMetadata = _buildCashOutMetadata(abi.encode(redemptionId);
+    //       uint256[] memory cashOutId = new uint256[](1);
+    //       cashOutId[0] = _generateTokenId(i + 1, 1);
+    //       cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutId);
     //     }
     //     vm.expectRevert(abi.encodeWithSignature('FUNDING_CYCLE_REDEEM_PAUSED()'));
     //     vm.prank(_user);
@@ -213,7 +213,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
     //       _minReturnedTokens: 0,
     //       _beneficiary: payable(_user),
     //       _memo: 'Refund plz',
-    //       _metadata: redemptionMetadata
+    //       _metadata: cashOutMetadata
     //     });
     //   }
     //   // // Phase 4: End
@@ -225,14 +225,14 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
     //   for (uint256 i = 0; i < _users.length; i++) {
     //     address _user = _users[i];
     //     // Craft the metadata: redeem the tokenId
-    //     bytes memory redemptionMetadata;
+    //     bytes memory cashOutMetadata;
     //     {
-    //       uint256[] memory redemptionId = new uint256[](1);
-    //       redemptionId[0] = _generateTokenId(i + 1, 1);
-    //       redemptionMetadata = _buildCashOutMetadata(abi.encode(redemptionId);
+    //       uint256[] memory cashOutId = new uint256[](1);
+    //       cashOutId[0] = _generateTokenId(i + 1, 1);
+    //       cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutId);
     //     }
-    //     // Here the refunds are not allowed but redemptions are,
-    //     // so it should instead revert with an error showing that there is no redemption set for our tier
+    //     // Here the refunds are not allowed but cashOuts are,
+    //     // so it should instead revert with an error showing that there is no cashOut set for our tier
     //     vm.expectRevert(abi.encodeWithSignature('NOTHING_TO_CLAIM()'));
     //     vm.prank(_user);
     //     JBMultiTerminal(address(jbMultiTerminal())).redeemTokensOf({
@@ -243,7 +243,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
     //       _minReturnedTokens: 0,
     //       _beneficiary: payable(_user),
     //       _memo: 'Refund plz',
-    //       _metadata: redemptionMetadata
+    //       _metadata: cashOutMetadata
     //     });
     //   }
     // }
@@ -351,7 +351,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
     //   vm.expectRevert(abi.encodeWithSignature('TRANSFERS_PAUSED()'));
     //   _nft.transferFrom(_users[0], _users[1], _tokenIdToTransfer);
     // }
-    function testSetRedemptionRates_fails_unmetQuorum() external {
+    function testSetCashOutRates_fails_unmetQuorum() external {
         uint8 nTiers = 10;
         address[] memory _users = new address[](nTiers);
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(nTiers);
@@ -387,11 +387,11 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.warp(block.timestamp + defifaData.mintPeriodDuration);
         //deployer.queueNextPhaseOf(_projectId);
         // Generate the scorecards
-        DefifaTierRedemptionWeight[] memory scorecards = new DefifaTierRedemptionWeight[](nTiers);
+        DefifaTierCashOutWeight[] memory scorecards = new DefifaTierCashOutWeight[](nTiers);
         // We can't have a neutral outcome, so we only give shares to tiers that are an even number (in our array)
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
-            scorecards[i].redemptionWeight = i % 2 == 0 ? 1_000_000_000 / (scorecards.length / 2) : 0;
+            scorecards[i].cashOutWeight = i % 2 == 0 ? 1_000_000_000 / (scorecards.length / 2) : 0;
         }
         // Forward time so proposals can be created
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
@@ -414,7 +414,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         _governor.ratifyScorecardFrom(_gameId, scorecards);
     }
 
-    function testSetRedemptionRatesAndRedeem_multipleTiers(uint8 nTiers, uint8[] calldata distribution) public {
+    function testSetCashOutRatesAndRedeem_multipleTiers(uint8 nTiers, uint8[] calldata distribution) public {
         vm.assume(nTiers > 10 && nTiers < 100);
         vm.assume(distribution.length < nTiers);
 
@@ -460,14 +460,14 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.warp(block.timestamp + defifaData.mintPeriodDuration);
         //deployer.queueNextPhaseOf(_projectId);
         // Generate the scorecards
-        DefifaTierRedemptionWeight[] memory scorecards = new DefifaTierRedemptionWeight[](nTiers);
-        uint256 assignedRedemptionWeight;
+        DefifaTierCashOutWeight[] memory scorecards = new DefifaTierCashOutWeight[](nTiers);
+        uint256 assignedCashOutWeight;
         // We can't have a neutral outcome, so we only give shares to tiers that are an even number (in our array)
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
             if (distribution.length <= i) continue;
-            scorecards[i].redemptionWeight = (uint256(distribution[i]) * _nft.TOTAL_REDEMPTION_WEIGHT()) / _sumDistribution;
-            assignedRedemptionWeight += scorecards[i].redemptionWeight;
+            scorecards[i].cashOutWeight = (uint256(distribution[i]) * _nft.TOTAL_CASHOUT_WEIGHT()) / _sumDistribution;
+            assignedCashOutWeight += scorecards[i].cashOutWeight;
         }
         // Forward time so proposals can be created
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
@@ -500,21 +500,21 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
              JBCurrencyIds.ETH
                                                          );
 
-        // Verify that the redemptionWeights actually changed
+        // Verify that the cashOutWeights actually changed
         for (uint256 i = 0; i < scorecards.length; i++) {
             address _user = _users[i];
             // Tier's are 1 indexed and should be stored 0 indexed.
-            assertEq(_nft.tierRedemptionWeights()[i], scorecards[i].redemptionWeight);
+            assertEq(_nft.tierCashOutWeights()[i], scorecards[i].cashOutWeight);
             // Craft the metadata: redeem the tokenId
-            bytes memory redemptionMetadata;
+            bytes memory cashOutMetadata;
             uint256 _receiveNana;
             uint256 _receiveDefifa;
             {
-                uint256[] memory redemptionId = new uint256[](1);
-                redemptionId[0] = _generateTokenId(i + 1, 1);
-                redemptionMetadata = _buildCashOutMetadata(abi.encode(redemptionId));
+                uint256[] memory cashOutId = new uint256[](1);
+                cashOutId[0] = _generateTokenId(i + 1, 1);
+                cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutId));
 
-                (_receiveNana, _receiveDefifa) = _nft.tokensClaimableFor(redemptionId);
+                (_receiveNana, _receiveDefifa) = _nft.tokensClaimableFor(cashOutId);
             }
             uint256 _nanaBalance = IERC20(_protocolFeeProjectTokenAccount).balanceOf(_user);
             uint256 _defifaBalance = IERC20(_defifaProjectTokenAccount).balanceOf(_user);
@@ -528,21 +528,21 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
                 tokenToReclaim: JBConstants.NATIVE_TOKEN,
                 minTokensReclaimed: 0,
                 beneficiary: payable(_user),
-                metadata: redemptionMetadata
+                metadata: cashOutMetadata
             });
 
             // Assert that the user received some of the fee tokens.
             assertEq(IERC20(_protocolFeeProjectTokenAccount).balanceOf(_user), _nanaBalance + _receiveNana);
             assertEq(IERC20(_defifaProjectTokenAccount).balanceOf(_user), _defifaBalance + _receiveDefifa);
 
-            if (scorecards[i].redemptionWeight == 0) continue;
+            if (scorecards[i].cashOutWeight == 0) continue;
 
             // We calculate the expected output based on the given distribution and how much is in the pot
-            uint256 _expectedTierRedemption = _pot;
-            _expectedTierRedemption = (_expectedTierRedemption * distribution[i]) / _sumDistribution;
-            // Assert that our expected tier redemption is ~equal to the actual amount
+            uint256 _expectedTierCashOut = _pot;
+            _expectedTierCashOut = (_expectedTierCashOut * distribution[i]) / _sumDistribution;
+            // Assert that our expected tier cashOut is ~equal to the actual amount
             // Allowing for some rounding errors, max allowed error is 0.000001 ether
-            assertApproxEqRel(_expectedTierRedemption, _user.balance, 0.001 ether);
+            assertApproxEqRel(_expectedTierCashOut, _user.balance, 0.001 ether);
         }
         // All NFTs should have been redeemed, only some dust should be left
         // Max allowed dust is 0.0001
@@ -551,7 +551,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             18,
             JBCurrencyIds.ETH
         );
-        assertApproxEqAbs(remainingSurplus, _pot * (_nft.TOTAL_REDEMPTION_WEIGHT() - assignedRedemptionWeight) / _nft.TOTAL_REDEMPTION_WEIGHT(), 10 ** 14);
+        assertApproxEqAbs(remainingSurplus, _pot * (_nft.TOTAL_CASHOUT_WEIGHT() - assignedCashOutWeight) / _nft.TOTAL_CASHOUT_WEIGHT(), 10 ** 14);
 
         // There should be no fee tokens left in the delegate.
         assertEq(IERC20(_protocolFeeProjectTokenAccount).balanceOf(address(_nft)), 0);
@@ -596,11 +596,11 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
 
         uint256 _numberBurned = _delegate.store().numberOfBurnedFor(address(_delegate), 1);
         // Craft the metadata: redeem the tokenId
-        bytes memory redemptionMetadata;
+        bytes memory cashOutMetadata;
         {
-            uint256[] memory redemptionId = new uint256[](1);
-            redemptionId[0] = _generateTokenId(1, _tier.initialSupply - _tier.remainingSupply + 1 + _numberBurned);
-            redemptionMetadata = _buildCashOutMetadata(abi.encode(redemptionId));
+            uint256[] memory cashOutId = new uint256[](1);
+            cashOutId[0] = _generateTokenId(1, _tier.initialSupply - _tier.remainingSupply + 1 + _numberBurned);
+            cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutId));
         }
 
         vm.prank(_refundUser);
@@ -611,7 +611,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_refundUser),
-            metadata: redemptionMetadata
+            metadata: cashOutMetadata
         });
         vm.roll(block.number + 1);
 
@@ -624,11 +624,11 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
     function testRevertsIfDelegationisDoneAfterMintPhase(
         uint8 nUsersWithWinningTier,
         uint8 winningTierExtraWeight,
-        uint8 baseRedemptionWeight
+        uint8 baseCashOutWeight
     ) public {
         uint256 nOfOtherTiers = 31;
         vm.assume(nUsersWithWinningTier > 1 && nUsersWithWinningTier < 100);
-        uint256 totalWeight = baseRedemptionWeight * (nOfOtherTiers + 1) + winningTierExtraWeight;
+        uint256 totalWeight = baseCashOutWeight * (nOfOtherTiers + 1) + winningTierExtraWeight;
         vm.assume(totalWeight > 1);
 
         address[] memory _users = new address[](nOfOtherTiers + nUsersWithWinningTier);
@@ -681,14 +681,14 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         _nft.setTierDelegateTo(_users[1], 1);
     }
 
-    function testSetRedemptionRatesAndRedeem_singleTier(
+    function testSetCashOutRatesAndRedeem_singleTier(
         uint8 nUsersWithWinningTier,
         uint8 winningTierExtraWeight,
-        uint8 baseRedemptionWeight
+        uint8 baseCashOutWeight
     ) public {
         uint256 nOfOtherTiers = 31;
         vm.assume(nUsersWithWinningTier > 1 && nUsersWithWinningTier < 100);
-        uint256 totalWeight = baseRedemptionWeight * (nOfOtherTiers + 1) + winningTierExtraWeight;
+        uint256 totalWeight = baseCashOutWeight * (nOfOtherTiers + 1) + winningTierExtraWeight;
         vm.assume(totalWeight > 1);
 
         address[] memory _users = new address[](nOfOtherTiers + nUsersWithWinningTier);
@@ -738,23 +738,23 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.warp(block.timestamp + defifaData.mintPeriodDuration);
         //deployer.queueNextPhaseOf(_projectId);
         // Generate the scorecards
-        DefifaTierRedemptionWeight[] memory scorecards = new DefifaTierRedemptionWeight[](
+        DefifaTierCashOutWeight[] memory scorecards = new DefifaTierCashOutWeight[](
             nOfOtherTiers + 1
         );
         
-        uint256 totalRedemptionWeight = _nft.TOTAL_REDEMPTION_WEIGHT();
+        uint256 totalCashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT();
 
         // We can't have a neutral outcome, so we only give shares to tiers that are an even number (in our array)
-        uint256 assignedRedemptionWeight;
+        uint256 assignedCashOutWeight;
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
-            if (baseRedemptionWeight != 0) {
-                scorecards[i].redemptionWeight = (totalRedemptionWeight * uint256(baseRedemptionWeight)) / totalWeight;
+            if (baseCashOutWeight != 0) {
+                scorecards[i].cashOutWeight = (totalCashOutWeight * uint256(baseCashOutWeight)) / totalWeight;
             }
             if (i == nOfOtherTiers && winningTierExtraWeight != 0) {
-                scorecards[i].redemptionWeight += (totalRedemptionWeight * uint256(winningTierExtraWeight)) / totalWeight;
+                scorecards[i].cashOutWeight += (totalCashOutWeight * uint256(winningTierExtraWeight)) / totalWeight;
             }
-            assignedRedemptionWeight += scorecards[i].redemptionWeight;
+            assignedCashOutWeight += scorecards[i].cashOutWeight;
         }
         {
             // Forward time so proposals can be created
@@ -790,25 +790,25 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
              JBCurrencyIds.ETH
                                                          );
 
-        // Verify that the redemptionWeights actually changed
+        // Verify that the cashOutWeights actually changed
         for (uint256 i = 0; i < _users.length; i++) {
             address _user = _users[i];
             uint256 _tier = i <= nOfOtherTiers ? i + 1 : nOfOtherTiers + 1;
             // Craft the metadata: redeem the tokenId
-            bytes memory redemptionMetadata;
+            bytes memory cashOutMetadata;
             {
-                uint256[] memory redemptionId = new uint256[](1);
-                redemptionId[0] = _generateTokenId(_tier, _tier == nOfOtherTiers + 1 ? i - nOfOtherTiers + 1 : 1);
-                redemptionMetadata = _buildCashOutMetadata(abi.encode(redemptionId));
+                uint256[] memory cashOutId = new uint256[](1);
+                cashOutId[0] = _generateTokenId(_tier, _tier == nOfOtherTiers + 1 ? i - nOfOtherTiers + 1 : 1);
+                cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutId));
             }
-            uint256 _expectedTierRedemption;
+            uint256 _expectedTierCashOut;
             {
                 // Calculate how much weight his tier has
                 uint256 _tierWeight = _tier == nOfOtherTiers + 1
-                    ? uint256(baseRedemptionWeight) + uint256(winningTierExtraWeight)
-                    : baseRedemptionWeight;
+                    ? uint256(baseCashOutWeight) + uint256(winningTierExtraWeight)
+                    : baseCashOutWeight;
 
-                    // If the redemption is 0 this will revert
+                    // If the cashOut is 0 this will revert
                     vm.prank(_user);
                     JBMultiTerminal(address(jbMultiTerminal())).cashOutTokensOf({
                         holder: _user,
@@ -817,20 +817,20 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
                         tokenToReclaim: JBConstants.NATIVE_TOKEN,
                         minTokensReclaimed: 0,
                         beneficiary: payable(_user),
-                        metadata: redemptionMetadata
+                        metadata: cashOutMetadata
                     });
                     // We calculate the expected output based on the given distribution and how much is in the pot
-                    _expectedTierRedemption = (_pot * _tierWeight) / totalWeight;
+                    _expectedTierCashOut = (_pot * _tierWeight) / totalWeight;
             }
             {
                 // If this is the winning tier then the amount is divided among the nUsersWithWinningTier
                 if (_tier == nOfOtherTiers + 1) {
-                    _expectedTierRedemption = _expectedTierRedemption / nUsersWithWinningTier;
+                    _expectedTierCashOut = _expectedTierCashOut / nUsersWithWinningTier;
                 }
             }
-            // Assert that our expected tier redemption is ~equal to the actual amount
+            // Assert that our expected tier cashOut is ~equal to the actual amount
             // Allowing for some rounding errors, max allowed error is 0.000001 ether
-            assertApproxEqRel(_expectedTierRedemption, _user.balance, 0.0001 ether);
+            assertApproxEqRel(_expectedTierCashOut, _user.balance, 0.0001 ether);
         }
         // All NFTs should have been redeemed, only some dust should be left
         // Max allowed dust is 0.0001
@@ -839,7 +839,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             18,
              JBCurrencyIds.ETH
                                                          );
-        assertApproxEqAbs(remainingSurplus, _pot * (totalRedemptionWeight - assignedRedemptionWeight) / totalRedemptionWeight, 10 ** 14);
+        assertApproxEqAbs(remainingSurplus, _pot * (totalCashOutWeight - assignedCashOutWeight) / totalCashOutWeight, 10 ** 14);
     }
 
     function testPhaseTimes(
@@ -921,14 +921,14 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.warp(block.timestamp + defifaData.mintPeriodDuration);
         //deployer.queueNextPhaseOf(_projectId);
         // Generate the scorecards
-        DefifaTierRedemptionWeight[] memory scorecards = new DefifaTierRedemptionWeight[](nTiers);
+        DefifaTierCashOutWeight[] memory scorecards = new DefifaTierCashOutWeight[](nTiers);
         // We can't have a neutral outcome, so we only give shares to tiers that are an even number (in our array)
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
-            scorecards[i].redemptionWeight = i % 2 == 0 ? 1_000_000_000 / (scorecards.length / 2) : 0;
+            scorecards[i].cashOutWeight = i % 2 == 0 ? 1_000_000_000 / (scorecards.length / 2) : 0;
         }
 
-        vm.expectRevert(abi.encodeWithSignature("UNOWNED_PROPOSED_REDEMPTION_VALUE()"));
+        vm.expectRevert(abi.encodeWithSignature("UNOWNED_PROPOSED_CASHOUT_VALUE()"));
         // Forward time so proposals can be created
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
     }
@@ -974,7 +974,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
     //     //deployer.queueNextPhaseOf(_projectId);
     // }
 
-    function testSettingTierRedemptionWeightBeforeEndPhase() public {
+    function testSettingTierCashOutWeightBeforeEndPhase() public {
         uint8 nTiers = 10;
         address[] memory _users = new address[](nTiers);
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(nTiers);
@@ -1010,11 +1010,11 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.warp(block.timestamp + defifaData.mintPeriodDuration);
         //deployer.queueNextPhaseOf(_projectId);
         // Generate the scorecards
-        DefifaTierRedemptionWeight[] memory scorecards = new DefifaTierRedemptionWeight[](nTiers);
+        DefifaTierCashOutWeight[] memory scorecards = new DefifaTierCashOutWeight[](nTiers);
         // We can't have a neutral outcome, so we only give shares to tiers that are an even number (in our array)
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
-            scorecards[i].redemptionWeight = i % 2 == 0 ? 1_000_000_000 / (scorecards.length / 2) : 0;
+            scorecards[i].cashOutWeight = i % 2 == 0 ? 1_000_000_000 / (scorecards.length / 2) : 0;
         }
         // Forward time so proposals can be created
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
@@ -1036,7 +1036,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         _governor.ratifyScorecardFrom(_gameId, scorecards);
     }
 
-    function testWhenRedemptionWeightisMoreThanMaxRedemptionWeight(uint8 nTiers) public {
+    function testWhenCashOutWeightisMoreThanMaxCashOutWeight(uint8 nTiers) public {
         // Anything above 10 should cause the error we are looking for.
         // As a sanity check we let it also run for less than 10 to see if it does not error in that case. 
         nTiers = uint8(bound(nTiers, 2, 20));
@@ -1045,7 +1045,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(nTiers);
         (uint256 _projectId, DefifaDelegate _nft, DefifaGovernor _governor) = createDefifaProject(defifaData);
         
-        uint256 redemptionWeight = _nft.TOTAL_REDEMPTION_WEIGHT() / 10;
+        uint256 cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT() / 10;
 
         // Phase 1: Mint
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
@@ -1079,12 +1079,12 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         //deployer.queueNextPhaseOf(_projectId);
 
         // Generate the scorecards
-        DefifaTierRedemptionWeight[] memory scorecards = new DefifaTierRedemptionWeight[](nTiers);
+        DefifaTierCashOutWeight[] memory scorecards = new DefifaTierCashOutWeight[](nTiers);
 
         // We can't have a neutral outcome, so we only give shares to tiers that are an even number (in our array)
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
-            scorecards[i].redemptionWeight = redemptionWeight;
+            scorecards[i].cashOutWeight = cashOutWeight;
         }
 
         // Forward time so proposals can be created
@@ -1110,9 +1110,9 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // each block is of 12 secs
         vm.warp(block.timestamp + (_governor.attestationGracePeriodOf(_gameId) * 12) + 1);
         
-        // This is the error we are looking for in this test, it should only trigger when redemptionWeight is more than the max, which should happen at > 10.
+        // This is the error we are looking for in this test, it should only trigger when cashOutWeight is more than the max, which should happen at > 10.
         if (nTiers > 10){
-            vm.expectRevert(DefifaDelegate.INVALID_REDEMPTION_WEIGHTS.selector);
+            vm.expectRevert(DefifaDelegate.INVALID_CASHOUT_WEIGHTS.selector);
         }
 
         // Execute the proposal
@@ -1192,12 +1192,12 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         assertEq(_delegate.balanceOf(_refundUser), 1);
         uint256 _numberBurned = _delegate.store().numberOfBurnedFor(address(_delegate), _tierId);
         // Craft the metadata: redeem the tokenId
-        bytes memory redemptionMetadata;
+        bytes memory cashOutMetadata;
         {
-            uint256[] memory redemptionId = new uint256[](1);
-            redemptionId[0] =
+            uint256[] memory cashOutId = new uint256[](1);
+            cashOutId[0] =
                 _generateTokenId(_tierId, _tier.initialSupply - --_tier.remainingSupply);
-            redemptionMetadata = _buildCashOutMetadata(abi.encode(redemptionId));
+            cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutId));
         }
         vm.prank(_refundUser);
         JBMultiTerminal(address(jbMultiTerminal())).cashOutTokensOf({
@@ -1207,7 +1207,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_refundUser),
-            metadata: redemptionMetadata
+            metadata: cashOutMetadata
         });
         // User should have their original funds again
         assertEq(_refundUser.balance, _cost);
