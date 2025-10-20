@@ -203,9 +203,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         if (_currentRuleset.cycleNumber == 0) return DefifaGamePhase.COUNTDOWN;
         if (_currentRuleset.cycleNumber == 1) return DefifaGamePhase.MINT;
-        // TODO: Do we need these two states?
-        // if (_noContestIsSet[_gameId]) return DefifaGamePhase.NO_CONTEST;
-        // if (_noContestInevitable(_gameId, _currentRuleset)) return DefifaGamePhase.NO_CONTEST_INEVITABLE;
         if (_currentRuleset.cycleNumber == 2 && _opsOf[_gameId].refundPeriodDuration != 0) {
             return DefifaGamePhase.REFUND;
         }
@@ -357,7 +354,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 useReserveBeneficiaryAsDefault: _defifaTier.shouldUseReservedTokenBeneficiaryAsDefault,
                 transfersPausable: false,
                 useVotingUnits: true,
-                // TODO: Are the below (new) values correct?
                 cannotBeRemoved: true,
                 cannotIncreaseDiscountPercent: true
             });
@@ -386,7 +382,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             _tokenUriResolver: _uriResolver,
             _contractUri: _launchProjectData.contractUri,
             _tiers: _delegateTiers,
-            // TODO: Should we use this currency?
             _currency: _launchProjectData.token.currency,
             _store: _launchProjectData.store,
             _gamePhaseReporter: this,
@@ -445,7 +440,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             projectId: _gameId,
             token: _token,
             amount: _pot,
-            // TODO: Is this the correct currency?
             currency: _token == JBConstants.NATIVE_TOKEN ? _metadata.baseCurrency : uint32(uint160(_token)),
             minTokensPaidOut: _pot
         });
@@ -493,14 +487,11 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Update the ruleset to the final one.
         controller.queueRulesetsOf(_gameId, rulesetConfigs, 'Defifa game has finished.');
 
-        // NOTE: Consider making it so the dataHook temporarily becomes the projectOwner so we can redirect the feeTokens to it directly.
-        IERC20 baseProtocolToken = IERC20(address(controller.TOKENS().tokenOf(baseProtocolProjectId)));
-        uint256 balance = baseProtocolToken.balanceOf(address(this));
-        if (balance > 0) {
-            baseProtocolToken.safeTransfer(_metadata.dataHook, balance);
-        }
-
-        // TODO: Emit event?
+        emit FulfilledCommitments({
+            gameId: _gameId,
+            pot: _pot,
+            caller: msg.sender
+        });
     }
 
     /// @notice Allows this contract to receive 721s.

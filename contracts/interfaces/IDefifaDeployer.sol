@@ -29,10 +29,6 @@ interface IDefifaDeployer {
     event FulfilledCommitments(
         uint256 indexed gameId,
         uint256 pot,
-        JBSplit[] splits,
-        uint256 leftoverAmount,
-        uint256 defifaTokenBalance,
-        uint256 baseProtocolBalance,
         address caller
     );
 

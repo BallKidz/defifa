@@ -500,6 +500,11 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
              JBCurrencyIds.ETH
                                                          );
 
+        // Assert that the deployer did *NOT* receive any fee tokens.
+        // As of the v3 -> v5 migration, fee tokens should now be send directly to the delegate.
+        assertEq(IERC20(_protocolFeeProjectTokenAccount).balanceOf(address(deployer)), 0);
+        assertEq(IERC20(_defifaProjectTokenAccount).balanceOf(address(deployer)), 0);
+
         // Verify that the cashOutWeights actually changed
         for (uint256 i = 0; i < scorecards.length; i++) {
             address _user = _users[i];
