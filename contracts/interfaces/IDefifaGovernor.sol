@@ -37,7 +37,7 @@ interface IDefifaGovernor {
 
     function stateOf(uint256 gameId, uint256 scorecardId) external view returns (DefifaScorecardState);
 
-    function getAttestationWeight(uint256 gameId, address account, uint256 blockNumber)
+    function getAttestationWeight(uint256 gameId, address account, uint48 timestamp)
         external
         view
         returns (uint256 attestationPower);
