@@ -127,7 +127,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
         //deployer.queueNextPhaseOf(_projectId);
         // User should have no voting power (yet)
-        assertEq(_governor.getAttestationWeight(_gameId, _user, block.number - 1), 0);
+        assertEq(_governor.getAttestationWeight(_gameId, _user, uint48(block.timestamp)), 0);
         // fund user
         vm.deal(_user, 1 ether);
         // Build metadata to buy specific NFT
@@ -143,10 +143,10 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         assertEq(_nft.balanceOf(_user), 1);
 
         // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
-        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
 
         assertEq(_nft.store().tierOf(address(_nft), tier, false).votingUnits, 1);
-        assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _user, block.number - 1));
+        assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _user, uint48(block.timestamp)));
     }
 
     // cashOuts can happen after mint phase
@@ -380,8 +380,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.prank(_users[i]);
         _nft.setTierDelegatesTo(tiered721SetDelegatesData);
         // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
-        vm.roll(block.number + 1);
-        assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _users[i], block.number - 1));
+        vm.warp(block.timestamp + 1);
+        assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _users[i], uint48(block.timestamp)));
         }
         // Phase 2: Redeem
         vm.warp(block.timestamp + defifaData.mintPeriodDuration);
@@ -396,19 +396,14 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // Forward time so proposals can be created
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
         // Forward time so voting becomes active
-        vm.roll(block.number + _governor.attestationStartTimeOf(_gameId) + 1);
-        // '_governor.attestationStartTimeOf(_gameId)' internally uses the timestamp and not the block number, so we have to modify it for the next assert
-        // block time is 12 secs
-        vm.warp(block.timestamp + (_governor.attestationStartTimeOf(_gameId) * 12));
+        vm.warp(block.timestamp + _governor.attestationStartTimeOf(_gameId) + 1);
         // We have only 40% vote on the proposal, making it still be below quorum.
         for (uint256 i = 0; i < _users.length * 4 / 10; i++) {
             vm.prank(_users[i]);
             _governor.attestToScorecardFrom(_gameId, _proposalId);
         }
         // Forward the amount of blocks needed to reach the end (and round up)
-        vm.roll(block.number + _governor.attestationGracePeriodOf(_gameId) + 1);
-        // each block is of 12 secs
-        vm.warp(block.timestamp + (_governor.attestationGracePeriodOf(_gameId) * 12) + 1);
+        vm.warp(block.timestamp+ _governor.attestationGracePeriodOf(_gameId) + 1);
         // Execute the proposal
         vm.expectRevert(DefifaGovernor.NOT_ALLOWED.selector);
         _governor.ratifyScorecardFrom(_gameId, scorecards);
@@ -448,8 +443,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.prank(_users[i]);
         jbMultiTerminal().pay{value: 1 ether}(_projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata);
         // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
-        vm.roll(block.number + 1);
-        assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _users[i], block.number - 1));
+        vm.warp(block.timestamp + 1);
+        assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _users[i], uint48(block.timestamp)));
         // Have a user mint and refund the tier
         mintAndRefund(_nft, _projectId, i + 1);
         }
@@ -472,10 +467,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // Forward time so proposals can be created
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
         // Forward time so voting becomes active
-        vm.roll(block.number + _governor.attestationStartTimeOf(_gameId) + 1);
-        // '_governor.attestationStartTimeOf(_gameId)' internally uses the timestamp and not the block number, so we have to modify it for the next assert
-        // block time is 12 secs
-        vm.warp(block.timestamp + (_governor.attestationStartTimeOf(_gameId) * 12));
+        vm.warp(block.timestamp + _governor.attestationStartTimeOf(_gameId) + 1);
         // No voting delay after the initial voting delay has passed in
         //assertEq(_governor.attestationStartTimeOf(_gameId), 0);
         // All the users vote
@@ -486,12 +478,11 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             vm.prank(_users[i]);
             _governor.attestToScorecardFrom(_gameId, _proposalId);
         }
-        // Forward the amount of blocks needed to reach the end (and round up)
-        vm.roll(block.number + _governor.attestationGracePeriodOf(_gameId) + 1);
         // each block is of 12 secs
-        vm.warp(block.timestamp + (_governor.attestationGracePeriodOf(_gameId) * 12) + 1);
+        vm.warp(block.timestamp + _governor.attestationGracePeriodOf(_gameId));
 
         _governor.ratifyScorecardFrom(_gameId, scorecards);
+        // Move forward 1 block to start the new ruleset.
         vm.roll(block.number + 1);
 
         uint256 _pot = jbMultiTerminal().currentSurplusOf(_projectId,
@@ -590,9 +581,9 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.prank(_refundUser);
         jbMultiTerminal().pay{value: _cost}(_projectId, JBConstants.NATIVE_TOKEN, _cost, _refundUser, 0, "", metadata);
 
-        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
 
-        assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _refundUser, block.number - 1));
+        assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _refundUser, uint48(block.timestamp)));
 
         // User should no longer have any funds
         assertEq(_refundUser.balance, 0);
@@ -618,12 +609,12 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             beneficiary: payable(_refundUser),
             metadata: cashOutMetadata
         });
-        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
 
         assertEq(_refundUser.balance, _cost);
         assertEq(_delegate.balanceOf(_refundUser), 0);
 
-        assertEq(0, _governor.getAttestationWeight(_gameId, _refundUser, block.number - 1));
+        assertEq(0, _governor.getAttestationWeight(_gameId, _refundUser, uint48(block.timestamp)));
     }
 
     function testRevertsIfDelegationisDoneAfterMintPhase(
@@ -658,8 +649,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(_projectId, JBConstants.NATIVE_TOKEN, 1 ether,_users[i], 0, "", metadata);
             // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
-            vm.roll(block.number + 1);
-            assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _users[i], block.number - 1));
+            vm.warp(block.timestamp + 1);
+            assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _users[i], uint48(block.timestamp)));
         } else {
             // Build metadata to buy specific NFT
             uint16[] memory rawMetadata = new uint16[](1);
@@ -670,10 +661,10 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(_projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata);
             // Forward 1 block, user should have a part of the voting power of their tier
-            vm.roll(block.number + 1);
+            vm.warp(block.timestamp + 1);
             assertEq(
                 _governor.MAX_ATTESTATION_POWER_TIER() / (i - nOfOtherTiers + 1),
-                _governor.getAttestationWeight(_gameId, _users[i], block.number - 1)
+                _governor.getAttestationWeight(_gameId, _users[i], uint48(block.timestamp))
             );
         }
         }
@@ -718,8 +709,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(_projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0,  "", metadata);
             // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
-            vm.roll(block.number + 1);
-            assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _users[i], block.number - 1));
+            vm.warp(block.timestamp + 1);
+            assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _users[i], uint48(block.timestamp)));
         } else {
             // Build metadata to buy specific NFT
             uint16[] memory rawMetadata = new uint16[](1);
@@ -730,10 +721,10 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(_projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0,  "", metadata);
             // Forward 1 block, user should have a part of the voting power of their tier
-            vm.roll(block.number + 1);
+            vm.warp(block.timestamp + 1);
             assertEq(
                 _governor.MAX_ATTESTATION_POWER_TIER() / (i - nOfOtherTiers + 1),
-                _governor.getAttestationWeight(_gameId, _users[i], block.number - 1)
+                _governor.getAttestationWeight(_gameId, _users[i], uint48(block.timestamp))
             );
         }
         }
@@ -765,10 +756,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             // Forward time so proposals can be created
             uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
             // Forward time so voting becomes active
-            vm.roll(block.number + _governor.attestationStartTimeOf(_gameId) + 1);
-            // '_governor.attestationStartTimeOf(_gameId)' internally uses the timestamp and not the block number, so we have to modify it for the next assert
-            // block time is 12 secs
-            vm.warp(block.timestamp + (_governor.attestationStartTimeOf(_gameId) * 12));
+            vm.warp(block.timestamp + _governor.attestationStartTimeOf(_gameId) + 1);
             // No voting delay after the initial voting delay has passed in
             // assertEq(_governor.attestationStartTimeOf(_gameId), 0);
             // All the users vote
@@ -782,12 +770,10 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         }
 
         // Forward the amount of blocks needed to reach the end (and round up)
-        vm.roll(block.number + _governor.attestationGracePeriodOf(_gameId) + 1);
-        // each block is of 12 secs
-        vm.warp(block.timestamp + (_governor.attestationGracePeriodOf(_gameId) * 12) + 1);
+        vm.warp(block.timestamp + _governor.attestationGracePeriodOf(_gameId));
 
         _governor.ratifyScorecardFrom(_gameId, scorecards);
-        vm.roll(block.number + 1);
+        vm.warp(block.timestamp + 1);
 
         uint256 _pot = jbMultiTerminal().currentSurplusOf(_projectId,
              jbMultiTerminal().accountingContextsOf(_projectId),
@@ -1008,8 +994,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.prank(_users[i]);
         _nft.setTierDelegatesTo(tiered721SetDelegatesData);
         // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
-        vm.roll(block.number + 1);
-        assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _users[i], block.number - 1));
+        vm.warp(block.timestamp + 1);
+        assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _users[i], uint48(block.timestamp)));
         }
         // Phase 2: Redeem
         vm.warp(block.timestamp + defifaData.mintPeriodDuration);
@@ -1024,10 +1010,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // Forward time so proposals can be created
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
         // Forward time so voting becomes active
-        vm.roll(block.number + _governor.attestationStartTimeOf(_gameId) + 1);
-        // '_governor.attestationStartTimeOf(_gameId)' internally uses the timestamp and not the block number, so we have to modify it for the next assert
-        // block time is 12 secs
-        vm.warp(block.timestamp + (_governor.attestationStartTimeOf(_gameId) * 12));
+        vm.warp(block.timestamp + _governor.attestationStartTimeOf(_gameId));
         // All the users vote
         // 0 = Against
         // 1 = For
@@ -1076,8 +1059,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.prank(_users[i]);
         _nft.setTierDelegatesTo(tiered721SetDelegatesData);
         // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
-        vm.roll(block.number + 1);
-        assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _users[i], block.number - 1));
+        assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _users[i], uint48(block.timestamp)));
         }
         // Phase 2: Redeem
         vm.warp(block.timestamp + defifaData.mintPeriodDuration);
@@ -1095,10 +1077,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // Forward time so proposals can be created
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
         // Forward time so voting becomes active
-        vm.roll(block.number + _governor.attestationStartTimeOf(_gameId) + 1);
-        // '_governor.attestationStartTimeOf(_gameId)' internally uses the timestamp and not the block number, so we have to modify it for the next assert
-        // block time is 12 secs
-        vm.warp(block.timestamp + (_governor.attestationStartTimeOf(_gameId) * 12));
+        vm.warp(block.timestamp + _governor.attestationStartTimeOf(_gameId));
         // No voting delay after the initial voting delay has passed in
         // assertEq(_governor.attestationStartTimeOf(_gameId), 0);
         // All the users vote
@@ -1111,9 +1090,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         }
 
         // Forward the amount of blocks needed to reach the end (and round up)
-        vm.roll(block.number + _governor.attestationGracePeriodOf(_gameId) + 1);
-        // each block is of 12 secs
-        vm.warp(block.timestamp + (_governor.attestationGracePeriodOf(_gameId) * 12) + 1);
+        vm.warp(block.timestamp + _governor.attestationGracePeriodOf(_gameId) + 1);
         
         // This is the error we are looking for in this test, it should only trigger when cashOutWeight is more than the max, which should happen at > 10.
         if (nTiers > 10){

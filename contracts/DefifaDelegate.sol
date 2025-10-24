@@ -20,7 +20,7 @@ import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 /// @title DefifaDelegate
 /// @notice A delegate that transforms Juicebox treasury interactions into a Defifa game.
 contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
-    using Checkpoints for Checkpoints.Trace224;
+    using Checkpoints for Checkpoints.Trace208;
 
     //*********************************************************************//
     // --------------------------- custom errors ------------------------- //
@@ -65,11 +65,11 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     /// @notice The delegation checkpoints for each address and for each tier.
     /// _delegator The delegator.
     /// _tierId The ID of the tier being checked.
-    mapping(address => mapping(uint256 => Checkpoints.Trace224)) internal _delegateTierCheckpoints;
+    mapping(address => mapping(uint256 => Checkpoints.Trace208)) internal _delegateTierCheckpoints;
 
     /// @notice The total delegation status for each tier.
     /// _tierId The ID of the tier being checked.
-    mapping(uint256 => Checkpoints.Trace224) internal _totalTierCheckpoints;
+    mapping(uint256 => Checkpoints.Trace208) internal _totalTierCheckpoints;
 
     /// @notice The first owner of each token ID, stored on first transfer out.
     /// _tokenId The ID of the token to get the stored first owner of.
@@ -161,14 +161,14 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     /// @notice Returns the past attestation units of a specific address for a specific tier.
     /// @param _account The address to check.
     /// @param _tier The tier to check within.
-    /// @param _blockNumber the blocknumber to check the attestation power at.
-    function getPastTierAttestationUnitsOf(address _account, uint256 _tier, uint256 _blockNumber)
+    /// @param _timestamp the timestamp to check the attestation power at.
+    function getPastTierAttestationUnitsOf(address _account, uint256 _tier, uint48 _timestamp)
         external
         view
         override
         returns (uint256)
     {
-        return _delegateTierCheckpoints[_account][_tier].upperLookup(uint32(_blockNumber));
+        return _delegateTierCheckpoints[_account][_tier].upperLookup(_timestamp);
     }
 
     /// @notice Returns the total amount of attestation units that exists for a tier.
@@ -179,14 +179,14 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
 
     /// @notice Returns the total amount of attestation units that has existed for a tier.
     /// @param _tier The tier to check.
-    /// @param _blockNumber The blocknumber to check the total attestation units at.
-    function getPastTierTotalAttestationUnitsOf(uint256 _tier, uint256 _blockNumber)
+    /// @param _timestamp The timestamp to check the total attestation units at.
+    function getPastTierTotalAttestationUnitsOf(uint256 _tier, uint48 _timestamp)
         external
         view
         override
         returns (uint256)
     {
-        return _totalTierCheckpoints[_tier].upperLookup(uint32(_blockNumber));
+        return _totalTierCheckpoints[_tier].upperLookup(_timestamp);
     }
 
     /// @notice The first owner of each token ID, which corresponds to the address that originally contributed to the project to receive the NFT.
@@ -923,13 +923,13 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     {
         if (_from == address(0) || _to == address(0)) {
             // Get the current total for the tier.
-            uint224 _current = _totalTierCheckpoints[_tierId].latest();
+            uint208 _current = _totalTierCheckpoints[_tierId].latest();
 
             // If minting, add to the total tier checkpoints.
-            if (_from == address(0)) _totalTierCheckpoints[_tierId].push(uint32(block.number), _current + uint224(_amount));
+            if (_from == address(0)) _totalTierCheckpoints[_tierId].push(uint48(block.timestamp), _current + uint208(_amount));
 
             // If burning, subtract from the total tier checkpoints.
-            if (_to == address(0)) _totalTierCheckpoints[_tierId].push(uint32(block.number), _current - uint224(_amount));
+            if (_to == address(0)) _totalTierCheckpoints[_tierId].push(uint48(block.timestamp), _current - uint208(_amount));
         }
 
         // Move delegated attestations.
@@ -949,18 +949,18 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         // If not moving from the zero address, update the checkpoints to subtract the amount.
         if (_from != address(0)) {
             // Get the current amount for the sending delegate.
-            uint224 _current = _delegateTierCheckpoints[_from][_tierId].latest();
+            uint208 _current = _delegateTierCheckpoints[_from][_tierId].latest();
             // Set the new amount for the sending delegate.
-            (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_from][_tierId].push(uint32(block.number), _current - uint224(_amount));
+            (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_from][_tierId].push(uint48(block.timestamp), _current - uint208(_amount));
             emit TierDelegateAttestationsChanged(_from, _tierId, _oldValue, _newValue, msg.sender);
         }
 
         // If not moving to the zero address, update the checkpoints to add the amount.
         if (_to != address(0)) {
             // Get the current amount for the receiving delegate.
-            uint224 _current = _delegateTierCheckpoints[_to][_tierId].latest();
+            uint208 _current = _delegateTierCheckpoints[_to][_tierId].latest();
             // Set the new amount for the receiving delegate.
-            (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_to][_tierId].push(uint32(block.number), _current + uint224(_amount));
+            (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_to][_tierId].push(uint48(block.timestamp), _current + uint208(_amount));
             emit TierDelegateAttestationsChanged(_to, _tierId, _oldValue, _newValue, msg.sender);
         }
     }

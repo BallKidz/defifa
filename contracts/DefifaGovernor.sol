@@ -151,12 +151,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         }
 
         // If the scorecard has attestations beginning in the future, the state is PENDING.
-        if (_scorecard.attestationsBegin >= block.number) {
+        if (_scorecard.attestationsBegin >= block.timestamp) {
             return DefifaScorecardState.PENDING;
         }
 
         // If the scorecard has a grace period expiring in the future, the state is ACTIVE.
-        if (_scorecard.gracePeriodEnds >= block.number) {
+        if (_scorecard.gracePeriodEnds >= block.timestamp) {
             return DefifaScorecardState.ACTIVE;
         }
 
@@ -211,14 +211,16 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @notice Gets an account's attestation power given a number of tiers to look through.
     /// @param _gameId The ID of the game for which attestations are being counted.
     /// @param _account The account to get attestations for.
-    /// @param _blockNumber The block number to measure attestations from.
+    /// @param _timestamp The timestamp to measure attestations from.
     /// @return attestationPower The amount of attestation power of an account.
-    function getAttestationWeight(uint256 _gameId, address _account, uint256 _blockNumber)
+    function getAttestationWeight(uint256 _gameId, address _account, uint48 _timestamp)
         public
         view
         virtual
         returns (uint256 attestationPower)
     {
+        // NOTE: Make sure attestations are measured at the timestamp (+1) after the voting ends. Make sure we don't allow them in the same block(s).
+
         // Get the game's current funding cycle along with its metadata.
         (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(_gameId);
 
@@ -231,7 +233,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
             // Keep a reference to the number of tier attestations for the account.
             uint256 _tierAttestationUnitsForAccount =
-                IDefifaDelegate(_metadata.dataHook).getPastTierAttestationUnitsOf(_account, _tierId, _blockNumber);
+                IDefifaDelegate(_metadata.dataHook).getPastTierAttestationUnitsOf(_account, _tierId, _timestamp);
 
             // If there is tier attestation power, increment the result by the proportion of attestations the account has to the total, multiplied by the tier's maximum attestation power.
             unchecked {
@@ -239,7 +241,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                     attestationPower += mulDiv(
                         MAX_ATTESTATION_POWER_TIER,
                         _tierAttestationUnitsForAccount,
-                        IDefifaDelegate(_metadata.dataHook).getPastTierTotalAttestationUnitsOf(_tierId, _blockNumber)
+                        IDefifaDelegate(_metadata.dataHook).getPastTierTotalAttestationUnitsOf(_tierId, _timestamp)
                     );
                 }
             }
@@ -327,8 +329,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         uint256 _timeUntilAttestationsBegin =
             block.timestamp > _attestationStartTime ? 0 : _attestationStartTime - block.timestamp;
 
-        _scorecard.attestationsBegin = uint48(block.number + (_timeUntilAttestationsBegin / _blockTime));
-        _scorecard.gracePeriodEnds = uint48(block.number + attestationGracePeriodOf(_gameId) / _blockTime);
+        _scorecard.attestationsBegin = uint48(block.timestamp + _timeUntilAttestationsBegin);
+        _scorecard.gracePeriodEnds = uint48(block.timestamp + attestationGracePeriodOf(_gameId));
 
         // Keep a reference to the default attestation delegate.
         address _defaultAttestationDelegate = IDefifaDelegate(_metadata.dataHook).defaultAttestationDelegate();

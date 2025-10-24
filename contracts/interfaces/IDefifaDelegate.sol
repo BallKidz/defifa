@@ -83,14 +83,14 @@ interface IDefifaDelegate is IJB721Hook {
 
     function getTierAttestationUnitsOf(address account, uint256 tier) external view returns (uint256);
 
-    function getPastTierAttestationUnitsOf(address account, uint256 tier, uint256 blockNumber)
+    function getPastTierAttestationUnitsOf(address account, uint256 tier, uint48 timestamp)
         external
         view
         returns (uint256);
 
     function getTierTotalAttestationUnitsOf(uint256 tier) external view returns (uint256);
 
-    function getPastTierTotalAttestationUnitsOf(uint256 tier, uint256 blockNumber) external view returns (uint256);
+    function getPastTierTotalAttestationUnitsOf(uint256 tier, uint48 timestamp) external view returns (uint256);
 
     function tokensClaimableFor(uint256[] memory _tokenIds) external view returns (uint256, uint256);
 
