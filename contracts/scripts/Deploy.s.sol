@@ -19,22 +19,22 @@ contract DeployMainnet is Script, Sphinx {
     CoreDeployment core;
     /// @notice tracks the deployment of the address registry for the chain we are deploying to.
     AddressRegistryDeployment registry;
-
-    uint256 _defifaProjectId = 369;
+    
+    // NOTE: This id is revnet, this is temporary until we have a defifa revnet.
+    uint256 _defifaProjectId = 3;
     uint256 _baseProtocolProjectId = 1;
+
+    bytes32 _salt = bytes32(keccak256("0.0.1"));
 
     ITypeface _typeface = ITypeface(0xA77b7D93E79f1E6B4f77FaB29d9ef85733A3D44A);
     
     IERC20 defifaToken;
     IERC20 baseProtocolToken;
 
-    uint256 _blockTime = 12;
-
     function configureSphinx() public override {
         sphinxConfig.projectName = "defifa-v5";
-        // TODO: We need to patch the `blockTime` logic in the governor before L2s will function as expected.
-        sphinxConfig.mainnets = ["ethereum"];
-        sphinxConfig.testnets = ["ethereum_sepolia"];
+        sphinxConfig.mainnets = ["ethereum", "optimism", "base", "arbitrum"];
+        sphinxConfig.testnets = ["ethereum_sepolia", "optimism_sepolia", "base_sepolia", "arbitrum_sepolia"];
     }
 
     function run() external {
@@ -54,15 +54,23 @@ contract DeployMainnet is Script, Sphinx {
         defifaToken = IERC20(address(core.tokens.tokenOf(_defifaProjectId)));
         baseProtocolToken = IERC20(address(core.tokens.tokenOf(_baseProtocolProjectId)));
 
+        if (defifaToken == IERC20(address(0))) {
+            revert("Defifa token is invalid, does this project id exist?");
+        }
+
+        if (baseProtocolToken == IERC20(address(0))) {
+            revert("Base protocol token is invalid, does this project id exist?");
+        }
+
         // Perform the deployment transactions.
         deploy();
     }
 
     function deploy() public sphinx {
-        DefifaDelegate delegate = new DefifaDelegate(core.directory, defifaToken, baseProtocolToken);
-        DefifaTokenUriResolver tokenUriResolver = new DefifaTokenUriResolver(_typeface);
-        DefifaGovernor governor = new DefifaGovernor(core.controller, _blockTime);
-        DefifaDeployer deployer = new DefifaDeployer(
+        DefifaDelegate delegate = new DefifaDelegate{salt: _salt}(core.directory, defifaToken, baseProtocolToken);
+        DefifaTokenUriResolver tokenUriResolver = new DefifaTokenUriResolver{salt: _salt}(_typeface);
+        DefifaGovernor governor = new DefifaGovernor{salt: _salt}(core.controller, safeAddress());
+        DefifaDeployer deployer = new DefifaDeployer{salt: _salt}(
             address(delegate),
             tokenUriResolver,
             governor,

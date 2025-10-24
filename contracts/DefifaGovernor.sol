@@ -37,10 +37,6 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     // ---------------- immutable internal stored properties ------------- //
     //*********************************************************************//
 
-    /// @notice The duration of one block.
-    // NOTE: Should we stop using blockTime and instead use the timestamp? On L2s blockTime can be sub 1 second.
-    uint256 internal immutable _blockTime;
-
     /// @notice The scorecards.
     /// _gameId The ID of the game for which the scorecard affects.
     /// _scorecardId The ID of the scorecard to retrieve.
@@ -252,10 +248,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     // -------------------------- constructor ---------------------------- //
     //*********************************************************************//
     
-    // TODO: Who should be the owner?
-    constructor(IJBController _controller, uint256 __blockTime) Ownable(msg.sender) {
+    constructor(IJBController _controller, address _owner) Ownable(_owner) {
         controller = _controller;
-        _blockTime = __blockTime;
     }
 
     //*********************************************************************//

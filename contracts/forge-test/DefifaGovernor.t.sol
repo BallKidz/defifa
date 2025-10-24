@@ -26,8 +26,6 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
     uint256 _protocolFeeProjectId;
     uint256 _defifaProjectId;
     address _owner = 0x1000000000000000000000000000000000000000;
-    uint256 blockSeconds = 12;
-
     uint256 _gameId = 3;
 
     DefifaDeployer deployer;
@@ -96,7 +94,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         _defifaProjectTokenAccount = address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
 
         delegate = new DefifaDelegate(jbDirectory(), IERC20(address(_defifaProjectTokenAccount)), IERC20(_protocolFeeProjectTokenAccount));
-        governor = new DefifaGovernor(jbController(), blockSeconds);
+        governor = new DefifaGovernor(jbController(), address(this));
         JBAddressRegistry _registry = new JBAddressRegistry();
         DefifaTokenUriResolver _tokenURIResolver = new DefifaTokenUriResolver(ITypeface(address(0)));
         deployer = new DefifaDeployer(
