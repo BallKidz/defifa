@@ -27,7 +27,7 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
     //*********************************************************************//
 
     /// @notice The fidelity of the decimal returned in the NFT image.
-    uint256 private constant _IMG_DECIMAL_FIDELITY = 3;
+    uint256 private constant _IMG_DECIMAL_FIDELITY = 5;
 
     //*********************************************************************//
     // --------------- public immutable stored properties ---------------- //
