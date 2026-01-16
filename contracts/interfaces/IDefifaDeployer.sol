@@ -1,16 +1,15 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IJBTiered721DelegateDeployer} from
-    "@jbx-protocol/juice-721-delegate/contracts/interfaces/IJBTiered721DelegateDeployer.sol";
-import {IJBController3_1} from "@jbx-protocol/juice-contracts-v3/contracts/interfaces/IJBController3_1.sol";
-import {JBSplit} from "@jbx-protocol/juice-contracts-v3/contracts/structs/JBSplit.sol";
-import {IJB721TokenUriResolver} from "@jbx-protocol/juice-721-delegate/contracts/interfaces/IJB721TokenUriResolver.sol";
-import {IJBDelegatesRegistry} from "@jbx-protocol/juice-delegates-registry/src/interfaces/IJBDelegatesRegistry.sol";
 import {DefifaLaunchProjectData} from "../structs/DefifaLaunchProjectData.sol";
 import {DefifaOpsData} from "../structs/DefifaOpsData.sol";
 import {IDefifaDelegate} from "./IDefifaDelegate.sol";
 import {IDefifaGovernor} from "./IDefifaGovernor.sol";
+
+import {IJB721TokenUriResolver} from '@bananapus/721-hook-v5/src/interfaces/IJB721TokenUriResolver.sol';
+import {JBSplit} from '@bananapus/core-v5/src/structs/JBSplit.sol';
+import {IJBController} from '@bananapus/core-v5/src/interfaces/IJBController.sol';
+import {IJBAddressRegistry} from '@bananapus/address-registry-v5/src/interfaces/IJBAddressRegistry.sol';
 
 interface IDefifaDeployer {
     event LaunchGame(
@@ -30,10 +29,6 @@ interface IDefifaDeployer {
     event FulfilledCommitments(
         uint256 indexed gameId,
         uint256 pot,
-        JBSplit[] splits,
-        uint256 leftoverAmount,
-        uint256 defifaTokenBalance,
-        uint256 baseProtocolBalance,
         address caller
     );
 
@@ -51,11 +46,13 @@ interface IDefifaDeployer {
 
     function governor() external view returns (IDefifaGovernor);
 
-    function controller() external view returns (IJBController3_1);
+    function controller() external view returns (IJBController);
 
-    function delegatesRegistry() external view returns (IJBDelegatesRegistry);
+    function registry() external view returns (IJBAddressRegistry);
 
-    function feeDivisor() external view returns (uint256);
+    function defifaFeeDivisor() external view returns (uint256);
+
+    function baseProtocolFeeDivisor() external view returns (uint256);
 
     function timesFor(uint256 _gameId) external view returns (uint48, uint24, uint24);
 
@@ -65,7 +62,7 @@ interface IDefifaDeployer {
 
     function launchGameWith(DefifaLaunchProjectData calldata _launchProjectData) external returns (uint256 gameId);
 
-    function queueNextPhaseOf(uint256 _projectId) external returns (uint256 configuration);
+    // function queueNextPhaseOf(uint256 _projectId) external returns (uint256 configuration);
 
     function fulfillCommitmentsOf(uint256 _gameId) external;
 }

@@ -2,25 +2,17 @@
 pragma solidity ^0.8.16;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IJBFundingCycleStore} from "@jbx-protocol/juice-contracts-v3/contracts/interfaces/IJBFundingCycleStore.sol";
-import {IJBDirectory} from "@jbx-protocol/juice-contracts-v3/contracts/interfaces/IJBDirectory.sol";
-import {IJB721Delegate} from "@jbx-protocol/juice-721-delegate/contracts/interfaces/IJB721Delegate.sol";
-import {IJBTiered721DelegateStore} from
-    "@jbx-protocol/juice-721-delegate/contracts/interfaces/IJBTiered721DelegateStore.sol";
-import {IJB721TokenUriResolver} from "@jbx-protocol/juice-721-delegate/contracts/interfaces/IJB721TokenUriResolver.sol";
-import {JB721TierParams} from "@jbx-protocol/juice-721-delegate/contracts/structs/JB721TierParams.sol";
-import {JBTiered721SetTierDelegatesData} from
-    "@jbx-protocol/juice-721-delegate/contracts/structs/JBTiered721SetTierDelegatesData.sol";
-import {JBTiered721MintReservesForTiersData} from
-    "@jbx-protocol/juice-721-delegate/contracts/structs/JBTiered721MintReservesForTiersData.sol";
-import {JBTiered721MintForTiersData} from
-    "@jbx-protocol/juice-721-delegate/contracts/structs/JBTiered721MintForTiersData.sol";
-import {JB721PricingParams} from "@jbx-protocol/juice-721-delegate/contracts/structs/JB721PricingParams.sol";
-import {DefifaTierRedemptionWeight} from "./../structs/DefifaTierRedemptionWeight.sol";
+import "@bananapus/core-v5/src/interfaces/IJBRulesets.sol";
+import '@bananapus/721-hook-v5/src/interfaces/IJB721Hook.sol';
+import '@bananapus/721-hook-v5/src/interfaces/IJB721TiersHookStore.sol';
+import '@bananapus/721-hook-v5/src/structs/JB721TiersMintReservesConfig.sol';
+import {JB721TierConfig} from "@bananapus/721-hook-v5/src/structs/JB721TierConfig.sol";
+import {DefifaTierCashOutWeight} from "./../structs/DefifaTierCashOutWeight.sol";
+import {DefifaDelegation} from "./../structs/DefifaDelegation.sol";
 import {IDefifaGamePhaseReporter} from "./IDefifaGamePhaseReporter.sol";
 import {IDefifaGamePotReporter} from "./IDefifaGamePotReporter.sol";
 
-interface IDefifaDelegate is IJB721Delegate {
+interface IDefifaDelegate is IJB721Hook {
     event Mint(
         uint256 indexed tokenId,
         uint256 indexed tierId,
@@ -43,27 +35,27 @@ interface IDefifaDelegate is IJB721Delegate {
         address indexed beneficiary, uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount, address caller
     );
 
-    event TierRedemptionWeightsSet(DefifaTierRedemptionWeight[] _tierWeights, address caller);
+    event TierCashOutWeightsSet(DefifaTierCashOutWeight[] _tierWeights, address caller);
 
-    function TOTAL_REDEMPTION_WEIGHT() external view returns (uint256);
+    function TOTAL_CASHOUT_WEIGHT() external view returns (uint256);
 
     function defifaToken() external view returns (IERC20);
 
     function baseProtocolToken() external view returns (IERC20);
 
-    function name() external view returns (string memory);
+    function cashOutWeightOf(uint256 tokenId) external view returns (uint256);
 
-    function redemptionWeightOf(uint256 tokenId) external view returns (uint256);
-
-    function tierRedemptionWeights() external view returns (uint256[128] memory);
+    function tierCashOutWeights() external view returns (uint256[128] memory);
 
     function codeOrigin() external view returns (address);
 
-    function redemptionWeightIsSet() external view returns (bool);
+    function cashOutWeightIsSet() external view returns (bool);
 
-    function store() external view returns (IJBTiered721DelegateStore);
+    function currentSupplyOfTier(uint256 _tierId) external view returns (uint256);
 
-    function fundingCycleStore() external view returns (IJBFundingCycleStore);
+    function store() external view returns (IJB721TiersHookStore);
+
+    function rulesets() external view returns (IJBRulesets);
 
     function gamePhaseReporter() external view returns (IDefifaGamePhaseReporter);
 
@@ -91,39 +83,38 @@ interface IDefifaDelegate is IJB721Delegate {
 
     function getTierAttestationUnitsOf(address account, uint256 tier) external view returns (uint256);
 
-    function getPastTierAttestationUnitsOf(address account, uint256 tier, uint256 blockNumber)
+    function getPastTierAttestationUnitsOf(address account, uint256 tier, uint48 timestamp)
         external
         view
         returns (uint256);
 
     function getTierTotalAttestationUnitsOf(uint256 tier) external view returns (uint256);
 
-    function getPastTierTotalAttestationUnitsOf(uint256 tier, uint256 blockNumber) external view returns (uint256);
+    function getPastTierTotalAttestationUnitsOf(uint256 tier, uint48 timestamp) external view returns (uint256);
 
     function tokensClaimableFor(uint256[] memory _tokenIds) external view returns (uint256, uint256);
 
     function setTierDelegateTo(address delegatee, uint256 tierId) external;
 
-    function setTierDelegatesTo(JBTiered721SetTierDelegatesData[] memory setTierDelegatesData) external;
+    function setTierDelegatesTo(DefifaDelegation[] memory delegations) external;
 
-    function setTierRedemptionWeightsTo(DefifaTierRedemptionWeight[] memory tierWeights) external;
+    function setTierCashOutWeightsTo(DefifaTierCashOutWeight[] memory tierWeights) external;
 
-    function mintReservesFor(JBTiered721MintReservesForTiersData[] memory mintReservesForTiersData) external;
+    function mintReservesFor(JB721TiersMintReservesConfig[] memory mintReservesForTiersData) external;
 
     function mintReservesFor(uint256 tierId, uint256 count) external;
 
     function initialize(
         uint256 gameId,
-        IJBDirectory directory,
         string memory name,
         string memory symbol,
-        IJBFundingCycleStore fundingCycleStore,
+        IJBRulesets rulesets,
         string memory baseUri,
         IJB721TokenUriResolver tokenUriResolver,
         string memory contractUri,
-        JB721TierParams[] memory tiers,
+        JB721TierConfig [] memory tiers,
         uint48 currency,
-        IJBTiered721DelegateStore store,
+        IJB721TiersHookStore store,
         IDefifaGamePhaseReporter gamePhaseReporter,
         IDefifaGamePotReporter gamePotReporter,
         address defaultAttestationDelegate,

@@ -5,3 +5,4 @@ pk.txt
 cache
 node_modules
 lib/forge-std/
+out/

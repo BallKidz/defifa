@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IJBController3_1} from "@jbx-protocol/juice-contracts-v3/contracts/interfaces/IJBController3_1.sol";
 import {DefifaScorecardState} from "../enums/DefifaScorecardState.sol";
-import {DefifaTierRedemptionWeight} from "../structs/DefifaTierRedemptionWeight.sol";
+import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
 import {IDefifaDelegate} from "./IDefifaDelegate.sol";
+import {IJBController} from '@bananapus/core-v5/src/interfaces/IJBController.sol';
 
 interface IDefifaGovernor {
     event GameInitialized(
@@ -14,7 +14,7 @@ interface IDefifaGovernor {
     event ScorecardSubmitted(
         uint256 indexed gameId,
         uint256 indexed scorecardId,
-        DefifaTierRedemptionWeight[] tierWeights,
+        DefifaTierCashOutWeight[] tierWeights,
         bool isDefaultAttestationDelegate,
         address caller
     );
@@ -25,19 +25,19 @@ interface IDefifaGovernor {
 
     function MAX_ATTESTATION_POWER_TIER() external view returns (uint256);
 
-    function controller() external view returns (IJBController3_1);
+    function controller() external view returns (IJBController);
 
     function defaultAttestationDelegateProposalOf(uint256 gameId) external view returns (uint256);
 
     function ratifiedScorecardIdOf(uint256 gameId) external view returns (uint256);
 
-    function scorecardIdOf(address _gameDelegate, DefifaTierRedemptionWeight[] calldata _tierWeights)
+    function scorecardIdOf(address _gameDelegate, DefifaTierCashOutWeight[] calldata _tierWeights)
         external
         returns (uint256);
 
     function stateOf(uint256 gameId, uint256 scorecardId) external view returns (DefifaScorecardState);
 
-    function getAttestationWeight(uint256 gameId, address account, uint256 blockNumber)
+    function getAttestationWeight(uint256 gameId, address account, uint48 timestamp)
         external
         view
         returns (uint256 attestationPower);
@@ -54,13 +54,13 @@ interface IDefifaGovernor {
 
     function initializeGame(uint256 gameId, uint256 attestationStartTime, uint256 attestationGracePeriod) external;
 
-    function submitScorecardFor(uint256 gameId, DefifaTierRedemptionWeight[] calldata tierWeights)
+    function submitScorecardFor(uint256 gameId, DefifaTierCashOutWeight[] calldata tierWeights)
         external
         returns (uint256);
 
     function attestToScorecardFrom(uint256 gameId, uint256 scorecardId) external returns (uint256 weight);
 
-    function ratifyScorecardFrom(uint256 gameId, DefifaTierRedemptionWeight[] calldata tierWeights)
+    function ratifyScorecardFrom(uint256 gameId, DefifaTierCashOutWeight[] calldata tierWeights)
         external
         returns (uint256);
 }
