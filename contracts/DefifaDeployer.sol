@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.16;
+pragma solidity ^0.8.20;
 
 import "@prb/math/src/Common.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
@@ -343,7 +343,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             // Set the tier.
             _hookTiers[_i] = JB721TierConfig({
                 price: _defifaTier.price,
-                initialSupply: 999_999_999, // The max allowed value.
+                initialSupply: 999_999_999, // Uncapped minting — max value allowed by the 721 store.
                 votingUnits: 1,
                 reserveFrequency: _defifaTier.reservedRate,
                 reserveBeneficiary: _defifaTier.reservedTokenBeneficiary,
