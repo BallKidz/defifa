@@ -556,9 +556,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Fetch the tier details.
         JB721Tier memory _tier = store.tierOf(address(this), _tierId, false);
 
-        // Increment the total mint cost.
-        _totalMintCost += _tier.price * _tokenIds.length;
-
         for (uint256 _i; _i < _count;) {
             // Set the token ID.
             _tokenId = _tokenIds[_i];
