@@ -759,8 +759,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         virtual
         override
     {
-        // Make sure the current game phase is the minting phase.
-        if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.MINT) {
+        // Make sure the current game phase is the minting or scoring phase.
+        DefifaGamePhase _phase = gamePhaseReporter.currentGamePhaseOf(PROJECT_ID);
+        if (_phase != DefifaGamePhase.MINT && _phase != DefifaGamePhase.SCORING) {
             revert DELEGATE_CHANGES_UNAVAILABLE_IN_THIS_PHASE();
         }
 
@@ -789,8 +790,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @param _delegatee The account to delegate tier attestation units to.
     /// @param _tierId The ID of the tier to delegate attestation units for.
     function setTierDelegateTo(address _delegatee, uint256 _tierId) public virtual override {
-        // Make sure the current game phase is the minting phase.
-        if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.MINT) {
+        // Make sure the current game phase is the minting or scoring phase.
+        DefifaGamePhase _phase = gamePhaseReporter.currentGamePhaseOf(PROJECT_ID);
+        if (_phase != DefifaGamePhase.MINT && _phase != DefifaGamePhase.SCORING) {
             revert DELEGATE_CHANGES_UNAVAILABLE_IN_THIS_PHASE();
         }
 
