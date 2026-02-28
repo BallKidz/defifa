@@ -195,22 +195,21 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // M-D6: delegation blocked after MINT phase
+    // M-D6: delegation allowed during MINT + SCORING, blocked during REFUND
     // =========================================================================
     function testM_D6_delegationBlocked() external {
         _setupGame(4, 1 ether);
 
-        // REFUND phase
+        // REFUND phase — delegation blocked
         vm.warp(block.timestamp + 1 days);
         vm.prank(_users[0]);
         vm.expectRevert(abi.encodeWithSignature("DELEGATE_CHANGES_UNAVAILABLE_IN_THIS_PHASE()"));
         _nft.setTierDelegateTo(address(1), 1);
 
-        // SCORING phase
+        // SCORING phase — delegation allowed (M-D6 fix)
         vm.warp(block.timestamp + 2 days);
         vm.prank(_users[0]);
-        vm.expectRevert(abi.encodeWithSignature("DELEGATE_CHANGES_UNAVAILABLE_IN_THIS_PHASE()"));
-        _nft.setTierDelegateTo(address(1), 1);
+        _nft.setTierDelegateTo(address(1), 1); // should NOT revert
     }
 
     // =========================================================================
