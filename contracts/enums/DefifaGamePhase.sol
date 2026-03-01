@@ -6,5 +6,6 @@ enum DefifaGamePhase {
     MINT,
     REFUND,
     SCORING,
-    COMPLETE
+    COMPLETE,
+    NO_CONTEST
 }

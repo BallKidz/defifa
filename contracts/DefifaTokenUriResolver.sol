@@ -134,6 +134,8 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
                     _gamePhaseText = "Awaiting scorecard approval.";
                 } else if (_gamePhase == DefifaGamePhase.COMPLETE) {
                     _gamePhaseText = "Scorecard locked in. Burn to claim reward.";
+                } else if (_gamePhase == DefifaGamePhase.NO_CONTEST) {
+                    _gamePhaseText = "No contest. Refunds open.";
                 }
 
                 // Keep a reference to the number of tokens outstanding from this tier.

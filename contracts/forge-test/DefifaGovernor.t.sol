@@ -872,7 +872,9 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             defaultAttestationDelegate: address(0),
             tiers: tierParams,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
-            terminal: jbMultiTerminal()
+            terminal: jbMultiTerminal(),
+            minParticipation: 0,
+            scorecardTimeout: 0
         });
         (uint256 _projectId, DefifaHook _nft,) = createDefifaProject(_launchData);
         // Wait until the phase 1 start
@@ -1132,7 +1134,9 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             defaultAttestationDelegate: address(0),
             tiers: tierParams,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
-            terminal: jbMultiTerminal()
+            terminal: jbMultiTerminal(),
+            minParticipation: 0,
+            scorecardTimeout: 0
         });
     }
 

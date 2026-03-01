@@ -139,6 +139,20 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         return _opsOf[_gameId].token;
     }
 
+    /// @notice The safety mechanism parameters of a game.
+    /// @param _gameId The ID of the game to get the safety params of.
+    /// @return minParticipation The minimum treasury balance for the game to proceed to scoring.
+    /// @return scorecardTimeout The maximum time after scoring begins for a scorecard to be ratified.
+    function safetyParamsOf(uint256 _gameId)
+        external
+        view
+        override
+        returns (uint256 minParticipation, uint32 scorecardTimeout)
+    {
+        DefifaOpsData memory _ops = _opsOf[_gameId];
+        return (_ops.minParticipation, _ops.scorecardTimeout);
+    }
+
     /// @notice The current pot the game is being played with.
     /// @param _gameId The ID of the game for which the pot apply.
     /// @param _includeCommitments A flag indicating if the portion of the pot committed to fulfill preprogrammed obligations should be included.
@@ -191,6 +205,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
     /// @notice Returns the number of the game phase.
     /// @dev The game phase corresponds to the game's current funding cycle number.
+    /// @dev NO_CONTEST is returned if the minimum participation threshold is not met, or if the scorecard timeout has elapsed without ratification.
     /// @param _gameId The ID of the game to get the phase number of.
     /// @return The game phase.
     function currentGamePhaseOf(uint256 _gameId) public view override returns (DefifaGamePhase) {
@@ -203,7 +218,27 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         if (_currentRuleset.cycleNumber == 2 && _opsOf[_gameId].refundPeriodDuration != 0) {
             return DefifaGamePhase.REFUND;
         }
+
+        // Check if the scorecard has been ratified (game is COMPLETE).
         if (IDefifaHook(_metadata.dataHook).cashOutWeightIsSet()) return DefifaGamePhase.COMPLETE;
+
+        // Get the game's ops data for the safety mechanism checks.
+        DefifaOpsData memory _ops = _opsOf[_gameId];
+
+        // Check minimum participation threshold: if the treasury balance is below the threshold, the game is NO_CONTEST.
+        if (_ops.minParticipation > 0) {
+            IJBTerminal _terminal = controller.DIRECTORY().primaryTerminalOf(_gameId, _ops.token);
+            uint256 _balance = IJBMultiTerminal(address(_terminal)).STORE().balanceOf(
+                address(_terminal), _gameId, _ops.token
+            );
+            if (_balance < _ops.minParticipation) return DefifaGamePhase.NO_CONTEST;
+        }
+
+        // Check scorecard ratification timeout: if enough time has passed without a ratified scorecard, the game is NO_CONTEST.
+        if (_ops.scorecardTimeout > 0 && block.timestamp > _currentRuleset.start + _ops.scorecardTimeout) {
+            return DefifaGamePhase.NO_CONTEST;
+        }
+
         return DefifaGamePhase.SCORING;
     }
 
@@ -280,7 +315,9 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 token: _launchProjectData.token.token,
                 mintPeriodDuration: _launchProjectData.mintPeriodDuration,
                 refundPeriodDuration: _launchProjectData.refundPeriodDuration,
-                start: _launchProjectData.start
+                start: _launchProjectData.start,
+                minParticipation: _launchProjectData.minParticipation,
+                scorecardTimeout: _launchProjectData.scorecardTimeout
             });
 
             // Keep a reference to the number of splits.
