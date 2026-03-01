@@ -226,7 +226,7 @@ The term $(B_{\text{prize}} + A_{\text{redeemed}})$ reconstructs the \emph{origi
 \begin{itemize}[nosep]
     \item \textbf{Winner-take-all:} $w_j = W_{\text{total}}$ for a single tier $j$, all others zero.
     \item \textbf{Proportional split:} $w_i = W_{\text{total}} \cdot n_i / N_{\text{total}}$, weights by participation count.
-    \item \textbf{No contest:} All $w_i$ set to return mint prices (full refund), or the game enters NO\_CONTEST and refunds are issued automatically.
+    \item \textbf{No contest (by convention):} All $w_i$ set proportionally to return mint prices, effectively implementing a full refund through the standard scorecard mechanism.
 \end{itemize}
 
 \subsection{Fee Extraction Pipeline}
@@ -646,18 +646,15 @@ The formal analysis in Sections~2--8 reveals several structural properties of th
 
 \subsection{Governance Deadlock and Fund Recovery}
 
-\textbf{Severity: Critical.}
+\textbf{Severity: Significant (design consideration).}
 
-The protocol defines enum values \texttt{NO\_CONTEST} and \texttt{NO\_CONTEST\_INEVITABLE}, and the cash-out hook correctly handles them (returning full mint-price refunds). However, the \texttt{currentGamePhaseOf} function in \texttt{DefifaDeployer} contains \emph{no code path} that returns either phase. If no scorecard is ever ratified---because participation is too low for quorum, holders cannot reach consensus, or the event outcome is genuinely ambiguous---the game remains in SCORING permanently.
+\textbf{Historical context.} The original Defifa (Juicebox~V3 era) included \texttt{NO\_CONTEST} and \texttt{NO\_CONTEST\_INEVITABLE} phases. In~V3, each game phase had to be manually advanced by calling \texttt{queueNextPhaseOf()}. If nobody called this function before a funding cycle ``rolled over'' (repeated instead of advancing), the \texttt{\_noContestInevitable()} check detected the rollover and \texttt{\_queueNoContest()} reconfigured the project for permanent full-price refunds. The~V5 port pre-queues all rulesets at launch, eliminating the rollover risk---but also eliminating the sole trigger for no-contest. The dead enum values and handler code were removed as part of the~V5 cleanup.
 
-In SCORING without a ratified scorecard, all tier weights are zero, meaning \texttt{cashOutWeightOf} returns~0 for every token. Players receive nothing upon cash-out and cannot access the refund mechanism (which requires MINT, REFUND, or NO\_CONTEST phase). \textbf{Funds are permanently and irrecoverably locked.}
+\textbf{Current state.} If no scorecard is ever ratified---because participation is too low for quorum, holders cannot reach consensus, or the event outcome is genuinely ambiguous---the game remains in SCORING indefinitely. In SCORING without a ratified scorecard, all tier weights are zero, meaning cash-outs yield nothing. The game's funds remain in the Juicebox treasury with no automated recovery path.
 
-This is the most structurally important finding. Every prediction game has a nonzero probability of governance deadlock. Without a backstop, the expected loss scales linearly with game volume.
+\textbf{Mitigating factors.} Unlike an exploit, governance deadlock is publicly observable. Game organizers and the \texttt{defaultAttestationDelegate} have strong social incentives to ratify a reasonable scorecard (even a full-refund proportional scorecard). The scoring phase has no time limit, giving participants unlimited time to coordinate.
 
-\textbf{Recommended fix.} Add a time-bounded fallback parameter $\tau_{\text{no\_contest}}$ (e.g., 30--90 days). If no scorecard is ratified within this window after scoring begins, the game enters NO\_CONTEST automatically:
-\begin{equation}
-\text{phase} = \begin{cases} \text{NO\_CONTEST} & \text{if } t > t_{\text{start}} + \tau_{\text{no\_contest}} \;\wedge\; \neg\texttt{cashOutWeightIsSet} \\ \text{SCORING} & \text{otherwise} \end{cases}
-\end{equation}
+\textbf{Potential improvement.} A time-bounded fallback could be added: if no scorecard is ratified within a configurable window after scoring begins (e.g., 90~days), cash-outs could default to returning mint prices.
 
 \subsection{Cheap Cross-Tier Attestation Capture}
 
@@ -717,7 +714,7 @@ This paper has formalized the cryptoeconomic mechanisms of Defifa: a prediction-
 
 \textbf{Prize Distribution Mechanics.} Defifa implements a path-independent, weight-proportional prize distribution through Equation~\ref{eq:cashout}. Using $(B_{\text{prize}} + A_{\text{redeemed}})$ as the reference pot ensures every token holder receives the same payout regardless of redemption order. Theorem~6.1 proves total payouts exactly exhaust the prize pool (provided $\sum_i w_i = W_{\text{total}}$; see Section~9.3).
 
-\textbf{Governance Security.} The attestation model achieves a balance between decentralization and efficiency. However, Section~9 identifies two critical governance vulnerabilities: the lack of a NO\_CONTEST fallback (9.1) means governance deadlock permanently locks funds, and cheap cross-tier attestation capture (9.2) allows an attacker buying 1 token in each of $N/2$ unpopular tiers to unilaterally meet quorum. These findings demonstrate that governance security depends critically on participation uniformity across tiers, not just tier count and prices.
+\textbf{Governance Security.} The attestation model (Section~3) achieves a balance between decentralization and efficiency. The per-tier cap on attestation power ($V_{\text{max}} = 10^9$) prevents any single tier from dominating governance, while the 50\% quorum across minted tiers ensures broad participation. However, Section~9 identifies a critical governance vulnerability: cheap cross-tier attestation capture (9.2), where an attacker buying 1~token in each of $N/2$ unpopular tiers can unilaterally meet quorum. The corrected attack cost (Eq.~\ref{eq:cheapattack}) shows that governance security depends not just on tier count and prices, but critically on participation uniformity across tiers. Section~9.1 also discusses the governance deadlock scenario and its historical context.
 
 \textbf{Market Efficiency.} The equilibrium analysis demonstrates convergence to the classical parimutuel result: pot fractions equal consensus probabilities. The three-round information structure (mint $\to$ refund $\to$ secondary) provides richer information aggregation than single-shot mechanisms.
 
@@ -731,9 +728,13 @@ This paper has formalized the cryptoeconomic mechanisms of Defifa: a prediction-
     \item \textbf{Attestation}: Trusted default delegate; 24-hour start delay; 3-day grace period. Ensure $\tau_{\text{grace}} \geq \tau_{\text{attest\_start}}$ (Section~9.4).
     \item \textbf{Fees}: Default 10\% split is competitive; organizer splits should not exceed 5\%.
     \item \textbf{Participation}: Ensure all tiers attract meaningful participation to resist cheap governance capture (Section~9.2). Consider minimum-supply quorum thresholds.
-    \item \textbf{Deadlock protection}: Until a NO\_CONTEST timeout is implemented (Section~9.1), game organizers should establish clear off-chain deadlock-resolution procedures.
+    \item \textbf{Deadlock awareness}: Game organizers should establish clear scorecard-resolution procedures for disputed or low-participation games (Section~9.1).
 \end{enumerate}
 
-\textbf{Synthesis.} Defifa implements a rigorous approach to prediction gaming through the composition of three well-understood mechanisms: parimutuel pooling for price formation, attestation governance for outcome resolution, and Juicebox V5 for treasury management. The mathematical analysis confirms that the system conserves value and converges to informationally efficient equilibria. The open problems identified in Section~9---particularly the governance deadlock risk and cheap cross-tier capture---represent the most important areas for protocol hardening before production deployment at scale. The recommended mitigations (NO\_CONTEST timeout, minimum-supply quorum thresholds, exact weight validation) are backwards-compatible and address the identified vulnerabilities without altering the core mechanism design. The elegance of Defifa resides in its architectural composability: prediction games with arbitrary outcomes, arbitrary tier structures, and arbitrary payout distributions emerge from the same set of parameters, executed deterministically by immutable smart contracts with a single, time-bounded governance input. Addressing the open problems will strengthen this foundation for high-stakes deployment.
+\textbf{Synthesis.} Defifa implements a rigorous approach to prediction gaming through the composition of three well-understood mechanisms: parimutuel pooling for price formation, attestation governance for outcome resolution, and Juicebox V5 for treasury management. The mathematical analysis confirms that the system conserves value and converges to informationally efficient equilibria. The protocol token layer adds a novel incentive dimension that aligns participant, organizer, and protocol interests around game volume growth.
+
+The open problems identified in Section~9---particularly the cheap cross-tier attestation capture (9.2) and prize pool under-allocation (9.3)---represent the most important areas for protocol hardening before production deployment at scale. The recommended mitigations (minimum-supply quorum thresholds, exact weight validation) are backwards-compatible and address the identified vulnerabilities without altering the core mechanism design.
+
+The elegance of Defifa resides in its architectural composability: prediction games with arbitrary outcomes, arbitrary tier structures, and arbitrary payout distributions emerge from the same set of parameters, executed deterministically by immutable smart contracts with a single, time-bounded governance input. Addressing the open problems will strengthen this foundation for high-stakes deployment.
 
 \end{document}
