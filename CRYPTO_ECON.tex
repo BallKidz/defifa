@@ -644,17 +644,77 @@ where $\alpha$ is the fraction of fee value retained in protocol tokens. For $\a
 
 The formal analysis in Sections~2--8 reveals several structural properties of the Defifa mechanism that merit attention. This section catalogs open problems discovered through systematic code review and game-theoretic analysis, ordered by severity, and proposes concrete protocol-level mitigations.
 
-\subsection{Governance Deadlock and Fund Recovery}
+\subsection{Governance Deadlock and Fund Recovery: A Deep Study}
 
 \textbf{Severity: Significant (design consideration).}
 
-\textbf{Historical context.} The original Defifa (Juicebox~V3 era) included \texttt{NO\_CONTEST} and \texttt{NO\_CONTEST\_INEVITABLE} phases. In~V3, each game phase had to be manually advanced by calling \texttt{queueNextPhaseOf()}. If nobody called this function before a funding cycle ``rolled over'' (repeated instead of advancing), the \texttt{\_noContestInevitable()} check detected the rollover and \texttt{\_queueNoContest()} reconfigured the project for permanent full-price refunds. The~V5 port pre-queues all rulesets at launch, eliminating the rollover risk---but also eliminating the sole trigger for no-contest. The dead enum values and handler code were removed as part of the~V5 cleanup.
+\subsubsection{Historical Context}
 
-\textbf{Current state.} If no scorecard is ever ratified---because participation is too low for quorum, holders cannot reach consensus, or the event outcome is genuinely ambiguous---the game remains in SCORING indefinitely. In SCORING without a ratified scorecard, all tier weights are zero, meaning cash-outs yield nothing. The game's funds remain in the Juicebox treasury with no automated recovery path.
+The original Defifa (Juicebox~V3 era) included \texttt{NO\_CONTEST} and \texttt{NO\_CONTEST\_INEVITABLE} phases. In~V3, each game phase had to be manually advanced by calling \texttt{queueNextPhaseOf()}. If nobody called this function before a funding cycle ``rolled over,'' the \texttt{\_noContestInevitable()} check detected the rollover and \texttt{\_queueNoContest()} reconfigured the project for permanent full-price refunds (\texttt{duration=0}, \texttt{cashOutTaxRate=0}, \texttt{pausePay=true}). The~V5 port pre-queues all rulesets at launch, eliminating the rollover risk---but also eliminating the sole trigger for no-contest. The dead code was removed as part of the~V5 cleanup (see AUDIT\_FINDINGS L-D5). This section formally analyzes whether a new form of no-contest should be reintroduced.
 
-\textbf{Mitigating factors.} Unlike an exploit, governance deadlock is publicly observable. Game organizers and the \texttt{defaultAttestationDelegate} have strong social incentives to ratify a reasonable scorecard (even a full-refund proportional scorecard). The scoring phase has no time limit, giving participants unlimited time to coordinate.
+\subsubsection{Exhaustive Deadlock Scenario Analysis}
 
-\textbf{Potential improvement.} A time-bounded fallback could be added: if no scorecard is ratified within a configurable window after scoring begins (e.g., 90~days), cash-outs could default to returning mint prices.
+We identify five distinct scenarios in which game funds could become permanently inaccessible:
+
+\textbf{Scenario~A: No scorecard submitted.} The game reaches SCORING. Nobody calls \texttt{submitScorecardFor()}. All tier cash-out weights remain zero. The hook returns \texttt{cashOutCount = 0} and \texttt{afterCashOutRecordedWith} reverts with \texttt{NOTHING\_TO\_CLAIM}. Funds remain in the treasury indefinitely.
+
+\textbf{Scenario~B: Quorum unreachable.} A scorecard exists but attestation power is fragmented. No single scorecard accumulates 50\% of eligible attestation weight. The governor's \texttt{stateOf()} returns ACTIVE indefinitely---there is no expiry on attestation.
+
+\textbf{Scenario~C: Dead attestation delegate.} The \texttt{defaultAttestationDelegate} is set to an inaccessible address. Since delegation can only be changed during MINT, the accumulated attestation power is irrecoverably locked after MINT ends.
+
+\textbf{Scenario~D: Attestation power in dead addresses.} If $>50\%$ of game pieces are transferred to contracts that cannot call \texttt{attestToScorecardFrom()}, exercisable attestation power drops below quorum permanently.
+
+\textbf{Scenario~E: Split target reverts on ratification.} \texttt{ratifyScorecardFrom()} calls \texttt{fulfillCommitmentsOf()}, which calls \texttt{sendPayoutsOf()}. If a split target reverts, the entire ratification transaction fails despite a governance-approved scorecard.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lccc}
+\toprule
+Scenario & Funds stuck? & Delegate resolves? & Automated? \\
+\midrule
+A: No scorecard & Yes & Yes, if active & No \\
+B: Quorum unreachable & Yes & Yes, if has power & No \\
+C: Dead delegate & Yes & No & No \\
+D: Dead attestation holders & Yes & No & No \\
+E: Split target reverts & Yes & No & No \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Effectiveness of the Default Attestation Delegate}
+
+When set, the \texttt{defaultAttestationDelegate} receives attestation units from every minter who does not specify a custom delegate. If no minter re-delegates, the delegate holds 100\% of attestation power---easily exceeding quorum. It resolves Scenarios~A and~B in the common case.
+
+However, it provides no hard guarantee because it depends on four assumptions: (1)~the delegate is set (\texttt{address(0)} is valid), (2)~the delegate remains operational, (3)~the delegate acts honestly (it could self-ratify a malicious scorecard), and (4)~minters do not re-delegate. The delegate is an excellent first line of defense---a trusted, social mechanism---but not a trustless, automated one.
+
+\subsubsection{Candidate Mechanism~A: Minimum Participation Threshold}
+
+At game initialization, the organizer sets \texttt{minParticipation}---a minimum treasury balance required to proceed to SCORING. If the balance is below this threshold, the game enters a no-contest state where cash-outs return mint prices. Implementation: one new \texttt{uint256} in the ops data; \texttt{currentGamePhaseOf()} checks the balance before returning SCORING.
+
+\emph{What it solves:} Ghost games with negligible participation skip directly to refundability. \emph{What it does not solve:} Post-threshold governance deadlocks (Scenarios~B--E). \emph{Attack surface:} A majority holder can refund enough tokens to push the balance below threshold, unilaterally killing the game. \emph{Mitigation:} Set the threshold conservatively low (${\sim}10\%$ of expected pot).
+
+\subsubsection{Candidate Mechanism~B: Scorecard Ratification Timeout}
+
+At game initialization, the organizer sets \texttt{scorecardTimeout}---a duration after SCORING begins. If no scorecard is ratified within this window, the game enters a no-contest state. Implementation: one new \texttt{uint256}; \texttt{currentGamePhaseOf()} checks \texttt{block.timestamp > scoringStart + timeout}.
+
+\emph{What it solves:} All five deadlock scenarios (A--E). This is the only mechanism providing a hard, trustless, time-bounded guarantee. \emph{Interaction with the governor:} Partially-attested scorecards expire gracefully. The critical edge case is a SUCCEEDED scorecard that hasn't been ratified when the timeout fires---mitigated by generous timeouts (90--180~days) or a short ``ratification grace period.'' \emph{Attack surface:} Minimal---an adversary cannot accelerate the timeout.
+
+\subsubsection{Do We Need a Formal State?}
+
+Both mechanisms can be implemented as \emph{computed states} in \texttt{currentGamePhaseOf()}---no on-chain state transition required. The SCORING ruleset already has \texttt{cashOutTaxRate = 0} and \texttt{pausePay = true}, which are the correct parameters for refunds. Adding a named enum value provides clearer UI/indexer signaling, but the behavior itself requires no new handler logic beyond the existing MINT/REFUND refund path.
+
+\subsubsection{Assessment and Recommendation}
+
+The \texttt{defaultAttestationDelegate} resolves the vast majority of practical deadlocks and is sufficient for games with trusted organizers. However, for permissionless, trustless game creation, a hard guarantee is essential. We recommend:
+
+\begin{enumerate}[nosep]
+\item \textbf{Scorecard ratification timeout} as the primary safety mechanism. Covers all five deadlock scenarios. Implementation cost: one \texttt{uint256}, one timestamp comparison. Recommended default: 90~days.
+\item \textbf{Minimum participation threshold} as an optional complement. Provides early termination for non-viable games. Implementation cost: one \texttt{uint256}, one balance check.
+\item Both mechanisms should be \textbf{optional} (default: 0 = disabled) to preserve backward compatibility.
+\item The game should \textbf{remain fully playable without either mechanism}---they are safety nets, not requirements.
+\end{enumerate}
+
+The combination of delegate (fast-path social resolution) + timeout (hard backstop) + threshold (early exit) provides defense in depth where each mechanism covers the failure modes of the others.
 
 \subsection{Cheap Cross-Tier Attestation Capture}
 
@@ -714,7 +774,7 @@ This paper has formalized the cryptoeconomic mechanisms of Defifa: a prediction-
 
 \textbf{Prize Distribution Mechanics.} Defifa implements a path-independent, weight-proportional prize distribution through Equation~\ref{eq:cashout}. Using $(B_{\text{prize}} + A_{\text{redeemed}})$ as the reference pot ensures every token holder receives the same payout regardless of redemption order. Theorem~6.1 proves total payouts exactly exhaust the prize pool (provided $\sum_i w_i = W_{\text{total}}$; see Section~9.3).
 
-\textbf{Governance Security.} The attestation model (Section~3) achieves a balance between decentralization and efficiency. The per-tier cap on attestation power ($V_{\text{max}} = 10^9$) prevents any single tier from dominating governance, while the 50\% quorum across minted tiers ensures broad participation. However, Section~9 identifies a critical governance vulnerability: cheap cross-tier attestation capture (9.2), where an attacker buying 1~token in each of $N/2$ unpopular tiers can unilaterally meet quorum. The corrected attack cost (Eq.~\ref{eq:cheapattack}) shows that governance security depends not just on tier count and prices, but critically on participation uniformity across tiers. Section~9.1 also discusses the governance deadlock scenario and its historical context.
+\textbf{Governance Security.} The attestation model (Section~3) achieves a balance between decentralization and efficiency. The per-tier cap on attestation power ($V_{\text{max}} = 10^9$) prevents any single tier from dominating governance, while the 50\% quorum across minted tiers ensures broad participation. However, Section~9 identifies a critical governance vulnerability: cheap cross-tier attestation capture (9.2), where an attacker buying 1~token in each of $N/2$ unpopular tiers can unilaterally meet quorum. The corrected attack cost (Eq.~\ref{eq:cheapattack}) shows that governance security depends not just on tier count and prices, but critically on participation uniformity across tiers. The deep study in Section~9.1 identifies five distinct deadlock scenarios and evaluates two candidate safety mechanisms (participation thresholds and ratification timeouts), concluding that both are valuable optional additions but that the existing system remains fully playable without them when games have active organizers and trusted delegates.
 
 \textbf{Market Efficiency.} The equilibrium analysis demonstrates convergence to the classical parimutuel result: pot fractions equal consensus probabilities. The three-round information structure (mint $\to$ refund $\to$ secondary) provides richer information aggregation than single-shot mechanisms.
 
@@ -728,13 +788,13 @@ This paper has formalized the cryptoeconomic mechanisms of Defifa: a prediction-
     \item \textbf{Attestation}: Trusted default delegate; 24-hour start delay; 3-day grace period. Ensure $\tau_{\text{grace}} \geq \tau_{\text{attest\_start}}$ (Section~9.4).
     \item \textbf{Fees}: Default 10\% split is competitive; organizer splits should not exceed 5\%.
     \item \textbf{Participation}: Ensure all tiers attract meaningful participation to resist cheap governance capture (Section~9.2). Consider minimum-supply quorum thresholds.
-    \item \textbf{Deadlock awareness}: Game organizers should establish clear scorecard-resolution procedures for disputed or low-participation games (Section~9.1).
+    \item \textbf{Deadlock protection}: For permissionless games, set a scorecard ratification timeout (90--180~days recommended) and optionally a minimum participation threshold. For trusted-organizer games, the \texttt{defaultAttestationDelegate} is sufficient (Section~9.1).
 \end{enumerate}
 
 \textbf{Synthesis.} Defifa implements a rigorous approach to prediction gaming through the composition of three well-understood mechanisms: parimutuel pooling for price formation, attestation governance for outcome resolution, and Juicebox V5 for treasury management. The mathematical analysis confirms that the system conserves value and converges to informationally efficient equilibria. The protocol token layer adds a novel incentive dimension that aligns participant, organizer, and protocol interests around game volume growth.
 
-The open problems identified in Section~9---particularly the cheap cross-tier attestation capture (9.2) and prize pool under-allocation (9.3)---represent the most important areas for protocol hardening before production deployment at scale. The recommended mitigations (minimum-supply quorum thresholds, exact weight validation) are backwards-compatible and address the identified vulnerabilities without altering the core mechanism design.
+The open problems identified in Section~9---particularly the cheap cross-tier attestation capture (9.2) and prize pool under-allocation (9.3)---represent the most important areas for protocol hardening before production deployment at scale. The recommended mitigations (minimum-supply quorum thresholds, exact weight validation) are backwards-compatible and address the identified vulnerabilities without altering the core mechanism design. The deep study of governance deadlock (9.1) confirms that the existing architecture is sound---the \texttt{defaultAttestationDelegate} resolves the majority of practical deadlocks---but that optional safety mechanisms (ratification timeout, participation threshold) provide valuable defense in depth for permissionless deployment without adding mandatory complexity.
 
-The elegance of Defifa resides in its architectural composability: prediction games with arbitrary outcomes, arbitrary tier structures, and arbitrary payout distributions emerge from the same set of parameters, executed deterministically by immutable smart contracts with a single, time-bounded governance input. Addressing the open problems will strengthen this foundation for high-stakes deployment.
+The elegance of Defifa resides in its architectural composability: prediction games with arbitrary outcomes, arbitrary tier structures, and arbitrary payout distributions emerge from the same set of parameters, executed deterministically by immutable smart contracts with a single, time-bounded governance input. The game remains fully playable and efficient without additional states---the proposed safety mechanisms are optional parameters that expand the design space for risk-averse game creators while preserving the protocol's minimalist architecture for those who prefer it.
 
 \end{document}
