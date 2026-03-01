@@ -52,7 +52,14 @@ Defifa is a prediction-game protocol built on Juicebox V5 that transforms NFT mi
    1. [Tier Count and Price Calibration](#81-tier-count-and-price-calibration)
    2. [Timing Parameters](#82-timing-parameters)
    3. [Fee Calibration and Protocol Sustainability](#83-fee-calibration-and-protocol-sustainability)
-9. [Conclusions and Practical Implications](#9-conclusions-and-practical-implications)
+9. [Open Problems and Mechanism Design Recommendations](#9-open-problems-and-mechanism-design-recommendations)
+   1. [Governance Deadlock and Fund Recovery](#91-governance-deadlock-and-fund-recovery)
+   2. [Cheap Cross-Tier Attestation Capture](#92-cheap-cross-tier-attestation-capture)
+   3. [Prize Pool Under-Allocation](#93-prize-pool-under-allocation)
+   4. [Attestation Timing Misconfiguration](#94-attestation-timing-misconfiguration)
+   5. [Pre-Scoring Scorecard Submission](#95-pre-scoring-scorecard-submission)
+   6. [Fee Extraction Fragility](#96-fee-extraction-fragility)
+10. [Conclusions and Practical Implications](#10-conclusions-and-practical-implications)
 
 ---
 
@@ -353,15 +360,23 @@ The attestation model incorporates several defenses against strategic manipulati
 
 **Defense 4: 50% quorum across tiers.** Requiring half of all minted tiers' worth of attestation power means that no coalition controlling fewer than half the minted tiers can unilaterally ratify a fraudulent scorecard — even with 100% participation within their controlled tiers.
 
-**Remaining attack surface.** A coalition controlling $>50\%$ of minted tiers (by token count within each tier) could ratify an arbitrary scorecard. For a game with $N$ tiers, this requires majority token holdings in at least $\lceil N/2 \rceil$ tiers. The economic cost of this attack is at least:
+**Remaining attack surface.** A coalition controlling sufficient attestation power across $\lceil N_{\text{minted}}/2 \rceil$ tiers can ratify an arbitrary scorecard. The critical insight is that attestation power within a tier is *proportional to token holdings*, not absolute. An attacker holding 100% of a tier's supply — even just 1 token — receives the full $V_{\text{max}} = 10^9$ attestation power for that tier.
 
-$$C_{\text{attack}} \geq \sum_{i \in \text{majority set}} \left\lceil \frac{n_i + 1}{2} \right\rceil \cdot p_i \tag{26}$$
+**Worst-case attack cost (heavily minted tiers).** When all tiers are well-populated, the attacker must acquire majority holdings in at least $\lceil N/2 \rceil$ tiers:
 
-For the attack to be profitable, the attacker must redirect more than $C_{\text{attack}}$ in prize value to their controlled tiers, which requires the pot to satisfy:
+$$C_{\text{attack}}^{\text{worst}} \geq \sum_{i \in \text{majority set}} \left\lceil \frac{n_i + 1}{2} \right\rceil \cdot p_i \tag{26}$$
+
+**Best-case attack cost (sparse tiers).** When some tiers have zero or minimal mints, the attacker can buy 1 token in each unminted tier, becoming the sole holder and receiving full attestation power:
+
+$$C_{\text{attack}}^{\text{best}} = \sum_{i \in \text{cheapest } \lceil N/2 \rceil \text{ unminted tiers}} p_i \tag{26a}$$
+
+This is potentially orders of magnitude cheaper than Eq. 26. In a game with 32 tiers at 0.01 ETH where 16 tiers have zero mints, the attacker spends just $16 \times 0.01 = 0.16$ ETH to meet quorum single-handedly — regardless of pot size. They could then ratify a scorecard directing the entire prize pool to their tokens. **This is the most significant governance vulnerability identified in this analysis** and is discussed further in Section 9.2.
+
+For the attack to be profitable, the attacker must redirect more than $C_{\text{attack}}$ in prize value to their controlled tiers:
 
 $$B_{\text{prize}} > C_{\text{attack}} \cdot \frac{W_{\text{total}}}{\sum_{i \in \text{majority set}} w_i^{\text{proposed}}} \tag{27}$$
 
-In practice, for games with many tiers and distributed participation, the cost of controlling majority positions across sufficient tiers exceeds the potential redirect, making the attack unprofitable.
+For the sparse-tier attack, this condition is almost always satisfied when the pot is nontrivial, making the attack economically rational. Games with broad, uniform participation across all tiers are resistant; games with uneven participation are vulnerable.
 
 ---
 
@@ -666,7 +681,140 @@ For $\alpha = 0.5$ (protocol tokens retain 50% of their minting value): $\phi_{\
 
 ---
 
-## 9 Conclusions and Practical Implications
+## 9 Open Problems and Mechanism Design Recommendations
+
+The formal analysis in Sections 2–8 reveals several structural properties of the Defifa mechanism that merit attention. This section catalogs open problems discovered through systematic code review and game-theoretic analysis, ordered by severity, and proposes concrete protocol-level mitigations.
+
+### 9.1 Governance Deadlock and Fund Recovery
+
+**Severity: Critical.**
+
+The protocol defines enum values `DefifaGamePhase.NO_CONTEST` and `NO_CONTEST_INEVITABLE`, and the cash-out hook correctly handles them (returning full mint-price refunds). However, the `currentGamePhaseOf` function in `DefifaDeployer` contains *no code path* that returns either phase:
+
+```
+if (cycleNumber == 0) → COUNTDOWN
+if (cycleNumber == 1) → MINT
+if (cycleNumber == 2 && hasRefund) → REFUND
+if (cashOutWeightIsSet) → COMPLETE
+else → SCORING
+```
+
+If no scorecard is ever ratified — because participation is too low for quorum, holders cannot reach consensus, or the event outcome is genuinely ambiguous — the game remains in SCORING permanently. In SCORING without a ratified scorecard, all tier weights are zero (`cashOutWeightOf` returns 0), meaning cash-outs yield nothing. Players cannot access the refund mechanism (requires MINT, REFUND, or NO_CONTEST phase). **Funds are permanently and irrecoverably locked in the Juicebox treasury.**
+
+This is the most structurally important finding. Every prediction game has a nonzero probability of governance deadlock (insufficient participation, disputed outcomes, abandoned games). Without a backstop, the expected loss from deadlock events scales linearly with game volume.
+
+**Recommended fix.** Add a time-bounded fallback parameter `noContestTimeout` (e.g., 30–90 days). If no scorecard is ratified within this window after scoring begins, the game enters NO_CONTEST automatically:
+
+$$\text{phase} = \begin{cases} \text{NO\_CONTEST} & \text{if } t > t_{\text{start}} + \tau_{\text{no\_contest}} \text{ and } \neg\text{cashOutWeightIsSet} \\ \text{SCORING} & \text{otherwise} \end{cases}$$
+
+### 9.2 Cheap Cross-Tier Attestation Capture
+
+**Severity: Critical.**
+
+As identified in the corrected attack cost analysis (Section 3.4, Eq. 26a), the per-tier attestation power cap creates an unintended vulnerability in games with uneven participation. The mechanism assigns equal maximum attestation power ($V_{\text{max}} = 10^9$) to every tier *regardless of its minted supply*. A tier with 1 token has the same governance weight as a tier with 10,000 tokens.
+
+**The attack.** An adversary identifies $\lceil N/2 \rceil$ tiers with zero or minimal mints (typically obscure/unlikely outcomes). They purchase 1 token in each, becoming the sole holder and receiving full $V_{\text{max}}$ attestation power per tier. Their total attestation power:
+
+$$A_{\text{attacker}} = \lceil N/2 \rceil \cdot V_{\text{max}} \geq Q = \frac{N_{\text{minted}}}{2} \cdot V_{\text{max}}$$
+
+The attacker meets quorum unilaterally. They then submit a scorecard assigning $W_{\text{total}}$ to one of their tiers and ratify it.
+
+**Numerical example.** A 32-tier sports game at 0.01 ETH per token. Popular tiers (say 16 NFL teams) accumulate 1,000 tokens each. The remaining 16 tiers receive no organic mints. The attacker buys 1 token in each of the 16 empty tiers for 0.16 ETH total. They can now ratify a scorecard directing the entire prize pool ($\sim$144 ETH after fees) to a single tier they hold. **Return on investment: $\sim$900x.**
+
+**Root cause.** The quorum function counts *any tier with nonzero supply* as eligible, giving each equal weight. This conflates "a tier that represents meaningful community participation" with "a tier that a single actor created a position in."
+
+**Recommended fix.** Introduce a minimum supply threshold for quorum eligibility:
+
+$$Q = \frac{1}{2} \sum_{i=1}^{N} \mathbb{1}\left[n_i \geq n_{\text{min}}\right] \cdot V_{\text{max}}$$
+
+where $n_{\text{min}} \geq 2$ (or better, a configurable parameter). Alternatively, weight each tier's attestation power by a concave function of its supply, such as $\min(V_{\text{max}}, \; \sqrt{n_i} \cdot V_{\text{max}} / \sqrt{n_{\text{ref}}})$, which provides sublinear scaling that resists both single-token capture and whale dominance.
+
+### 9.3 Prize Pool Under-Allocation
+
+**Severity: Significant.**
+
+The weight validation in `setTierCashOutWeightsTo` (`DefifaHook.sol:643`) uses a strict greater-than check:
+
+```solidity
+if (_cumulativeCashOutWeight > TOTAL_CASHOUT_WEIGHT) revert INVALID_CASHOUT_WEIGHTS();
+```
+
+A scorecard with weights summing to *less than* $W_{\text{total}}$ passes this check. The total distributed to all players is then:
+
+$$\text{Total payouts} = B_{\text{prize}} \cdot \frac{\sum_i w_i}{W_{\text{total}}} < B_{\text{prize}}$$
+
+The difference $B_{\text{prize}} \cdot \left(1 - \frac{\sum_i w_i}{W_{\text{total}}}\right)$ remains permanently trapped in the treasury. This breaks the conservation guarantee of Theorem 6.1, which assumes $\sum_i w_i = W_{\text{total}}$.
+
+**Strategic exploitation.** A coalition controlling quorum could propose a scorecard where their tiers receive generous weights but the total is intentionally less than $W_{\text{total}}$. The "burned" fraction harms all participants equally, but the coalition benefits disproportionately from the redistributed portion. This is preferable for them when the alternative is sharing with non-coalition tiers.
+
+**Recommended fix.** Change the check to exact equality:
+
+```solidity
+if (_cumulativeCashOutWeight != TOTAL_CASHOUT_WEIGHT) revert INVALID_CASHOUT_WEIGHTS();
+```
+
+This restores the conservation guarantee of Theorem 6.1 unconditionally.
+
+### 9.4 Attestation Timing Misconfiguration
+
+**Severity: Significant.**
+
+In `submitScorecardFor`, both `attestationsBegin` and `gracePeriodEnds` are computed relative to `block.timestamp` at submission time — not relative to each other:
+
+```solidity
+_scorecard.attestationsBegin = uint48(block.timestamp + _timeUntilAttestationsBegin);
+_scorecard.gracePeriodEnds = uint48(block.timestamp + attestationGracePeriodOf(_gameId));
+```
+
+If `attestationGracePeriod < attestationStartTime`, the grace period expires *before attestations even begin*. The `stateOf` function then transitions from PENDING directly past the grace period check, creating a zero-length effective attestation window. Additionally, `initializeGame` performs no validation on the relationship between these parameters.
+
+**Impact.** A misconfigured game — whether through error or intentional parameter choice — could have its scorecard ratified with no effective attestation window, bypassing the governance protections that Sections 3.1–3.4 assume.
+
+**Recommended fix.** Compute `gracePeriodEnds` relative to `attestationsBegin`:
+
+$$t_{\text{grace\_end}} = t_{\text{attest\_begin}} + \tau_{\text{grace}}$$
+
+Or equivalently, validate in `initializeGame` that `attestationGracePeriod >= attestationStartTime`.
+
+### 9.5 Pre-Scoring Scorecard Submission
+
+**Severity: Moderate.**
+
+The `submitScorecardFor` function contains no check on the current game phase. Scorecards can be submitted and accumulate attestations during the MINT phase — before the underlying event has even occurred. While `setTierCashOutWeightsTo` does enforce the SCORING phase for weight application, the ability to pre-accumulate attestations means a well-coordinated group can achieve SUCCEEDED state before scoring opens, then ratify instantly when it does.
+
+This front-running advantage is particularly pronounced for the `defaultAttestationDelegate`, whose submissions are flagged and likely to attract delegation during the mint phase. In the worst case, a game's outcome could be decided by governance before the real-world event even starts, if the delegate's scorecard reaches quorum during minting.
+
+**Recommended fix.** Add a phase check in `submitScorecardFor`:
+
+```solidity
+if (gamePhaseReporter.currentGamePhaseOf(_gameId) != DefifaGamePhase.SCORING) {
+    revert NOT_ALLOWED();
+}
+```
+
+### 9.6 Fee Extraction Fragility
+
+**Severity: Moderate.**
+
+In `fulfillCommitmentsOf` (`DefifaDeployer.sol:439–445`), the function calls `sendPayoutsOf` with `minTokensPaidOut` set to the full treasury balance:
+
+```solidity
+_terminal.sendPayoutsOf({
+    projectId: _gameId,
+    token: _token,
+    amount: _pot,
+    currency: ...,
+    minTokensPaidOut: _pot
+});
+```
+
+The split structure routes fees (~10%) to protocol projects and returns the remainder (~90%) back to the game treasury via `addToBalanceOf`. If `sendPayoutsOf` interprets `minTokensPaidOut` as the minimum that permanently leaves the project (rather than the total processed), this transaction will revert — because only ~10% actually leaves. This would permanently block fee extraction and game completion, trapping all funds.
+
+**Recommended fix.** Set `minTokensPaidOut` to 0 or to the expected fee amount (i.e., `_pot / baseProtocolFeeDivisor + _pot / defifaFeeDivisor`). This preserves the economic intent while removing the revert risk.
+
+---
+
+## 10 Conclusions and Practical Implications
 
 This paper has formalized the cryptoeconomic mechanisms of Defifa: a prediction-game protocol that transforms NFT minting into a parimutuel wagering mechanism with governance-ratified outcomes. Through mathematical analysis of the minting, refund, scorecard, and prize distribution operations, we have derived conservation guarantees, characterized equilibrium behavior, analyzed governance security, and mapped the parameter design space.
 
@@ -680,7 +828,7 @@ The scorecard weight system ($\sum w_i = 10^{18}$) provides a flexible framework
 
 The attestation model (Section 3) achieves a balance between decentralization and efficiency. The per-tier cap on attestation power ($V_{\text{max}} = 10^9$) prevents any single tier from dominating governance, while the 50% quorum across minted tiers ensures broad participation. The checkpoint-based snapshot prevents vote-buying, and mint-phase-only delegation prevents last-minute manipulation.
 
-The economic cost of a successful attestation attack (Eq. 26) scales with the number of tiers and mint prices, providing a quantifiable security budget. For games with $\geq 8$ tiers and uniform pricing above 0.01 ETH, the attack cost typically exceeds the potential redirect, making governance manipulation economically irrational.
+However, Section 9 identifies two critical governance vulnerabilities: (1) the lack of a NO_CONTEST fallback, which means governance deadlock permanently locks funds, and (2) the cheap cross-tier attestation capture, where an attacker buying 1 token in each of $N/2$ unpopular tiers can unilaterally meet quorum. These findings temper the governance security conclusions for games with uneven participation profiles. The corrected attack cost (Eq. 26a) shows that governance security depends not just on tier count and prices, but critically on participation uniformity across tiers.
 
 ### Market Efficiency
 
@@ -697,11 +845,15 @@ For game designers deploying Defifa games:
 1. **Tier count**: 4–32 tiers balances governance security with outcome expressiveness.
 2. **Pricing**: Uniform pricing between 0.01–1 ETH provides the cleanest parimutuel dynamics.
 3. **Refund phase**: 1–7 days gives meaningful optionality without excessive pot instability.
-4. **Attestation**: A trusted default delegate reduces coordination costs; 24-hour attestation start delay and 3-day grace period balance speed with security.
+4. **Attestation**: A trusted default delegate reduces coordination costs; 24-hour attestation start delay and 3-day grace period balance speed with security. Ensure `attestationGracePeriod >= attestationStartTime` (Section 9.4).
 5. **Fees**: The default 10% split (5% Defifa + 5% base protocol) is competitive; additional organizer splits should not exceed 5% to keep effective rates under 15%.
+6. **Participation uniformity**: Ensure all tiers attract meaningful participation to resist cheap governance capture (Section 9.2). Consider minimum-supply quorum thresholds.
+7. **Deadlock protection**: Until the protocol implements a NO_CONTEST timeout (Section 9.1), game organizers should communicate clear deadlock-resolution procedures off-chain.
 
 ### Synthesis
 
-Defifa implements a rigorous approach to prediction gaming through the composition of three well-understood mechanisms: parimutuel pooling for price formation, attestation governance for outcome resolution, and Juicebox V5 for treasury management. The mathematical analysis confirms that the system conserves value, resists governance manipulation for realistic parameter ranges, and converges to informationally efficient equilibria. The protocol token layer adds a novel incentive dimension that aligns participant, organizer, and protocol interests around game volume growth.
+Defifa implements a rigorous approach to prediction gaming through the composition of three well-understood mechanisms: parimutuel pooling for price formation, attestation governance for outcome resolution, and Juicebox V5 for treasury management. The mathematical analysis confirms that the system conserves value and converges to informationally efficient equilibria. The protocol token layer adds a novel incentive dimension that aligns participant, organizer, and protocol interests around game volume growth.
 
-The elegance of Defifa resides in its architectural composability: prediction games with arbitrary outcomes, arbitrary tier structures, and arbitrary payout distributions emerge from the same set of seven parameters (Eq. 1), executed deterministically by immutable smart contracts with a single, time-bounded governance input.
+The open problems identified in Section 9 — particularly the governance deadlock risk (9.1) and cheap cross-tier capture (9.2) — represent the most important areas for protocol hardening before production deployment at scale. The recommended mitigations (NO_CONTEST timeout, minimum-supply quorum thresholds, exact weight validation) are backwards-compatible and address the identified vulnerabilities without altering the core mechanism design.
+
+The elegance of Defifa resides in its architectural composability: prediction games with arbitrary outcomes, arbitrary tier structures, and arbitrary payout distributions emerge from the same set of seven parameters (Eq. 1), executed deterministically by immutable smart contracts with a single, time-bounded governance input. Addressing the open problems will strengthen this foundation for high-stakes deployment.
