@@ -124,11 +124,7 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
                 // Set the pot text.
                 _potText = _formatBalance(_gamePot, _gamePotToken, _gamePotDecimals, _IMG_DECIMAL_FIDELITY);
 
-                if (_gamePhase == DefifaGamePhase.NO_CONTEST) {
-                    _gamePhaseText = "No contest. Refunds open.";
-                } else if (_gamePhase == DefifaGamePhase.NO_CONTEST_INEVITABLE) {
-                    _gamePhaseText = "No contest inevitable. Refunds open.";
-                } else if (_gamePhase == DefifaGamePhase.COUNTDOWN) {
+                if (_gamePhase == DefifaGamePhase.COUNTDOWN) {
                     _gamePhaseText = "Minting starts soon.";
                 } else if (_gamePhase == DefifaGamePhase.MINT) {
                     _gamePhaseText = "Minting and refunds are open.";

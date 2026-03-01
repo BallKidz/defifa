@@ -72,9 +72,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @notice This contract current nonce, used for the registry initialized at 1 since the first contract deployed is the hook
     uint256 internal _nonce;
 
-    /// @notice If each game has been set to no contest.
-    mapping(uint256 => bool) internal _noContestIsSet;
-
     //*********************************************************************//
     // ------------------ public immutable properties -------------------- //
     //*********************************************************************//

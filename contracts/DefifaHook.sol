@@ -35,7 +35,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     error NOTHING_TO_CLAIM();
     error NOTHING_TO_MINT();
     error WRONG_CURRENCY();
-    error NO_CONTEST();
     error OVERSPENDING();
     error CASHOUT_WEIGHTS_ALREADY_SET();
     error RESERVED_TOKEN_MINTING_PAUSED();
@@ -360,11 +359,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         hookSpecifications = new JBCashOutHookSpecification[](1);
         hookSpecifications[0] = JBCashOutHookSpecification(this, 0, abi.encode(_cumulativeMintPrice));
 
-        // If the game is in its minting, refund, or no contest phase, reclaim amount is the same as it costed to mint.
-        if (
-            _gamePhase == DefifaGamePhase.MINT || _gamePhase == DefifaGamePhase.REFUND
-                || _gamePhase == DefifaGamePhase.NO_CONTEST || _gamePhase == DefifaGamePhase.NO_CONTEST_INEVITABLE
-        ) {
+        // If the game is in its minting or refund phase, reclaim amount is the same as it costed to mint.
+        if (_gamePhase == DefifaGamePhase.MINT || _gamePhase == DefifaGamePhase.REFUND) {
             cashOutCount = _cumulativeMintPrice;
         } else {
             // If the game is in its scoring or complete phase, reclaim amount is based on the tier weights.
@@ -600,11 +596,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Make sure the cashOut weights haven't already been set.
         if (cashOutWeightIsSet) revert CASHOUT_WEIGHTS_ALREADY_SET();
-
-        // Make sure the game is not in no contest.
-        if (_gamePhase == DefifaGamePhase.NO_CONTEST || _gamePhase == DefifaGamePhase.NO_CONTEST_INEVITABLE) {
-            revert NO_CONTEST();
-        }
 
         // Keep a reference to the max tier ID.
         uint256 _maxTierId = store.maxTierIdOf(address(this));
