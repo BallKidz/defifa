@@ -52,15 +52,15 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
-    error CANT_FULFILL_YET();
-    error GAME_OVER();
-    error INVALID_FEE_PERCENT();
-    error INVALID_GAME_CONFIGURATION();
-    error INCORRECT_DECIMAL_AMOUNT();
-    error TERMINAL_NOT_FOUND();
-    error PHASE_ALREADY_QUEUED();
-    error SPLITS_DONT_ADD_UP();
-    error UNEXPECTED_TERMINAL_CURRENCY();
+    error DefifaDeployer_CantFulfillYet();
+    error DefifaDeployer_GameOver();
+    error DefifaDeployer_InvalidFeePercent();
+    error DefifaDeployer_InvalidGameConfiguration();
+    error DefifaDeployer_IncorrectDecimalAmount();
+    error DefifaDeployer_TerminalNotFound();
+    error DefifaDeployer_PhaseAlreadyQueued();
+    error DefifaDeployer_SplitsDontAddUp();
+    error DefifaDeployer_UnexpectedTerminalCurrency();
 
     //*********************************************************************//
     // ----------------------- internal properties ----------------------- //
@@ -272,7 +272,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             _launchProjectData.mintPeriodDuration == 0
                 || _launchProjectData.start
                     < block.timestamp + _launchProjectData.refundPeriodDuration + _launchProjectData.mintPeriodDuration
-        ) revert INVALID_GAME_CONFIGURATION();
+        ) revert DefifaDeployer_InvalidGameConfiguration();
 
         // Get the game ID, optimistically knowing it will be one greater than the current count.
         gameId = controller.PROJECTS().count() + 1;
@@ -423,7 +423,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         // Make sure the game's commitments can be fulfilled.
         if (!IDefifaDelegate(_metadata.dataHook).cashOutWeightIsSet()) {
-            revert CANT_FULFILL_YET();
+            revert DefifaDeployer_CantFulfillYet();
         }
         
         // Get the game token and the terminal.
