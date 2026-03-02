@@ -36,10 +36,10 @@ On-chain prediction game framework where players mint NFT game pieces, a governo
 
 | Dependency | Import | Used For |
 |------------|--------|----------|
-| `@bananapus/core-v5` | `IJBController`, `IJBDirectory`, `IJBRulesets`, `IJBTerminal`, `IJBMultiTerminal`, `JBRulesetConfig`, `JBSplit`, `JBConstants` | Project creation, ruleset management, terminal interactions, payout distribution. |
-| `@bananapus/721-hook-v5` | `JB721TiersHook`, `JB721Hook`, `IJB721TiersHookStore`, `JB721TierConfig`, `JB721Tier` | NFT tier management, hook base class, tier storage. |
-| `@bananapus/address-registry-v5` | `IJBAddressRegistry` | Hook address registration for discoverability. |
-| `@bananapus/permission-ids-v5` | `JBPermissionIds` | Permission constants for split management. |
+| `@bananapus/core-v6` | `IJBController`, `IJBDirectory`, `IJBRulesets`, `IJBTerminal`, `IJBMultiTerminal`, `JBRulesetConfig`, `JBSplit`, `JBConstants` | Project creation, ruleset management, terminal interactions, payout distribution. |
+| `@bananapus/721-hook-v6` | `JB721TiersHook`, `JB721Hook`, `IJB721TiersHookStore`, `JB721TierConfig`, `JB721Tier` | NFT tier management, hook base class, tier storage. |
+| `@bananapus/address-registry-v6` | `IJBAddressRegistry` | Hook address registration for discoverability. |
+| `@bananapus/permission-ids-v6` | `JBPermissionIds` | Permission constants for split management. |
 | `@openzeppelin/contracts` | `Ownable`, `Clones`, `IERC721Receiver`, `SafeERC20`, `Checkpoints`, `Strings` | Access control, minimal proxy cloning, safe token handling, checkpointed voting, string formatting. |
 | `@prb/math` | `mulDiv` | Precise fixed-point arithmetic for attestation weight and pot distribution calculations. |
 
