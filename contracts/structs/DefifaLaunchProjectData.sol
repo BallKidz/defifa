@@ -16,6 +16,8 @@ import {JBSplit} from '@bananapus/core-v5/src/structs/JBSplit.sol';
 /// @custom:member contractUri The URI to associate with the 721.
 /// @custom:member baseUri The URI base to prepend onto any tier token URIs.
 /// @custom:member tiers Parameters describing the tiers.
+/// @custom:member tierPrice The uniform price for all tiers. All tiers use the same price so that price-based voting
+/// power is equal across tiers.
 /// @custom:member token The token configuration the game is played with.
 /// @custom:member mintPeriodDuration The duration of the game's mint phase, measured in seconds.
 /// @custom:member refundPeriodDuration The time between the mint phase and the start time when mint's are no longer open but refunds are still allowed, measured in seconds.
@@ -33,6 +35,7 @@ struct DefifaLaunchProjectData {
   string contractUri;
   string baseUri;
   DefifaTierParams[] tiers;
+  uint104 tierPrice;
   JBAccountingContext token;
   uint24 mintPeriodDuration;
   uint24 refundPeriodDuration;
