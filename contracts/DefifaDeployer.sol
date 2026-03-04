@@ -106,8 +106,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     IJBAddressRegistry public immutable registry;
 
     /// @notice The divisor that describes the protocol fee that should be taken.
-    /// @dev This is equal to 100 divided by the fee percent (e.g. 20 = 5% fee).
-    uint256 public constant override BASE_PROTOCOL_FEE_DIVISOR = 20;
+    /// @dev This is equal to 100 divided by the fee percent (e.g. 40 = 2.5% fee).
+    uint256 public constant override BASE_PROTOCOL_FEE_DIVISOR = 40;
 
     /// @notice The divisor that describes the Defifa fee that should be taken.
     /// @dev This is equal to 100 divided by the fee percent (e.g. 20 = 5% fee).
