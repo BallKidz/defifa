@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.16;
+pragma solidity ^0.8.20;
 
 import {Checkpoints} from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
@@ -27,16 +27,18 @@ import {JBMetadataResolver} from "@bananapus/core-v5/src/libraries/JBMetadataRes
 import {DefifaDelegation} from "./structs/DefifaDelegation.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IDefifaDelegate} from "./interfaces/IDefifaDelegate.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IDefifaHook} from "./interfaces/IDefifaHook.sol";
 import {IDefifaGamePhaseReporter} from "./interfaces/IDefifaGamePhaseReporter.sol";
 import {IDefifaGamePotReporter} from "./interfaces/IDefifaGamePotReporter.sol";
 import {DefifaTierCashOutWeight} from "./structs/DefifaTierCashOutWeight.sol";
 import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 
-/// @title DefifaDelegate
-/// @notice A delegate that transforms Juicebox treasury interactions into a Defifa game.
-contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
+/// @title DefifaHook
+/// @notice A hook that transforms Juicebox treasury interactions into a Defifa game.
+contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     using Checkpoints for Checkpoints.Trace208;
+    using SafeERC20 for IERC20;
 
     //*********************************************************************//
     // --------------------------- custom errors ------------------------- //
@@ -51,7 +53,6 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     error NOTHING_TO_CLAIM();
     error NOTHING_TO_MINT();
     error WRONG_CURRENCY();
-    error NO_CONTEST();
     error OVERSPENDING();
     error CASHOUT_WEIGHTS_ALREADY_SET();
     error RESERVED_TOKEN_MINTING_PAUSED();
@@ -95,8 +96,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     /// @dev _tierId The ID of the tier to get a name for.
     mapping(uint256 => string) internal _tierNameOf;
     
-    /// @notice The total cost to mint all tokens in the game.
-    /// @dev This is not the amount that was actually paid in, reserved tokens are also counted towards this but they were not paid for.
+    /// @notice The cumulative mint price of all tokens (paid and reserved). Used as the denominator for fee token ($DEFIFA/$NANA) distribution.
     uint256 internal _totalMintCost;
 
     //*********************************************************************//
@@ -113,7 +113,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     // --------------------- public stored properties -------------------- //
     //*********************************************************************//
 
-    /// @notice The address of the origin 'DefifaDelegate', used to check in the init if the contract is the original or not
+    /// @notice The address of the origin 'DefifaHook', used to check in the init if the contract is the original or not
     address public immutable override codeOrigin;
 
     /// @notice The contract that stores and manages the NFT's data.
@@ -290,6 +290,9 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             - (_burnedTokens - tokensRedeemedFrom[_tierId]);
 
         // Calculate the percentage of the tier cashOut amount a single token counts for.
+        // NOTE: Integer division truncates. Up to (_totalTokensForCashoutInTier - 1) units of weight
+        // per tier are permanently unclaimable. With TOTAL_CASHOUT_WEIGHT = 1e18 and typical token
+        // counts, this amounts to negligible dust (< 1 wei per tier in most games).
         return _weight / _totalTokensForCashoutInTier;
     }
 
@@ -376,10 +379,10 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         hookSpecifications = new JBCashOutHookSpecification[](1);
         hookSpecifications[0] = JBCashOutHookSpecification(this, 0, abi.encode(_cumulativeMintPrice));
 
-        // If the game is in its minting, refund, or no contest phase, reclaim amount is the same as it costed to mint.
+        // If the game is in its minting, refund, or no-contest phase, reclaim amount is the same as it costed to mint.
         if (
             _gamePhase == DefifaGamePhase.MINT || _gamePhase == DefifaGamePhase.REFUND
-                || _gamePhase == DefifaGamePhase.NO_CONTEST || _gamePhase == DefifaGamePhase.NO_CONTEST_INEVITABLE
+                || _gamePhase == DefifaGamePhase.NO_CONTEST
         ) {
             cashOutCount = _cumulativeMintPrice;
         } else {
@@ -423,13 +426,12 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         // Set the amount of total $DEFIFA and $BASE_PROTOCOL token allocation if it hasn't been set yet.
         (uint256 _defifaTokenAllocation, uint256 _baseProtocolTokenAllocation) = tokenAllocations();
         
-        // If the total mint cost is 0, no tokens can be claimed.
-        uint256 __totalMintCost = _totalMintCost;
-        if (__totalMintCost == 0) {
+        // If nothing was paid to mint, no fee tokens can be claimed.
+        if (_totalMintCost == 0) {
             return (0, 0);
         }
 
-        // Calculate the user's claimable amount.
+        // Calculate the user's claimable amount proportional to what they paid.
         defifaTokenAmount = _defifaTokenAllocation * _cumulativeMintPrice / _totalMintCost;
         baseProtocolTokenAmount = _baseProtocolTokenAllocation * _cumulativeMintPrice / _totalMintCost;
     }
@@ -438,7 +440,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     /// @dev See {IERC165-supportsInterface}.
     /// @param _interfaceId The ID of the interface to check for adherence to.
     function supportsInterface(bytes4 _interfaceId) public view override(IERC165, JB721Hook) returns (bool) {
-        return _interfaceId == type(IDefifaDelegate).interfaceId || JB721Hook.supportsInterface(_interfaceId);
+        return _interfaceId == type(IDefifaHook).interfaceId || JB721Hook.supportsInterface(_interfaceId);
     }
 
     //*********************************************************************//
@@ -447,7 +449,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
 
     /// @notice The $DEFIFA token that is expected to be issued from paying fees.
     /// @notice The $BASE_PROTOCOL token that is expected to be issued from paying fees.
-    // TODO: Change this initial owner (prob).
+    /// @dev The initial owner is msg.sender; ownership is transferred to the governor after initialization.
     constructor(IJBDirectory _directory, IERC20 _defifaToken, IERC20 _baseProtocolToken) Ownable(msg.sender) JB721Hook(_directory) {
         codeOrigin = address(this);
         defifaToken = _defifaToken;
@@ -568,12 +570,12 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
 
         // Keep a reference to the token ID being iterated on.
         uint256 _tokenId;
-        
-        // Fetch the tier details.
+
+        // Fetch the tier details (needed for votingUnits below).
         JB721Tier memory _tier = store.tierOf(address(this), _tierId, false);
 
-        // Increment the total mint cost.
-        _totalMintCost += _tier.price * _tokenIds.length;
+        // Increment _totalMintCost so reserved recipients can claim their share of fee tokens ($DEFIFA/$NANA).
+        _totalMintCost += _tier.price * _count;
 
         for (uint256 _i; _i < _count;) {
             // Set the token ID.
@@ -617,11 +619,6 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         // Make sure the cashOut weights haven't already been set.
         if (cashOutWeightIsSet) revert CASHOUT_WEIGHTS_ALREADY_SET();
 
-        // Make sure the game is not in no contest.
-        if (_gamePhase == DefifaGamePhase.NO_CONTEST || _gamePhase == DefifaGamePhase.NO_CONTEST_INEVITABLE) {
-            revert NO_CONTEST();
-        }
-
         // Keep a reference to the max tier ID.
         uint256 _maxTierId = store.maxTierIdOf(address(this));
 
@@ -634,7 +631,14 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         // Keep a reference to the tier being iterated on.
         JB721Tier memory _tier;
 
+        // Keep a reference to the last tier ID to enforce ascending order (no duplicates).
+        uint256 _lastTierId;
+
         for (uint256 _i; _i < _numberOfTierWeights;) {
+            // Enforce strict ascending order to prevent duplicate tier IDs.
+            if (_tierWeights[_i].id <= _lastTierId && _i != 0) revert BAD_TIER_ORDER();
+            _lastTierId = _tierWeights[_i].id;
+
             // Get the tier.
             _tier = store.tierOf(address(this), _tierWeights[_i].id, false);
 
@@ -655,8 +659,8 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             }
         }
 
-        // Make sure the cumulative amount is contained within the total cashOut weight.
-        if (_cumulativeCashOutWeight > TOTAL_CASHOUT_WEIGHT) revert INVALID_CASHOUT_WEIGHTS();
+        // Make sure the cumulative amount is exactly the total cashOut weight.
+        if (_cumulativeCashOutWeight != TOTAL_CASHOUT_WEIGHT) revert INVALID_CASHOUT_WEIGHTS();
 
         // Mark the cashOut weight as set.
         cashOutWeightIsSet = true;
@@ -673,7 +677,6 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         external
         payable
         virtual
-        // TODO:Check if we need to make any changes here as we are overriding the new JB721Hook instead.
         override(IJBCashOutHook, JB721Hook)
     {
         // Make sure the caller is a terminal of the project, and that the call is being made on behalf of an
@@ -732,17 +735,17 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         bool _beneficiaryReceivedTokens;
         if (_isComplete) {
             amountRedeemed += context.reclaimedAmount.value;
-            
+
             // Claim the $DEFIFA and $NANA tokens for the user.
             _beneficiaryReceivedTokens = _claimTokensFor(
-                context.holder, _cumulativeMintPrice, _totalMintCost 
+                context.holder, _cumulativeMintPrice, _totalMintCost
             );
         }
 
         // If there's nothing being claimed and we did not distribute fee tokens, revert to prevent burning for nothing.
         if (context.reclaimedAmount.value == 0 && !_beneficiaryReceivedTokens) revert NOTHING_TO_CLAIM();
 
-        // Decrement the total mint cost by the cumulative mint price of the tokens being burned.
+        // Decrement the paid mint cost by the cumulative mint price of the tokens being burned.
         _totalMintCost -= _cumulativeMintPrice;
     }
 
@@ -827,10 +830,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         (bool found, bytes memory metadata) =
             JBMetadataResolver.getDataFor(JBMetadataResolver.getId("pay", codeOrigin), context.payerMetadata);
 
-        if (!found) {
-           // TODO: Revert? 
-           return;
-        }
+        if (!found) revert NOTHING_TO_MINT();
 
         // Decode the metadata.
         (address _attestationDelegate, uint16[] memory _tierIdsToMint ) = abi.decode(metadata, (address, uint16[]));
@@ -1013,7 +1013,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         // Keep a reference to the token ID being iterated on.
         uint256 _tokenId;
         
-        // Increment the total mint cost.
+        // Increment the paid mint cost.
         _totalMintCost += _amount;
 
         // Loop through each token ID and mint.
@@ -1043,8 +1043,8 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         uint256 defifaAmount = defifaToken.balanceOf(address(this)) * shareToBeneficiary / outOfTotal;
 
         // If there is an amount we should send, send it.
-        if (defifaAmount != 0)  defifaToken.transfer(_beneficiary, defifaAmount);
-        if (baseProtocolAmount != 0) baseProtocolToken.transfer(_beneficiary, baseProtocolAmount);
+        if (defifaAmount != 0)  defifaToken.safeTransfer(_beneficiary, defifaAmount);
+        if (baseProtocolAmount != 0) baseProtocolToken.safeTransfer(_beneficiary, baseProtocolAmount);
 
         emit ClaimedTokens(_beneficiary, defifaAmount, baseProtocolAmount, msg.sender);
         

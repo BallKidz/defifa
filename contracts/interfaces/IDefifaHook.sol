@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.16;
+pragma solidity ^0.8.20;
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IJBRulesets} from "@bananapus/core-v5/src/interfaces/IJBRulesets.sol";
@@ -13,7 +13,7 @@ import {DefifaDelegation} from "./../structs/DefifaDelegation.sol";
 import {IDefifaGamePhaseReporter} from "./IDefifaGamePhaseReporter.sol";
 import {IDefifaGamePotReporter} from "./IDefifaGamePotReporter.sol";
 
-interface IDefifaDelegate is IJB721Hook {
+interface IDefifaHook is IJB721Hook {
     event Mint(
         uint256 indexed tokenId,
         uint256 indexed tierId,
