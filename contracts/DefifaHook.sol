@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity ^0.8.16;
+pragma solidity ^0.8.20;
 
 import "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 import "@bananapus/721-hook-v5/src/JB721TiersHook.sol";
@@ -11,36 +11,38 @@ import {JBMetadataResolver} from "@bananapus/core-v5/src/libraries/JBMetadataRes
 import {DefifaDelegation} from "./structs/DefifaDelegation.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {IDefifaDelegate} from "./interfaces/IDefifaDelegate.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IDefifaHook} from "./interfaces/IDefifaHook.sol";
 import {IDefifaGamePhaseReporter} from "./interfaces/IDefifaGamePhaseReporter.sol";
 import {IDefifaGamePotReporter} from "./interfaces/IDefifaGamePotReporter.sol";
 import {DefifaTierCashOutWeight} from "./structs/DefifaTierCashOutWeight.sol";
 import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 
-/// @title DefifaDelegate
-/// @notice A delegate that transforms Juicebox treasury interactions into a Defifa game.
-contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
+/// @title DefifaHook
+/// @notice A hook that transforms Juicebox treasury interactions into a Defifa game.
+contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     using Checkpoints for Checkpoints.Trace208;
+    using SafeERC20 for IERC20;
 
     //*********************************************************************//
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
-    error DefifaDelegate_BadTierOrder();
-    error DefifaDelegate_DelegateAddressZero();
-    error DefifaDelegate_DelegateChangesUnavailableInThisPhase();
-    error DefifaDelegate_GameIsntScoringYet();
-    error DefifaDelegate_InvalidTierId();
-    error DefifaDelegate_InvalidCashoutWeights();
-    error DefifaDelegate_NothingToClaim();
-    error DefifaDelegate_NothingToMint();
-    error DefifaDelegate_WrongCurrency();
-    error DefifaDelegate_NoContest();
-    error DefifaDelegate_Overspending();
-    error DefifaDelegate_CashoutWeightsAlreadySet();
-    error DefifaDelegate_ReservedTokenMintingPaused();
-    error DefifaDelegate_TransfersPaused();
-    error DefifaDelegate_Unauthorized(uint256 tokenId, address owner, address caller);
+    error DefifaHook_BadTierOrder();
+    error DefifaHook_DelegateAddressZero();
+    error DefifaHook_DelegateChangesUnavailableInThisPhase();
+    error DefifaHook_GameIsntScoringYet();
+    error DefifaHook_InvalidTierId();
+    error DefifaHook_InvalidCashoutWeights();
+    error DefifaHook_NothingToClaim();
+    error DefifaHook_NothingToMint();
+    error DefifaHook_WrongCurrency();
+    error DefifaHook_NoContest();
+    error DefifaHook_Overspending();
+    error DefifaHook_CashoutWeightsAlreadySet();
+    error DefifaHook_ReservedTokenMintingPaused();
+    error DefifaHook_TransfersPaused();
+    error DefifaHook_Unauthorized(uint256 tokenId, address owner, address caller);
 
     //*********************************************************************//
     // --------------------- public constant properties ------------------ //
@@ -97,7 +99,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     // --------------------- public stored properties -------------------- //
     //*********************************************************************//
 
-    /// @notice The address of the origin 'DefifaDelegate', used to check in the init if the contract is the original or not
+    /// @notice The address of the origin 'DefifaHook', used to check in the init if the contract is the original or not
     address public immutable override codeOrigin;
 
     /// @notice The contract that stores and manages the NFT's data.
@@ -422,7 +424,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     /// @dev See {IERC165-supportsInterface}.
     /// @param _interfaceId The ID of the interface to check for adherence to.
     function supportsInterface(bytes4 _interfaceId) public view override(IERC165, JB721Hook) returns (bool) {
-        return _interfaceId == type(IDefifaDelegate).interfaceId || JB721Hook.supportsInterface(_interfaceId);
+        return _interfaceId == type(IDefifaHook).interfaceId || JB721Hook.supportsInterface(_interfaceId);
     }
 
     //*********************************************************************//
@@ -431,7 +433,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
 
     /// @notice The $DEFIFA token that is expected to be issued from paying fees.
     /// @notice The $BASE_PROTOCOL token that is expected to be issued from paying fees.
-    // TODO: Change this initial owner (prob).
+    /// @dev The initial owner is msg.sender; ownership is transferred to the governor after initialization.
     constructor(IJBDirectory _directory, IERC20 _defifaToken, IERC20 _baseProtocolToken) Ownable(msg.sender) JB721Hook(_directory) {
         codeOrigin = address(this);
         defifaToken = _defifaToken;
@@ -530,7 +532,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             JB721TiersRulesetMetadataResolver.mintPendingReservesPaused(
                 (JBRulesetMetadataResolver.metadata(rulesets.currentOf(PROJECT_ID)))
             )
-        ) revert DefifaDelegate_ReservedTokenMintingPaused();
+        ) revert DefifaHook_ReservedTokenMintingPaused();
 
         // Keep a reference to the reserved token beneficiary.
         address _reservedTokenBeneficiary = store.reserveBeneficiaryOf(address(this), _tierId);
@@ -595,15 +597,15 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
 
         // Make sure the game has ended.
         if (_gamePhase != DefifaGamePhase.SCORING) {
-            revert DefifaDelegate_GameIsntScoringYet();
+            revert DefifaHook_GameIsntScoringYet();
         }
 
         // Make sure the cashOut weights haven't already been set.
-        if (cashOutWeightIsSet) revert DefifaDelegate_CashoutWeightsAlreadySet();
+        if (cashOutWeightIsSet) revert DefifaHook_CashoutWeightsAlreadySet();
 
         // Make sure the game is not in no contest.
         if (_gamePhase == DefifaGamePhase.NO_CONTEST || _gamePhase == DefifaGamePhase.NO_CONTEST_INEVITABLE) {
-            revert DefifaDelegate_NoContest();
+            revert DefifaHook_NoContest();
         }
 
         // Keep a reference to the max tier ID.
@@ -623,10 +625,10 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             _tier = store.tierOf(address(this), _tierWeights[_i].id, false);
 
             // Can't set a cashOut weight for tiers not in category 0.
-            if (_tier.category != 0) revert DefifaDelegate_InvalidTierId();
+            if (_tier.category != 0) revert DefifaHook_InvalidTierId();
 
             // Attempting to set the cashOut weight for a tier that does not exist (yet) reverts.
-            if (_tier.id > _maxTierId) revert DefifaDelegate_InvalidTierId();
+            if (_tier.id > _maxTierId) revert DefifaHook_InvalidTierId();
 
             // Save the tier weight. Tier's are 1 indexed and should be stored 0 indexed.
             _tierCashOutWeights[_tier.id - 1] = _tierWeights[_i].cashOutWeight;
@@ -639,8 +641,8 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             }
         }
 
-        // Make sure the cumulative amount is contained within the total cashOut weight.
-        if (_cumulativeCashOutWeight > TOTAL_CASHOUT_WEIGHT) revert DefifaDelegate_InvalidCashoutWeights();
+        // Make sure the cumulative amount is exactly the total cashOut weight.
+        if (_cumulativeCashOutWeight != TOTAL_CASHOUT_WEIGHT) revert DefifaHook_InvalidCashoutWeights();
 
         // Mark the cashOut weight as set.
         cashOutWeightIsSet = true;
@@ -657,7 +659,6 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         external
         payable
         virtual
-        // TODO:Check if we need to make any changes here as we are overriding the new JB721Hook instead.
         override(IJBCashOutHook, JB721Hook)
     {
         // Make sure the caller is a terminal of the project, and that the call is being made on behalf of an
@@ -694,7 +695,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             _tokenId = _decodedTokenIds[_i];
 
             // Make sure the token's owner is correct.
-            if (_owners[_tokenId] != context.holder) revert DefifaDelegate_Unauthorized(_tokenId, _owners[_tokenId], context.holder);
+            if (_owners[_tokenId] != context.holder) revert DefifaHook_Unauthorized(_tokenId, _owners[_tokenId], context.holder);
 
             // Burn the token.
             _burn(_tokenId);
@@ -724,7 +725,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         }
 
         // If there's nothing being claimed and we did not distribute fee tokens, revert to prevent burning for nothing.
-        if (context.reclaimedAmount.value == 0 && !_beneficiaryReceivedTokens) revert DefifaDelegate_NothingToClaim();
+        if (context.reclaimedAmount.value == 0 && !_beneficiaryReceivedTokens) revert DefifaHook_NothingToClaim();
 
         // Decrement the total mint cost by the cumulative mint price of the tokens being burned.
         _totalMintCost -= _cumulativeMintPrice;
@@ -761,7 +762,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     {
         // Make sure the current game phase is the minting phase.
         if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.MINT) {
-            revert DefifaDelegate_DelegateChangesUnavailableInThisPhase();
+            revert DefifaHook_DelegateChangesUnavailableInThisPhase();
         }
 
         // Keep a reference to the number of tier delegates.
@@ -775,7 +776,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             _data = _setTierDelegatesData[_i];
 
             // Make sure a delegate is specified.
-            if (_data.delegatee == address(0)) revert DefifaDelegate_DelegateAddressZero();
+            if (_data.delegatee == address(0)) revert DefifaHook_DelegateAddressZero();
 
             _delegateTier(msg.sender, _data.delegatee, _data.tierId);
 
@@ -791,7 +792,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     function setTierDelegateTo(address _delegatee, uint256 _tierId) public virtual override {
         // Make sure the current game phase is the minting phase.
         if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.MINT) {
-            revert DefifaDelegate_DelegateChangesUnavailableInThisPhase();
+            revert DefifaHook_DelegateChangesUnavailableInThisPhase();
         }
 
         _delegateTier(msg.sender, _delegatee, _tierId);
@@ -805,14 +806,13 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
     /// @param context The Juicebox standard project payment data.
     function _processPayment(JBAfterPayRecordedContext calldata context) internal override {
         // Make sure the game is being played in the correct currency.
-        if (context.amount.currency != pricingCurrency) revert DefifaDelegate_WrongCurrency();
+        if (context.amount.currency != pricingCurrency) revert DefifaHook_WrongCurrency();
 
         // Resolve the metadata.
         (bool found, bytes memory metadata) =
             JBMetadataResolver.getDataFor(JBMetadataResolver.getId("pay", codeOrigin), context.payerMetadata);
 
         if (!found) {
-           // TODO: Revert? 
            return;
         }
 
@@ -826,7 +826,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             }
 
             // Make sure something is being minted.
-            if (_tierIdsToMint.length == 0) revert DefifaDelegate_NothingToMint();
+            if (_tierIdsToMint.length == 0) revert DefifaHook_NothingToMint();
 
             // Keep a reference to the current tier ID.
             uint256 _currentTierId;
@@ -845,7 +845,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
                 // Keep track of the current tier being iterated on and its price.
                 if (_currentTierId != _tierIdsToMint[_i]) {
                     // Make sure the tier IDs are passed in order.
-                    if (_tierIdsToMint[_i] < _currentTierId) revert DefifaDelegate_BadTierOrder();
+                    if (_tierIdsToMint[_i] < _currentTierId) revert DefifaHook_BadTierOrder();
                     _currentTierId = _tierIdsToMint[_i];
                     _attestationUnits = store.tierOf(address(this), _currentTierId, false).votingUnits;
                 }
@@ -884,7 +884,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
             uint256 _leftoverAmount = _mintAll(context.amount.value, _tierIdsToMint, context.beneficiary);
 
             // Make sure the buyer isn't overspending.
-            if (_leftoverAmount != 0) revert DefifaDelegate_Overspending();
+            if (_leftoverAmount != 0) revert DefifaHook_Overspending();
     }
 
     /// @notice Gets the amount of attestation units an address has for a particular tier.
@@ -1027,8 +1027,8 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
         uint256 defifaAmount = defifaToken.balanceOf(address(this)) * shareToBeneficiary / outOfTotal;
 
         // If there is an amount we should send, send it.
-        if (defifaAmount != 0)  defifaToken.transfer(_beneficiary, defifaAmount);
-        if (baseProtocolAmount != 0) baseProtocolToken.transfer(_beneficiary, baseProtocolAmount);
+        if (defifaAmount != 0)  defifaToken.safeTransfer(_beneficiary, defifaAmount);
+        if (baseProtocolAmount != 0) baseProtocolToken.safeTransfer(_beneficiary, baseProtocolAmount);
 
         emit ClaimedTokens(_beneficiary, defifaAmount, baseProtocolAmount, msg.sender);
         
@@ -1057,7 +1057,7 @@ contract DefifaDelegate is JB721Hook, Ownable, IDefifaDelegate {
                 if (
                     to != address(0)
                         && JB721TiersRulesetMetadataResolver.transfersPaused((JBRulesetMetadataResolver.metadata(ruleset)))
-                ) revert DefifaDelegate_TransfersPaused();
+                ) revert DefifaHook_TransfersPaused();
             }
 
             // If the token isn't already associated with a first owner, store the sender as the first owner.
