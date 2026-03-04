@@ -53,6 +53,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     //*********************************************************************//
 
     error CANT_FULFILL_YET();
+    error NOTHING_TO_FULFILL();
     error GAME_OVER();
     error INVALID_FEE_PERCENT();
     error INVALID_GAME_CONFIGURATION();
@@ -444,6 +445,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         uint256 _pot = _terminal.STORE().balanceOf(
             address(_terminal), _gameId, _token
         );
+        if (_pot == 0) revert NOTHING_TO_FULFILL();
         fulfilledCommitmentsOf[_gameId] = _pot;
 
         // Send the payout to pay all the fees for this game.
