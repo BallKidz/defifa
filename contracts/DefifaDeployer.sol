@@ -53,6 +53,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     //*********************************************************************//
 
     error CANT_FULFILL_YET();
+    error NOTHING_TO_FULFILL();
     error GAME_OVER();
     error INVALID_FEE_PERCENT();
     error INVALID_GAME_CONFIGURATION();
@@ -366,8 +367,20 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             }
         }
 
-        // Clone and initialize the new hook with a new token uri resolver.
-        DefifaHook _hook = DefifaHook(Clones.clone(hookCodeOrigin));
+        // Increment the nonce for this deployment.
+        uint256 _currentNonce = ++_nonce;
+
+        // Clone deterministically using sender and nonce to prevent front-running.
+        // Clones.clone() creates the proxy before initialize() is called, allowing an
+        // attacker to front-run initialization and DOS the game deployment. Using
+        // cloneDeterministic with msg.sender in the salt prevents this since a different
+        // caller produces a different address.
+        DefifaHook _hook = DefifaHook(
+            Clones.cloneDeterministic(
+                hookCodeOrigin,
+                keccak256(abi.encodePacked(msg.sender, _currentNonce))
+            )
+        );
 
         // Use the default uri resolver if provided, else use the hardcoded generic default.
         IJB721TokenUriResolver _uriResolver = _launchProjectData.defaultTokenUriResolver
@@ -404,7 +417,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         _hook.transferOwnership(address(governor));
 
         // Add the hook to the registry, contract nonce starts at 1
-        registry.registerAddress(address(this), ++_nonce);
+        registry.registerAddress(address(this), _currentNonce);
 
         emit LaunchGame(gameId, _hook, governor, _uriResolver, msg.sender);
     }
@@ -414,8 +427,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     function fulfillCommitmentsOf(uint256 _gameId) external virtual override {
         // Make sure commitments haven't already been fulfilled.
         if (fulfilledCommitmentsOf[_gameId] != 0) return;
-        // Set the fulfilled commitments to 1 to prevent re-entrance.
-        fulfilledCommitmentsOf[_gameId] = 1;
 
         // Get the game's current funding cycle along with its metadata.
         (, JBRulesetMetadata memory _metadata) =
@@ -430,10 +441,12 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         address _token = _opsOf[_gameId].token;
         IJBMultiTerminal _terminal = IJBMultiTerminal(address(controller.DIRECTORY().primaryTerminalOf(_gameId, _token)));
 
-        // Get the current pot.
+        // Get the current pot and store it. This also prevents re-entrance since the check above will return early.
         uint256 _pot = _terminal.STORE().balanceOf(
             address(_terminal), _gameId, _token
         );
+        if (_pot == 0) revert NOTHING_TO_FULFILL();
+        fulfilledCommitmentsOf[_gameId] = _pot;
 
         // Send the payout to pay all the fees for this game.
         _terminal.sendPayoutsOf({
