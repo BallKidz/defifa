@@ -313,9 +313,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     {
         // Start the game right after the mint and refund durations if it isnt provided.
         if (launchProjectData.start == 0) {
-            launchProjectData.start = uint48(
-                block.timestamp + launchProjectData.mintPeriodDuration + launchProjectData.refundPeriodDuration
-            );
+            launchProjectData.start =
+                uint48(block.timestamp + launchProjectData.mintPeriodDuration + launchProjectData.refundPeriodDuration);
         }
         // Start minting right away if a start time isn't provided.
         else if (

@@ -326,8 +326,8 @@ library DefifaHookLib {
     }
 
     /// @notice Claims the defifa and base protocol tokens for a beneficiary.
-    /// @dev Executes via delegatecall, so `address(this)` is the calling contract. Transfers are from the hook's balance.
-    /// @param _beneficiary The address to claim tokens for.
+    /// @dev Executes via delegatecall, so `address(this)` is the calling contract. Transfers are from the hook's
+    /// balance. @param _beneficiary The address to claim tokens for.
     /// @param shareToBeneficiary The share relative to the `outOfTotal` to send the user.
     /// @param outOfTotal The total share that the `shareToBeneficiary` is relative to.
     /// @param _defifaToken The $DEFIFA token.
