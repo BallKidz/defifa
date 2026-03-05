@@ -667,8 +667,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         accountingContexts[0] = launchProjectData.token;
 
         // Build the terminal configuration for the Defifa project.
-        JBTerminalConfig[] memory terminalConfigs = new JBTerminalConfig[](1);
-        terminalConfigs[0] =
+        JBTerminalConfig[] memory terminalConfigurations = new JBTerminalConfig[](1);
+        terminalConfigurations[0] =
             JBTerminalConfig({terminal: launchProjectData.terminal, accountingContextsToAccept: accountingContexts});
 
         // Build the rulesets that this Defifa game will go through.
@@ -823,7 +823,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             owner: address(this),
             projectUri: launchProjectData.projectUri,
             rulesetConfigurations: rulesetConfigs,
-            terminalConfigurations: terminalConfigs,
+            terminalConfigurations: terminalConfigurations,
             memo: "Launching Defifa game."
         });
     }
