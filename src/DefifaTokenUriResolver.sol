@@ -84,14 +84,15 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
 
         {
             // Get a reference to the tier.
-            JB721Tier memory _tier = _hook.store().tierOfTokenId(address(_hook), _tokenId, false);
+            JB721Tier memory _tier =
+                _hook.store().tierOfTokenId({hook: address(_hook), tokenId: _tokenId, includeResolvedUri: false});
 
             // Set the tier's name.
             _team = _hook.tierNameOf(_tier.id);
 
             // Check to see if the tier has a URI. Return it if it does.
             if (_tier.encodedIPFSUri != bytes32(0)) {
-                return JBIpfsDecoder.decode(_hook.baseURI(), _tier.encodedIPFSUri);
+                return JBIpfsDecoder.decode({baseUri: _hook.baseURI(), hexString: _tier.encodedIPFSUri});
             }
 
             parts[0] = string("data:application/json;base64,");
@@ -116,13 +117,18 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
 
                 // Keep a reference to the game pot.
                 (uint256 _gamePot, address _gamePotToken, uint256 _gamePotDecimals) =
-                    _hook.gamePotReporter().currentGamePotOf(_gameId, false);
+                    _hook.gamePotReporter().currentGamePotOf({gameId: _gameId, includeCommitments: false});
 
                 // Include the amount redeemed.
                 _gamePot = _gamePot + _hook.amountRedeemed();
 
                 // Set the pot text.
-                _potText = _formatBalance(_gamePot, _gamePotToken, _gamePotDecimals, _IMG_DECIMAL_FIDELITY);
+                _potText = _formatBalance({
+                    _amount: _gamePot,
+                    _token: _gamePotToken,
+                    _decimals: _gamePotDecimals,
+                    _fidelity: _IMG_DECIMAL_FIDELITY
+                });
 
                 if (_gamePhase == DefifaGamePhase.COUNTDOWN) {
                     _gamePhaseText = "Minting starts soon.";
@@ -158,9 +164,19 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
                         mulDiv(_gamePot, _hook.cashOutWeightOf(_tokenId), _hook.TOTAL_CASHOUT_WEIGHT());
                     _valueText = !_hook.cashOutWeightIsSet()
                         ? "Awaiting scorecard..."
-                        : _formatBalance(_potPortion, _gamePotToken, _gamePotDecimals, _IMG_DECIMAL_FIDELITY);
+                        : _formatBalance({
+                            _amount: _potPortion,
+                            _token: _gamePotToken,
+                            _decimals: _gamePotDecimals,
+                            _fidelity: _IMG_DECIMAL_FIDELITY
+                        });
                 } else {
-                    _valueText = _formatBalance(_tier.price, _gamePotToken, _gamePotDecimals, _IMG_DECIMAL_FIDELITY);
+                    _valueText = _formatBalance({
+                        _amount: _tier.price,
+                        _token: _gamePotToken,
+                        _decimals: _gamePotDecimals,
+                        _fidelity: _IMG_DECIMAL_FIDELITY
+                    });
                 }
             }
         }

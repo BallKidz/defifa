@@ -51,10 +51,14 @@ contract DefifaProjectOwner is IERC721Receiver {
         permissionIds[0] = JBPermissionIds.SET_SPLIT_GROUPS;
 
         // Give the defifa deployer contract permission to set splits on this contract's behalf.
-        PERMISSIONS.setPermissionsFor(
-            address(this),
-            JBPermissionsData({operator: address(DEPLOYER), projectId: uint64(tokenId), permissionIds: permissionIds})
-        );
+        PERMISSIONS.setPermissionsFor({
+            account: address(this),
+            permissionsData: JBPermissionsData({
+                operator: address(DEPLOYER),
+                projectId: uint64(tokenId),
+                permissionIds: permissionIds
+            })
+        });
 
         return IERC721Receiver.onERC721Received.selector;
     }

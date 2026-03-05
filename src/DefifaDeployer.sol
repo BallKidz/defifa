@@ -185,13 +185,18 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         address _token = _opsOf[gameId].token;
 
         // Get a reference to the terminal.
-        IJBTerminal _terminal = controller.DIRECTORY().primaryTerminalOf(gameId, _token);
+        IJBTerminal _terminal = controller.DIRECTORY().primaryTerminalOf({projectId: gameId, token: _token});
 
         // Get the accounting context for the project.
-        JBAccountingContext memory _context = _terminal.accountingContextForTokenOf(gameId, _token);
+        JBAccountingContext memory _context =
+            _terminal.accountingContextForTokenOf({projectId: gameId, token: _token});
 
         // Get the current balance.
-        uint256 _pot = IJBMultiTerminal(address(_terminal)).STORE().balanceOf(address(_terminal), gameId, _token);
+        uint256 _pot = IJBMultiTerminal(address(_terminal)).STORE().balanceOf({
+            terminal: address(_terminal),
+            projectId: gameId,
+            token: _token
+        });
 
         // Add any fulfilled commitments.
         if (includeCommitments) _pot += fulfilledCommitmentsOf[gameId];
@@ -245,9 +250,12 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Check minimum participation threshold: if the treasury balance is below the threshold, the game is
         // NO_CONTEST.
         if (_ops.minParticipation > 0) {
-            IJBTerminal _terminal = controller.DIRECTORY().primaryTerminalOf(gameId, _ops.token);
-            uint256 _balance =
-                IJBMultiTerminal(address(_terminal)).STORE().balanceOf(address(_terminal), gameId, _ops.token);
+            IJBTerminal _terminal = controller.DIRECTORY().primaryTerminalOf({projectId: gameId, token: _ops.token});
+            uint256 _balance = IJBMultiTerminal(address(_terminal)).STORE().balanceOf({
+                terminal: address(_terminal),
+                projectId: gameId,
+                token: _ops.token
+            });
             if (_balance < _ops.minParticipation) return DefifaGamePhase.NO_CONTEST;
         }
 
@@ -371,7 +379,11 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 _groupedSplits[0] = JBSplitGroup({groupId: splitGroup, splits: _splits});
 
                 // This contract must have SET_SPLIT_GROUPS permission from the defifa project owner.
-                controller.setSplitGroupsOf(defifaProjectId, gameId, _groupedSplits);
+                controller.setSplitGroupsOf({
+                    projectId: defifaProjectId,
+                    rulesetId: gameId,
+                    splitGroups: _groupedSplits
+                });
             }
         }
 
@@ -453,7 +465,11 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         });
 
         // Launch the Juicebox project.
-        uint256 _actualGameId = _launchGame(launchProjectData, gameId, address(_hook));
+        uint256 _actualGameId = _launchGame({
+            launchProjectData: launchProjectData,
+            _gameId: gameId,
+            _dataHook: address(_hook)
+        });
 
         // Revert if the game ID does not match (e.g. front-run by another project creation).
         if (gameId != _actualGameId) revert DefifaDeployer_InvalidGameConfiguration();
@@ -469,7 +485,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         _hook.transferOwnership(address(governor));
 
         // Add the hook to the registry, contract nonce starts at 1
-        registry.registerAddress(address(this), _currentNonce);
+        registry.registerAddress({deployer: address(this), nonce: _currentNonce});
 
         emit LaunchGame(gameId, _hook, governor, _uriResolver, msg.sender);
     }
@@ -491,10 +507,10 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Get the game token and the terminal.
         address _token = _opsOf[gameId].token;
         IJBMultiTerminal _terminal =
-            IJBMultiTerminal(address(controller.DIRECTORY().primaryTerminalOf(gameId, _token)));
+            IJBMultiTerminal(address(controller.DIRECTORY().primaryTerminalOf({projectId: gameId, token: _token})));
 
         // Get the current pot and store it. This also prevents re-entrance since the check above will return early.
-        uint256 _pot = _terminal.STORE().balanceOf(address(_terminal), gameId, _token);
+        uint256 _pot = _terminal.STORE().balanceOf({terminal: address(_terminal), projectId: gameId, token: _token});
         if (_pot == 0) revert DefifaDeployer_NothingToFulfill();
 
         // Compute the fee amount based on the total absolute split percent stored at game creation.
@@ -553,7 +569,11 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         });
 
         // Update the ruleset to the final one.
-        controller.queueRulesetsOf(gameId, rulesetConfigs, "Defifa game has finished.");
+        controller.queueRulesetsOf({
+            projectId: gameId,
+            rulesetConfigurations: rulesetConfigs,
+            memo: "Defifa game has finished."
+        });
 
         emit FulfilledCommitments({gameId: gameId, pot: _pot, caller: msg.sender});
     }
@@ -616,7 +636,11 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         });
 
         // Queue the no-contest refund ruleset.
-        controller.queueRulesetsOf(gameId, rulesetConfigs, "Defifa game: no contest.");
+        controller.queueRulesetsOf({
+            projectId: gameId,
+            rulesetConfigurations: rulesetConfigs,
+            memo: "Defifa game: no contest."
+        });
 
         emit QueuedNoContest(gameId, msg.sender);
     }
@@ -785,7 +809,12 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                     )
                 )
             }),
-            splitGroups: _buildSplits(_gameId, _dataHook, launchProjectData.token.token, launchProjectData.splits),
+            splitGroups: _buildSplits({
+                _gameId: _gameId,
+                _dataHook: _dataHook,
+                _token: launchProjectData.token.token,
+                _initialSplits: launchProjectData.splits
+            }),
             fundAccessLimitGroups: fundAccessConstraints
         });
 

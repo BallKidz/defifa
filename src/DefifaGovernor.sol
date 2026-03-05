@@ -116,7 +116,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         override
         returns (uint256)
     {
-        return _hashScorecardOf(gameHook, _buildScorecardCalldataFor(tierWeights));
+        return _hashScorecardOf({_gameHook: gameHook, _calldata: _buildScorecardCalldataFor(tierWeights)});
     }
 
     //*********************************************************************//
@@ -246,8 +246,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             uint256 _tierId = _i + 1;
 
             // Get this account's attestation units within the tier (snapshot at _timestamp).
-            uint256 _tierAttestationUnitsForAccount =
-                IDefifaHook(_metadata.dataHook).getPastTierAttestationUnitsOf(_account, _tierId, _timestamp);
+            uint256 _tierAttestationUnitsForAccount = IDefifaHook(_metadata.dataHook)
+                .getPastTierAttestationUnitsOf({account: _account, tier: _tierId, timestamp: _timestamp});
 
             // Scale the account's share of the tier to MAX_ATTESTATION_POWER_TIER.
             // e.g. holding 3 of 10 tokens → 3/10 * MAX_ATTESTATION_POWER_TIER attestation power from this tier.
@@ -256,7 +256,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                     attestationPower += mulDiv(
                         MAX_ATTESTATION_POWER_TIER,
                         _tierAttestationUnitsForAccount,
-                        IDefifaHook(_metadata.dataHook).getPastTierTotalAttestationUnitsOf(_tierId, _timestamp)
+                        IDefifaHook(_metadata.dataHook).getPastTierTotalAttestationUnitsOf({
+                            tier: _tierId,
+                            timestamp: _timestamp
+                        })
                     );
                 }
             }
@@ -352,7 +355,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         }
 
         // Hash the scorecard.
-        scorecardId = _hashScorecardOf(_metadata.dataHook, _buildScorecardCalldataFor(_tierWeights));
+        scorecardId = _hashScorecardOf({_gameHook: _metadata.dataHook, _calldata: _buildScorecardCalldataFor(_tierWeights)});
 
         // Store the scorecard
         DefifaScorecard storage _scorecard = _scorecardOf[_gameId][scorecardId];
@@ -396,7 +399,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         DefifaScorecard storage _scorecard = _scorecardOf[gameId][scorecardId];
 
         // Keep a reference to the scorecard state.
-        DefifaScorecardState _state = stateOf(gameId, scorecardId);
+        DefifaScorecardState _state = stateOf({gameId: gameId, scorecardId: scorecardId});
 
         if (_state != DefifaScorecardState.ACTIVE && _state != DefifaScorecardState.SUCCEEDED) {
             revert DefifaGovernor_NotAllowed();
@@ -409,7 +412,11 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         if (_attestations.hasAttested[msg.sender]) revert DefifaGovernor_AlreadyAttested();
 
         // Get a reference to the attestation weight.
-        weight = getAttestationWeight(gameId, msg.sender, _scorecard.attestationsBegin);
+        weight = getAttestationWeight({
+            _gameId: gameId,
+            _account: msg.sender,
+            _timestamp: _scorecard.attestationsBegin
+        });
 
         // Increase the attestation count.
         _attestations.count += weight;
@@ -442,17 +449,19 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         bytes memory _calldata = _buildScorecardCalldataFor(tierWeights);
 
         // Attempt to execute the proposal.
-        scorecardId = _hashScorecardOf(_metadata.dataHook, _calldata);
+        scorecardId = _hashScorecardOf({_gameHook: _metadata.dataHook, _calldata: _calldata});
 
         // Make sure the proposal being ratified has succeeded.
-        if (stateOf(gameId, scorecardId) != DefifaScorecardState.SUCCEEDED) revert DefifaGovernor_NotAllowed();
+        if (stateOf({gameId: gameId, scorecardId: scorecardId}) != DefifaScorecardState.SUCCEEDED) {
+            revert DefifaGovernor_NotAllowed();
+        }
 
         // Set the ratified scorecard.
         ratifiedScorecardIdOf[gameId] = scorecardId;
 
         // Execute the scorecard via low-level call since the governor is the delegate's owner.
         (bool success, bytes memory returndata) = _metadata.dataHook.call(_calldata);
-        Address.verifyCallResult(success, returndata);
+        Address.verifyCallResult({success: success, returndata: returndata});
 
         // Fulfill any commitments for the game.
         IDefifaDeployer(controller.PROJECTS().ownerOf(gameId)).fulfillCommitmentsOf(gameId);
