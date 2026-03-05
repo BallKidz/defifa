@@ -388,11 +388,11 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         for (uint256 _i; _i < _numberOfTiers;) {
             _defifaTier = _launchProjectData.tiers[_i];
 
-            // Set the tier.
+            // Set the tier. All tiers use the same price so that price-based voting power is equal.
             _hookTiers[_i] = JB721TierConfig({
-                price: _defifaTier.price,
+                price: _launchProjectData.tierPrice,
                 initialSupply: 999_999_999, // Uncapped minting — max value allowed by the 721 store.
-                votingUnits: 1,
+                votingUnits: 0,
                 reserveFrequency: _defifaTier.reservedRate,
                 reserveBeneficiary: _defifaTier.reservedTokenBeneficiary,
                 encodedIPFSUri: _defifaTier.encodedIPFSUri,
@@ -401,7 +401,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 allowOwnerMint: false,
                 useReserveBeneficiaryAsDefault: _defifaTier.shouldUseReservedTokenBeneficiaryAsDefault,
                 transfersPausable: false,
-                useVotingUnits: true,
+                useVotingUnits: false,
                 cannotBeRemoved: true,
                 cannotIncreaseDiscountPercent: true
             });

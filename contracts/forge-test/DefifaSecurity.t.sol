@@ -298,7 +298,6 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         DefifaTierParams[] memory tp = new DefifaTierParams[](2);
         for (uint256 i; i < 2; i++) {
             tp[i] = DefifaTierParams({
-                price: uint80(1 ether),
                 reservedRate: 1, // 1 reserve per 1 paid mint
                 reservedTokenBeneficiary: _reserveAddr,
                 encodedIPFSUri: bytes32(0),
@@ -312,7 +311,7 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             mintPeriodDuration: 1 days, start: uint48(block.timestamp + 3 days), refundPeriodDuration: 1 days,
             store: new JB721TiersHookStore(), splits: new JBSplit[](0),
             attestationStartTime: 0, attestationGracePeriod: 100381,
-            defaultAttestationDelegate: address(0), tiers: tp,
+            defaultAttestationDelegate: address(0), tierPrice: uint104(1 ether), tiers: tp,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)), terminal: jbMultiTerminal(),
             minParticipation: 0, scorecardTimeout: 0
         });
@@ -512,7 +511,7 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         DefifaTierParams[] memory tp = new DefifaTierParams[](n);
         for (uint256 i; i < n; i++) {
             tp[i] = DefifaTierParams({
-                price: uint80(tierPrice), reservedRate: 1001, reservedTokenBeneficiary: address(0),
+                reservedRate: 1001, reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0), shouldUseReservedTokenBeneficiaryAsDefault: false, name: "DEFIFA"
             });
         }
@@ -522,7 +521,7 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             mintPeriodDuration: 1 days, start: uint48(block.timestamp + 3 days), refundPeriodDuration: 1 days,
             store: new JB721TiersHookStore(), splits: new JBSplit[](0),
             attestationStartTime: 0, attestationGracePeriod: 100381,
-            defaultAttestationDelegate: address(0), tiers: tp,
+            defaultAttestationDelegate: address(0), tierPrice: uint104(tierPrice), tiers: tp,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)), terminal: jbMultiTerminal(),
             minParticipation: 0, scorecardTimeout: 0
         });

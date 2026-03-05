@@ -420,7 +420,6 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](nTiers);
         for (uint256 i = 0; i < nTiers; i++) {
             tierParams[i] = DefifaTierParams({
-                price: 1 ether,
                 reservedRate: 1001,
                 reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0),
@@ -447,6 +446,7 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
             attestationStartTime: 0,
             attestationGracePeriod: 100381,
             defaultAttestationDelegate: address(0),
+            tierPrice: uint104(1 ether),
             tiers: tierParams,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),

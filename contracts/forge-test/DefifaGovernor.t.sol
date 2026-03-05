@@ -155,7 +155,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
         vm.warp(block.timestamp + 1);
 
-        assertEq(_nft.store().tierOf(address(_nft), tier, false).votingUnits, 1);
+        assertEq(_nft.store().tierOf(address(_nft), tier, false).votingUnits, 1 ether);
         assertEq(_governor.MAX_ATTESTATION_POWER_TIER(), _governor.getAttestationWeight(_gameId, _user, uint48(block.timestamp)));
     }
 
@@ -873,7 +873,6 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         uint48 _end = _launchProjectAt + uint48(_mintPeriodDuration) + uint48(_inBetweenMintAndFifa) + uint48(_fifaDuration);
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](1);
         tierParams[0] = DefifaTierParams({
-            price: 1 ether,
             reservedRate: 1001,
             reservedTokenBeneficiary: address(0),
             encodedIPFSUri: bytes32(0), // this way we dont need more tokenUris
@@ -886,6 +885,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             projectUri: "",
             contractUri: "",
             baseUri: "",
+            tierPrice: 1 ether,
             token: JBAccountingContext({
                 token: JBConstants.NATIVE_TOKEN,
                 decimals: 18,
@@ -1129,7 +1129,6 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](nTiers);
         for (uint256 i = 0; i < nTiers; i++) {
             tierParams[i] = DefifaTierParams({
-                price: 1 ether,
                 reservedRate: 1001,
                 reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0), // this way we dont need more tokenUris
@@ -1143,6 +1142,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             projectUri: "",
             contractUri: "",
             baseUri: "",
+            tierPrice: 1 ether,
             token: JBAccountingContext({
                 token: JBConstants.NATIVE_TOKEN,
                 decimals: 18,
