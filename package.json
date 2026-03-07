@@ -1,5 +1,10 @@
 {
   "name": "@ballkidz/defifa-collection-deployer",
+  "version": "1.0.43",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.0.0"
+  },
   "bugs": {
     "url": "https://github.com/BallKidz/defifa-collection-deployer/issues"
   },
@@ -7,26 +12,22 @@
     "type": "git",
     "url": "https://github.com/BallKidz/defifa-collection-deployer"
   },
-  "version": "1.0.43",
-  "license": "MIT",
   "dependencies": {
-    "@bananapus/721-hook-v5": "^0.0.3",
-    "@bananapus/address-registry-v5": "^0.0.2",
-    "@bananapus/core-v5": "^0.0.4",
-    "@openzeppelin/contracts": "^5.4.0",
+    "@bananapus/721-hook-v6": "^0.0.1",
+    "@bananapus/address-registry-v6": "^0.0.1",
+    "@bananapus/core-v6": "^0.0.1",
+    "@bananapus/permission-ids-v6": "^0.0.1",
+    "@openzeppelin/contracts": "5.2.0",
     "@prb/math": "^4.1.0",
     "scripty.sol": "^1.0.2"
   },
   "devDependencies": {
-    "@sphinx-labs/plugins": "^0.33.1",
-    "prettier": "^2.4.0",
-    "prettier-plugin-solidity": "^1.0.0-beta.19",
-    "solhint": "^3.3.6",
-    "solhint-plugin-prettier": "^0.0.5"
+    "@sphinx-labs/plugins": "^0.33.1"
   },
   "scripts": {
-    "pretty": "prettier --write \"./**/*.{js,jsx,json,sol}\"",
-    "deploy:testnets": "source ./.env && npx sphinx propose ./contracts/scripts/Deploy.s.sol --networks testnets",
-    "artifacts": "source ./.env && npx sphinx artifacts --org-id 'ea165b21-7cdc-4d7b-be59-ecdd4c26bee4' --project-name 'defifa-v5'"
+    "test": "forge test",
+    "coverage": "forge coverage",
+    "deploy:mainnets": "source ./.env && npx sphinx propose ./script/Deploy.s.sol --networks mainnets",
+    "deploy:testnets": "source ./.env && npx sphinx propose ./script/Deploy.s.sol --networks testnets"
   }
 }

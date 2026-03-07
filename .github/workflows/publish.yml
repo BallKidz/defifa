@@ -1,4 +1,4 @@
-name: juice-contracts-publish
+name: publish
 on:
   push:
     branches:
@@ -7,39 +7,12 @@ jobs:
   publish:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v1
-      - uses: actions/setup-node@v1
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
         with:
-          node-version: 16
-      - name: Get yarn cache directory path
-        id: yarn-cache-dir-path
-        run: echo "::set-output name=dir::$(yarn cache dir)"
-      - name: Restore cached yarn cache
-        uses: actions/cache@v2
-        id: cache-yarn-cache
-        with:
-          path: ${{ steps.yarn-cache-dir-path.outputs.dir }}
-          key: ${{ runner.os }}-yarn-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-yarn-
-      - name: Restore cached node_modules
-        id: cache-node-modules
-        uses: actions/cache@v2
-        with:
-          path: |
-            ./node_modules
-            ./packages/hardhat/node_modules
-          key: ${{ runner.os }}-${{ steps.nvm.outputs.NVMRC }}-nodemodules-${{ hashFiles('**/yarn.lock') }}
-          restore-keys: |
-            ${{ runner.os }}-${{ steps.nvm.outputs.NVMRC }}-nodemodules-
-      - name: Install JS dependencies
-        if: |
-          steps.cache-yarn-cache.outputs.cache-hit != 'true' ||
-          steps.cache-node-modules.outputs.cache-hit != 'true'
-        run: yarn install --frozen-lockfile --prefer-offline
-      # Publish deploy artifacts NPM packages. This will only run if there are new deploys.
-      - name: Publish NPM package
-        uses: JS-DevTools/npm-publish@v1
-        with:
-          token: ${{ secrets.NPM_TOKEN }}
-          access: "public"
+          node-version: 22.4.x
+          registry-url: https://registry.npmjs.org
+      - name: Publish to npm
+        run: bash ./utils/update-if-new-version.sh package.json
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
