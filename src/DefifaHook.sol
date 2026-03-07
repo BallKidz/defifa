@@ -1,10 +1,11 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.26;
 
 import {Checkpoints} from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IJBCashOutHook} from "@bananapus/core-v6/src/interfaces/IJBCashOutHook.sol";
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBPayHook} from "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
 import {IJBRulesetDataHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
 import {IJBRulesets} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
 import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
@@ -248,13 +249,10 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         return store.tokenUriResolverOf(address(this)).tokenUriOf(address(this), tokenId);
     }
 
-    /// @notice The cumulative weight the given token IDs have in cashOuts compared to the `_totalCashOutWeight`.
+    /// @notice The cumulative weight the given token IDs have in cashOuts compared to the `totalCashOutWeight`.
     /// @param tokenIds The IDs of the tokens to get the cumulative cashOut weight of.
     /// @return cumulativeWeight The weight.
-    function cashOutWeightOf(
-        uint256[] memory tokenIds,
-        JBBeforeCashOutRecordedContext calldata
-    )
+    function cashOutWeightOf(uint256[] memory tokenIds)
         public
         view
         virtual
@@ -291,14 +289,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
     /// @notice The combined cash out weight of all outstanding NFTs.
     /// @dev An NFT's cash out weight is its price.
-    /// @return weight The total cash out weight.
-    function totalCashOutWeight(JBBeforeCashOutRecordedContext calldata)
-        public
-        view
-        virtual
-        override
-        returns (uint256)
-    {
+    /// @return The total cash out weight.
+    function totalCashOutWeight() public view virtual override returns (uint256) {
         return TOTAL_CASHOUT_WEIGHT;
     }
 
@@ -366,7 +358,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             cumulativeMintPrice: _cumulativeMintPrice,
             surplusValue: context.surplus.value,
             _amountRedeemed: amountRedeemed,
-            cumulativeCashOutWeight: cashOutWeightOf(decodedTokenIds, context)
+            cumulativeCashOutWeight: cashOutWeightOf(decodedTokenIds)
         });
 
         // Use the surplus as the total supply.
@@ -388,6 +380,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // If the game isn't complete, we do not have any tokens to claim.
         if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.COMPLETE) return (0, 0);
 
+        // slither-disable-next-line unused-return
         return DefifaHookLib.computeTokensClaim({
             tokenIds: tokenIds,
             _store: store,
@@ -401,8 +394,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice Indicates if this contract adheres to the specified interface.
     /// @dev See {IERC165-supportsInterface}.
     /// @param interfaceId The ID of the interface to check for adherence to.
-    function supportsInterface(bytes4 interfaceId) public view override(IERC165, JB721Hook) returns (bool) {
-        return interfaceId == type(IDefifaHook).interfaceId || JB721Hook.supportsInterface(interfaceId);
+    function supportsInterface(bytes4 interfaceId) public view override(JB721Hook, IERC165) returns (bool) {
+        return interfaceId == type(IDefifaHook).interfaceId || super.supportsInterface(interfaceId);
     }
 
     //*********************************************************************//
@@ -415,12 +408,39 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         IERC20 _defifaToken,
         IERC20 _baseProtocolToken
     )
-        Ownable(msg.sender)
         JB721Hook(_directory)
+        Ownable(msg.sender)
     {
         codeOrigin = address(this);
         defifaToken = _defifaToken;
         baseProtocolToken = _baseProtocolToken;
+    }
+
+    //*********************************************************************//
+    // ---------------------- external transactions ---------------------- //
+    //*********************************************************************//
+
+    /// @notice Mints one or more NFTs to the `context.beneficiary` upon payment if conditions are met.
+    /// @dev Reverts if the calling contract is not one of the project's terminals.
+    /// @param context The payment context passed in by the terminal.
+    // slither-disable-next-line locked-ether
+    function afterPayRecordedWith(JBAfterPayRecordedContext calldata context)
+        external
+        payable
+        virtual
+        override(IJBPayHook, JB721Hook)
+    {
+        uint256 projectId = PROJECT_ID;
+
+        // Make sure the caller is a terminal of the project, and that the call is being made on behalf of an
+        // interaction with the correct project.
+        if (
+            msg.value != 0 || !DIRECTORY.isTerminalOf({projectId: projectId, terminal: IJBTerminal(msg.sender)})
+                || context.projectId != projectId
+        ) revert JB721Hook_InvalidPay();
+
+        // Process the payment.
+        _processPayment(context);
     }
 
     //*********************************************************************//
@@ -468,7 +488,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         if (address(store) != address(0)) revert();
 
         // Initialize the superclass.
-        JB721Hook._initialize({projectId: _gameId, name: _name, symbol: _symbol});
+        _initialize({projectId: _gameId, name: _name, symbol: _symbol});
 
         // Store stuff.
         rulesets = _rulesets;
@@ -490,6 +510,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         }
 
         // Record the provided tiers.
+        // slither-disable-next-line unused-return
         _store.recordAddTiers(_tiers);
 
         // Keep a reference to the number of tier names.
@@ -649,8 +670,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             _tokenId = _decodedTokenIds[_i];
 
             // Make sure the token's owner is correct.
-            if (_owners[_tokenId] != context.holder) {
-                revert DefifaHook_Unauthorized(_tokenId, _owners[_tokenId], context.holder);
+            address _tokenOwner = _ownerOf(_tokenId);
+            if (_tokenOwner != context.holder) {
+                revert DefifaHook_Unauthorized(_tokenId, _tokenOwner, context.holder);
             }
 
             // Burn the token.
@@ -862,11 +884,13 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
             // If minting, add to the total tier checkpoints.
             if (_from == address(0)) {
+                // slither-disable-next-line unused-return
                 _totalTierCheckpoints[_tierId].push(uint48(block.timestamp), _current + uint208(_amount));
             }
 
             // If burning, subtract from the total tier checkpoints.
             if (_to == address(0)) {
+                // slither-disable-next-line unused-return
                 _totalTierCheckpoints[_tierId].push(uint48(block.timestamp), _current - uint208(_amount));
             }
         }

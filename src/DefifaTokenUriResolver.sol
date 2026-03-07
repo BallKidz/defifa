@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.26;
 
 import {Base64} from "lib/base64/base64.sol";
 import {mulDiv} from "@prb/math/src/Common.sol";
@@ -237,6 +237,7 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
             )
         );
         parts[3] = string('"}');
+        // slither-disable-next-line encode-packed-collision
         return string.concat(parts[0], Base64.encode(abi.encodePacked(parts[1], parts[2], parts[3])));
     }
 

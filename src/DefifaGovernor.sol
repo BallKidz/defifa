@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.23;
+pragma solidity 0.8.26;
 
 import {mulDiv} from "@prb/math/src/Common.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
@@ -190,6 +190,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @return The quorum number of attestations.
     function quorum(uint256 gameId) public view override returns (uint256) {
         // Get the game's current funding cycle along with its metadata.
+        // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(gameId);
 
         // Get a reference to the number of tiers.
@@ -231,6 +232,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         returns (uint256 attestationPower)
     {
         // Get the game's current funding cycle along with its metadata.
+        // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(_gameId);
 
         // Get a reference to the number of tiers.
@@ -330,6 +332,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         uint256 _numberOfTierWeights = _tierWeights.length;
 
         // Get the game's current funding cycle along with its metadata.
+        // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(_gameId);
 
         // Make sure the game is in its scoring phase.
@@ -382,6 +385,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @return weight The attestation weight that was applied.
     function attestToScorecardFrom(uint256 gameId, uint256 scorecardId) external override returns (uint256 weight) {
         // Get the game's current funding cycle along with its metadata.
+        // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(gameId);
 
         // Make sure the game is in its scoring phase.
@@ -433,6 +437,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         if (ratifiedScorecardIdOf[gameId] != 0) revert DefifaGovernor_AlreadyRatified();
 
         // Get the game's current funding cycle along with its metadata.
+        // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(gameId);
 
         // Build the calldata to the target
