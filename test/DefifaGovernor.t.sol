@@ -4,27 +4,27 @@ pragma solidity 0.8.23;
 // solhint-disable-next-line no-unused-import
 import "forge-std/Test.sol";
 // solhint-disable-next-line no-unused-import
-import "@bananapus/core-v5/test/helpers/TestBaseWorkflow.sol";
+import "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
-import {JB721TiersHookStore} from "@bananapus/721-hook-v5/src/JB721TiersHookStore.sol";
+import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 
-import {JBMetadataResolver} from "@bananapus/core-v5/src/libraries/JBMetadataResolver.sol";
-import {MetadataResolverHelper} from "@bananapus/core-v5/test/helpers/MetadataResolverHelper.sol";
-import {JBTest} from "@bananapus/core-v5/test/helpers/JBTest.sol";
-import {JBRulesetMetadataResolver} from "@bananapus/core-v5/src/libraries/JBRulesetMetadataResolver.sol";
+import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
+import {MetadataResolverHelper} from "@bananapus/core-v6/test/helpers/MetadataResolverHelper.sol";
+import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
+import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {
     JB721TiersRulesetMetadataResolver
-} from "@bananapus/721-hook-v5/src/libraries/JB721TiersRulesetMetadataResolver.sol";
-import {JBAddressRegistry} from "@bananapus/address-registry-v5/src/JBAddressRegistry.sol";
+} from "@bananapus/721-hook-v6/src/libraries/JB721TiersRulesetMetadataResolver.sol";
+import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
-import {IJB721TokenUriResolver} from "@bananapus/721-hook-v5/src/interfaces/IJB721TokenUriResolver.sol";
-import {JB721Tier} from "@bananapus/721-hook-v5/src/structs/JB721Tier.sol";
+import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
+import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {DefifaDelegation} from "../src/structs/DefifaDelegation.sol";
 import {DefifaLaunchProjectData} from "../src/structs/DefifaLaunchProjectData.sol";

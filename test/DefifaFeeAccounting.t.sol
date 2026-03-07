@@ -6,16 +6,16 @@ import "../src/DefifaGovernor.sol";
 import "../src/DefifaDeployer.sol";
 import "../src/DefifaHook.sol";
 import "../src/DefifaTokenUriResolver.sol";
-import "@bananapus/721-hook-v5/src/JB721TiersHookStore.sol";
+import "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 
-import {JBMetadataResolver} from "@bananapus/core-v5/src/libraries/JBMetadataResolver.sol";
-import {MetadataResolverHelper} from "@bananapus/core-v5/test/helpers/MetadataResolverHelper.sol";
-import "@bananapus/core-v5/test/helpers/TestBaseWorkflow.sol";
-import {JBTest} from "@bananapus/core-v5/test/helpers/JBTest.sol";
-import "@bananapus/core-v5/src/libraries/JBRulesetMetadataResolver.sol";
-import "@bananapus/721-hook-v5/src/libraries/JB721TiersRulesetMetadataResolver.sol";
-import "@bananapus/address-registry-v5/src/JBAddressRegistry.sol";
-import {JBPermissionIds} from "@bananapus/permission-ids-v5/src/JBPermissionIds.sol";
+import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
+import {MetadataResolverHelper} from "@bananapus/core-v6/test/helpers/MetadataResolverHelper.sol";
+import "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
+import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
+import "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
+import "@bananapus/721-hook-v6/src/libraries/JB721TiersRulesetMetadataResolver.sol";
+import "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
+import {JBPermissionIds} from "@bananapus/permission-ids-v6/src/JBPermissionIds.sol";
 
 /// @notice Tests for PR #22 (M-D8): fee accounting after removing duplicate nana fee.
 /// Verifies that only the fee portion of the pot is sent as payouts during fulfillment,

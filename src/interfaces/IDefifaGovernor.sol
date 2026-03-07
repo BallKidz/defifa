@@ -4,7 +4,7 @@ pragma solidity 0.8.23;
 import {DefifaScorecardState} from "../enums/DefifaScorecardState.sol";
 import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
 import {IDefifaHook} from "./IDefifaHook.sol";
-import {IJBController} from "@bananapus/core-v5/src/interfaces/IJBController.sol";
+import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 
 /// @notice Manages the ratification of Defifa scorecards through attestation-based governance.
 interface IDefifaGovernor {

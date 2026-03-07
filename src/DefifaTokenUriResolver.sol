@@ -11,11 +11,11 @@ import {IDefifaTokenUriResolver} from "./interfaces/IDefifaTokenUriResolver.sol"
 import {DefifaFontImporter} from "./libraries/DefifaFontImporter.sol";
 import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 
-import {JBConstants} from "@bananapus/core-v5/src/libraries/JBConstants.sol";
-import {IJB721TokenUriResolver} from "@bananapus/721-hook-v5/src/interfaces/IJB721TokenUriResolver.sol";
-import {ERC721} from "@bananapus/721-hook-v5/src/abstract/ERC721.sol";
-import {JB721Tier} from "@bananapus/721-hook-v5/src/structs/JB721Tier.sol";
-import {JBIpfsDecoder} from "@bananapus/721-hook-v5/src/libraries/JBIpfsDecoder.sol";
+import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
+import {ERC721} from "@bananapus/721-hook-v6/src/abstract/ERC721.sol";
+import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
+import {JBIpfsDecoder} from "@bananapus/721-hook-v6/src/libraries/JBIpfsDecoder.sol";
 
 /// @title DefifaTokenUriResolver
 /// @notice Standard Token URIs for Defifa games.

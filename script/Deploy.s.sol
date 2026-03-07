@@ -11,11 +11,11 @@ import {DefifaProjectOwner} from "../src/DefifaProjectOwner.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
 import {Sphinx} from "@sphinx-labs/contracts/SphinxPlugin.sol";
 
-import {CoreDeployment, CoreDeploymentLib} from "@bananapus/core-v5/script/helpers/CoreDeploymentLib.sol";
+import {CoreDeployment, CoreDeploymentLib} from "@bananapus/core-v6/script/helpers/CoreDeploymentLib.sol";
 import {
     AddressRegistryDeployment,
     AddressRegistryDeploymentLib
-} from "@bananapus/address-registry-v5/script/helpers/AddressRegistryDeploymentLib.sol";
+} from "@bananapus/address-registry-v6/script/helpers/AddressRegistryDeploymentLib.sol";
 
 contract DeployMainnet is Script, Sphinx {
     /// @notice tracks the deployment of the core contracts for the chain we are deploying to.
@@ -44,13 +44,13 @@ contract DeployMainnet is Script, Sphinx {
         // Get the deployment addresses for the nana CORE for this chain.
         // We want to do this outside of the `sphinx` modifier.
         core = CoreDeploymentLib.getDeployment(
-            vm.envOr("NANA_CORE_DEPLOYMENT_PATH", string("node_modules/@bananapus/core-v5/deployments/"))
+            vm.envOr("NANA_CORE_DEPLOYMENT_PATH", string("node_modules/@bananapus/core-v6/deployments/"))
         );
 
         registry = AddressRegistryDeploymentLib.getDeployment(
             vm.envOr(
                 "NANA_ADDRESS_REGISTRY_DEPLOYMENT_PATH",
-                string("node_modules/@bananapus/address-registry-v5/deployments/")
+                string("node_modules/@bananapus/address-registry-v6/deployments/")
             )
         );
 

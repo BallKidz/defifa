@@ -4,8 +4,8 @@ pragma solidity 0.8.23;
 import {mulDiv} from "@prb/math/src/Common.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IJB721TiersHookStore} from "@bananapus/721-hook-v5/src/interfaces/IJB721TiersHookStore.sol";
-import {JB721Tier} from "@bananapus/721-hook-v5/src/structs/JB721Tier.sol";
+import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
+import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
 import {DefifaGamePhase} from "../enums/DefifaGamePhase.sol";
 

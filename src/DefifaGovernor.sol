@@ -14,10 +14,10 @@ import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 import {DefifaScorecardState} from "./enums/DefifaScorecardState.sol";
 import {DefifaHook} from "./DefifaHook.sol";
 
-import {IJBController} from "@bananapus/core-v5/src/interfaces/IJBController.sol";
-import {JBRulesetMetadata} from "@bananapus/core-v5/src/structs/JBRulesetMetadata.sol";
-import {IJB721TiersHookStore} from "@bananapus/721-hook-v5/src/interfaces/IJB721TiersHookStore.sol";
-import {JB721Tier} from "@bananapus/721-hook-v5/src/structs/JB721Tier.sol";
+import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
+import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
+import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
+import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 
 /// @title DefifaGovernor
 /// @notice Manages the ratification of Defifa scorecards.

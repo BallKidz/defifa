@@ -3,28 +3,28 @@ pragma solidity 0.8.23;
 
 import {Checkpoints} from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
-import {IJBCashOutHook} from "@bananapus/core-v5/src/interfaces/IJBCashOutHook.sol";
-import {IJBDirectory} from "@bananapus/core-v5/src/interfaces/IJBDirectory.sol";
-import {IJBRulesetDataHook} from "@bananapus/core-v5/src/interfaces/IJBRulesetDataHook.sol";
-import {IJBRulesets} from "@bananapus/core-v5/src/interfaces/IJBRulesets.sol";
-import {IJBTerminal} from "@bananapus/core-v5/src/interfaces/IJBTerminal.sol";
-import {JBRulesetMetadataResolver} from "@bananapus/core-v5/src/libraries/JBRulesetMetadataResolver.sol";
-import {JBAfterCashOutRecordedContext} from "@bananapus/core-v5/src/structs/JBAfterCashOutRecordedContext.sol";
-import {JBAfterPayRecordedContext} from "@bananapus/core-v5/src/structs/JBAfterPayRecordedContext.sol";
-import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v5/src/structs/JBBeforeCashOutRecordedContext.sol";
-import {JBCashOutHookSpecification} from "@bananapus/core-v5/src/structs/JBCashOutHookSpecification.sol";
-import {JBRuleset} from "@bananapus/core-v5/src/structs/JBRuleset.sol";
-import {JB721Hook} from "@bananapus/721-hook-v5/src/abstract/JB721Hook.sol";
-import {IJB721TiersHookStore} from "@bananapus/721-hook-v5/src/interfaces/IJB721TiersHookStore.sol";
-import {IJB721TokenUriResolver} from "@bananapus/721-hook-v5/src/interfaces/IJB721TokenUriResolver.sol";
+import {IJBCashOutHook} from "@bananapus/core-v6/src/interfaces/IJBCashOutHook.sol";
+import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBRulesetDataHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
+import {IJBRulesets} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
+import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
+import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
+import {JBAfterCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
+import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
+import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
+import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
+import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
+import {JB721Hook} from "@bananapus/721-hook-v6/src/abstract/JB721Hook.sol";
+import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
+import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {
     JB721TiersRulesetMetadataResolver
-} from "@bananapus/721-hook-v5/src/libraries/JB721TiersRulesetMetadataResolver.sol";
-import {JB721Tier} from "@bananapus/721-hook-v5/src/structs/JB721Tier.sol";
-import {JB721TierConfig} from "@bananapus/721-hook-v5/src/structs/JB721TierConfig.sol";
-import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v5/src/structs/JB721TiersMintReservesConfig.sol";
+} from "@bananapus/721-hook-v6/src/libraries/JB721TiersRulesetMetadataResolver.sol";
+import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
+import {JB721TierConfig} from "@bananapus/721-hook-v6/src/structs/JB721TierConfig.sol";
+import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
 
-import {JBMetadataResolver} from "@bananapus/core-v5/src/libraries/JBMetadataResolver.sol";
+import {JBMetadataResolver} from "@bananapus/core-v6/src/libraries/JBMetadataResolver.sol";
 import {DefifaDelegation} from "./structs/DefifaDelegation.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";

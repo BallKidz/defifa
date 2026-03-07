@@ -3,9 +3,9 @@ pragma solidity 0.8.23;
 
 import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
 import {DefifaDeployer} from "./DefifaDeployer.sol";
-import {IJBPermissions, JBPermissionsData} from "@bananapus/core-v5/src/interfaces/IJBPermissions.sol";
-import {IJBProjects} from "@bananapus/core-v5/src/interfaces/IJBProjects.sol";
-import {JBPermissionIds} from "@bananapus/permission-ids-v5/src/JBPermissionIds.sol";
+import {IJBPermissions, JBPermissionsData} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
+import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
+import {JBPermissionIds} from "@bananapus/permission-ids-v6/src/JBPermissionIds.sol";
 
 /// @notice A contract that can be sent a project to be burned, while still allowing defifa permissions.
 /// @dev Once the project NFT is transferred here, it cannot be recovered. This contract permanently
