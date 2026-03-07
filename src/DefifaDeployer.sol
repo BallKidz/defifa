@@ -587,6 +587,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         noContestTriggeredFor[gameId] = true;
 
         // Get the game's current ruleset metadata for the data hook address.
+        // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(gameId);
 
         // Queue a new ruleset without payout limits so surplus = balance, enabling refunds.
@@ -627,6 +628,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         });
 
         // Queue the no-contest refund ruleset.
+        // slither-disable-next-line unused-return
         controller.queueRulesetsOf({
             projectId: gameId, rulesetConfigurations: rulesetConfigs, memo: "Defifa game: no contest."
         });

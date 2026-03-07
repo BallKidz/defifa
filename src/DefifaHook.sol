@@ -388,6 +388,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // If the game isn't complete, we do not have any tokens to claim.
         if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.COMPLETE) return (0, 0);
 
+        // slither-disable-next-line unused-return
         return DefifaHookLib.computeTokensClaim({
             tokenIds: tokenIds,
             _store: store,
@@ -490,6 +491,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         }
 
         // Record the provided tiers.
+        // slither-disable-next-line unused-return
         _store.recordAddTiers(_tiers);
 
         // Keep a reference to the number of tier names.
@@ -862,11 +864,13 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
             // If minting, add to the total tier checkpoints.
             if (_from == address(0)) {
+                // slither-disable-next-line unused-return
                 _totalTierCheckpoints[_tierId].push(uint48(block.timestamp), _current + uint208(_amount));
             }
 
             // If burning, subtract from the total tier checkpoints.
             if (_to == address(0)) {
+                // slither-disable-next-line unused-return
                 _totalTierCheckpoints[_tierId].push(uint48(block.timestamp), _current - uint208(_amount));
             }
         }

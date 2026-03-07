@@ -237,6 +237,7 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
             )
         );
         parts[3] = string('"}');
+        // slither-disable-next-line encode-packed-collision
         return string.concat(parts[0], Base64.encode(abi.encodePacked(parts[1], parts[2], parts[3])));
     }
 
