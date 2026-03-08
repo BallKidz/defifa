@@ -447,14 +447,7 @@ contract DefifaTierSplitsTest is JBTest, TestBaseWorkflow {
     /// @dev The hook address forms the first 160 bits of the split group ID, so the hook is
     /// authorized to call setSplitGroupsOf for its own tier groups. We use vm.prank to simulate
     /// the hook setting its own splits.
-    function _registerTierSplits(
-        uint256 projectId,
-        DefifaHook _nft,
-        uint256 tierId,
-        JBSplit[] memory splits
-    )
-        internal
-    {
+    function _registerTierSplits(uint256 projectId, DefifaHook _nft, uint256 tierId, JBSplit[] memory splits) internal {
         uint256 groupId = uint256(uint160(address(_nft))) | (tierId << 160);
         JBSplitGroup[] memory splitGroups = new JBSplitGroup[](1);
         splitGroups[0] = JBSplitGroup({groupId: groupId, splits: splits});
