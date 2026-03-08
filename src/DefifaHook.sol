@@ -369,9 +369,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Get the current game phase.
         DefifaGamePhase _gamePhase = gamePhaseReporter.currentGamePhaseOf(context.projectId);
 
-        // Calculate the full mint price (for fee token distribution) and the retained price (for refunds).
-        uint256 _cumulativeMintPrice =
-            DefifaHookLib.computeCumulativeMintPrice({tokenIds: decodedTokenIds, _store: store, hook: address(this)});
+        // Calculate the retained price (mint price minus splits) for refunds and fee token tracking.
         uint256 _cumulativeRetainedPrice = DefifaHookLib.computeCumulativeRetainedPrice({
             tokenIds: decodedTokenIds, _store: store, hook: address(this)
         });
