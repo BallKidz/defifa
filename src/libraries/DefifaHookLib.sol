@@ -241,8 +241,7 @@ library DefifaHookLib {
     {
         uint256 _numberOfTokenIds = tokenIds.length;
         for (uint256 _i; _i < _numberOfTokenIds; _i++) {
-            JB721Tier memory tier =
-                _store.tierOfTokenId({hook: hook, tokenId: tokenIds[_i], includeResolvedUri: false});
+            JB721Tier memory tier = _store.tierOfTokenId({hook: hook, tokenId: tokenIds[_i], includeResolvedUri: false});
             uint256 splitAmount =
                 tier.splitPercent != 0 ? mulDiv(tier.price, tier.splitPercent, JBConstants.SPLITS_TOTAL_PERCENT) : 0;
             cumulativeRetainedPrice += tier.price - splitAmount;
@@ -251,8 +250,8 @@ library DefifaHookLib {
 
     /// @notice Compute the cash out count for the beforeCashOutRecorded hook.
     /// @param gamePhase The current game phase.
-    /// @param cumulativeRetainedPrice The cumulative retained price (mint price minus split amounts) of the tokens being
-    /// cashed out.
+    /// @param cumulativeRetainedPrice The cumulative retained price (mint price minus split amounts) of the tokens
+    /// being cashed out.
     /// @param surplusValue The surplus value from the context.
     /// @param _amountRedeemed The amount already redeemed.
     /// @param cumulativeCashOutWeight The cumulative cash out weight of the tokens.

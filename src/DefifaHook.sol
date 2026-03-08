@@ -372,8 +372,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Calculate the full mint price (for fee token distribution) and the retained price (for refunds).
         uint256 _cumulativeMintPrice =
             DefifaHookLib.computeCumulativeMintPrice({tokenIds: decodedTokenIds, _store: store, hook: address(this)});
-        uint256 _cumulativeRetainedPrice =
-            DefifaHookLib.computeCumulativeRetainedPrice({tokenIds: decodedTokenIds, _store: store, hook: address(this)});
+        uint256 _cumulativeRetainedPrice = DefifaHookLib.computeCumulativeRetainedPrice({
+            tokenIds: decodedTokenIds, _store: store, hook: address(this)
+        });
 
         // Use this contract as the only cash out hook. Pass the retained price since _totalMintCost tracks retained
         // amounts.
