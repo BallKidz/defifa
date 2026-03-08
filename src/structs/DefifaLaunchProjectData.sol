@@ -43,6 +43,9 @@ struct DefifaLaunchProjectData {
     string baseUri;
     DefifaTierParams[] tiers;
     uint104 tierPrice;
+    /// @custom:member tierSplitPercent The percentage of each tier's price forwarded to the tier's split group on mint.
+    /// Out of JBConstants.SPLITS_TOTAL_PERCENT (1e9).
+    uint32 tierSplitPercent;
     JBAccountingContext token;
     uint24 mintPeriodDuration;
     uint24 refundPeriodDuration;

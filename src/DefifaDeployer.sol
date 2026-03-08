@@ -411,8 +411,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 useVotingUnits: false,
                 cannotBeRemoved: true,
                 cannotIncreaseDiscountPercent: true,
-                splitPercent: 0,
-                splits: new JBSplit[](0)
+                splitPercent: launchProjectData.tierSplitPercent,
+                splits: _defifaTier.splits
             });
 
             // Set the name.
