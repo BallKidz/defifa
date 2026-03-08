@@ -127,6 +127,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @param gameId The ID of the game to get a proposal state of.
     /// @param scorecardId The ID of the proposal to get the state of.
     /// @return The state.
+    /// @dev Boundary semantics (inclusive):
+    ///   - At exactly `attestationsBegin`, the state transitions from PENDING to ACTIVE (attestations are open).
+    ///   - At exactly `gracePeriodEnds`, the grace period has elapsed and the state transitions from ACTIVE to
+    ///     SUCCEEDED (if quorum is met) or remains ACTIVE (if not).
     function stateOf(uint256 gameId, uint256 scorecardId) public view virtual override returns (DefifaScorecardState) {
         // Keep a reference to the ratified scorecard ID.
         uint256 _ratifiedScorecardId = ratifiedScorecardIdOf[gameId];
@@ -147,12 +151,14 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         }
 
         // If the scorecard has attestations beginning in the future, the state is PENDING.
-        if (_scorecard.attestationsBegin >= block.timestamp) {
+        // At exactly `attestationsBegin`, attestations are open so the state is ACTIVE.
+        if (_scorecard.attestationsBegin > block.timestamp) {
             return DefifaScorecardState.PENDING;
         }
 
-        // If the scorecard has a grace period expiring in the future, the state is ACTIVE.
-        if (_scorecard.gracePeriodEnds >= block.timestamp) {
+        // If the scorecard's grace period has not yet ended, the state is ACTIVE.
+        // At exactly `gracePeriodEnds`, the grace period has elapsed so we fall through to the quorum check.
+        if (_scorecard.gracePeriodEnds > block.timestamp) {
             return DefifaScorecardState.ACTIVE;
         }
 
