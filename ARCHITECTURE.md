@@ -2,81 +2,79 @@
 
 ## Purpose
 
-Prediction game platform built on Juicebox V6 NFTs. Players buy NFT tiers representing outcomes (teams, predictions). After the event, a governance process ratifies a scorecard that determines each tier's cash-out weight. Winners cash out proportionally; losers' funds redistribute to winners.
+Prediction game platform built on Juicebox V6. Creates games where players buy NFT tiers representing outcomes, a governance process scores the outcomes, and winners claim treasury funds proportional to their tier's score.
 
 ## Contract Map
 
 ```
 src/
-├── DefifaDeployer.sol        — Deploys games: JB project + DefifaHook + DefifaGovernor
-├── DefifaHook.sol            — JB721-based hook with game phases and attestation-weighted cash outs
-├── DefifaGovernor.sol        — Scorecard ratification via token-weighted attestation
-├── DefifaProjectOwner.sol    — Holds project ownership during game lifecycle
-├── DefifaTokenUriResolver.sol — On-chain SVG metadata for game NFTs
+├── DefifaDeployer.sol          — Deploys games: project + hook + governor + URI resolver
+├── DefifaHook.sol              — Pay/cashout hook with game phase logic and attestation
+├── DefifaGovernor.sol          — Scorecard ratification via tier-weighted governance
+├── DefifaProjectOwner.sol      — Proxy owner for Defifa projects
+├── DefifaTokenUriResolver.sol  — On-chain SVG metadata for game NFTs
 ├── enums/
-│   ├── DefifaGamePhase.sol    — MINT → REFUND → SCORING → COMPLETE
-│   └── DefifaScorecardState.sol — PENDING → RATIFIED
+│   ├── DefifaGamePhase.sol     — MINT → REFUND → SCORING → COMPLETE
+│   └── DefifaScorecardState.sol
+├── interfaces/                 — IDefifaDeployer, IDefifaHook, IDefifaGovernor, etc.
 ├── libraries/
-│   └── DefifaHookLib.sol      — Tier weight calculation helpers
-├── interfaces/                — IDefifaDeployer, IDefifaHook, IDefifaGovernor, etc.
-└── structs/                   — Scorecards, tier params, attestations, delegations
+│   └── DefifaHookLib.sol       — Game logic helpers
+└── structs/                    — Scorecards, attestations, tier params, delegations
 ```
 
 ## Key Data Flows
 
-### Game Deployment
+### Game Lifecycle
 ```
-Creator → DefifaDeployer.launchGameFor()
-  → Create JB project with timed rulesets
-  → Deploy DefifaHook (721-based, game-phase-aware)
-  → Deploy DefifaGovernor (scorecard ratification)
-  → Configure ruleset phases:
-    → MINT: payments open, refunds disabled
-    → REFUND: no new mints, full refunds available
-    → SCORING: governance submits scorecards
-    → COMPLETE: cash outs use ratified weights
+MINT Phase:
+  Creator → DefifaDeployer.launchGameWith()
+    → Create JB project with DefifaHook as data/pay/cashout hook
+    → Deploy DefifaGovernor for scorecard governance
+    → Players buy NFT tiers (outcomes they predict)
+    → Delegation happens during this phase only
+
+REFUND Phase:
+  → Players can cash out for full refund (100% redemption rate)
+
+SCORING Phase:
+  → Anyone → DefifaGovernor.submitScorecard(weights[])
+    → Tier holders attest to scorecards
+    → Scorecard reaches quorum → ratified
+    → DefifaHook receives final cash-out weights per tier
+
+COMPLETE Phase:
+  → Winners → cash out NFTs at scored weights
+  → Deployer → fulfillCommitmentsOf() distributes fee tokens
 ```
 
-### Scorecard Ratification
+### Governance Flow
 ```
-NFT Holder → DefifaGovernor.submitScorecards()
-  → Submit tier cash-out weights (must sum to total)
-  → Each NFT holder attests to a scorecard
-  → Attestation weight = number of NFTs held (capped at 1e9 per tier)
-  → When scorecard reaches quorum → ratified
-  → DefifaHook uses ratified weights for cash outs
+Scorer → DefifaGovernor.submitScorecard(tierWeights[])
+  → Validate: correct phase, valid tier order, weights sum correctly
+  → Create proposal hash
 
-After ratification:
-Player → JBMultiTerminal.cashOutTokensOf()
-  → DefifaHook.afterCashOutRecordedWith()
-    → Weight from ratified scorecard determines reclaim
-    → Winning tiers get proportionally more
-    → Losing tiers get less or nothing
-```
-
-### Fulfillment
-```
-Anyone → DefifaDeployer.fulfillCommitmentsOf()
-  → After COMPLETE phase
-  → Distribute reserved tokens (fee tokens)
-  → Clean up game state
+Attestor → DefifaGovernor.attestToScorecard(proposalId)
+  → Must hold NFT tier tokens
+  → Attestation weight = voting power from held tiers
+  → When quorum reached → scorecard ratified
+  → DefifaHook.setScorecard() called
 ```
 
 ## Extension Points
 
 | Point | Interface | Purpose |
 |-------|-----------|---------|
-| Data hook | `IJBRulesetDataHook` | DefifaDeployer controls pay/cashout |
-| Cash out hook | `IJBCashOutHook` | DefifaHook applies scorecard weights |
-| Pay hook | `IJBPayHook` | DefifaHook tracks delegations during MINT |
-| Token URI | `IJB721TokenUriResolver` | DefifaTokenUriResolver renders on-chain SVGs |
-| Governor | `IDefifaGovernor` | Scorecard submission and ratification |
+| Data hook | `IJBRulesetDataHook` | Phase-aware pay/cashout behavior |
+| Pay hook | `IJBPayHook` | NFT minting during MINT phase |
+| Cash out hook | `IJBCashOutHook` | Scored weight redemptions |
+| Token URI resolver | `IJB721TokenUriResolver` | On-chain SVG generation |
+| Governor | `IDefifaGovernor` | Scorecard governance |
 
 ## Dependencies
 - `@bananapus/core-v6` — Core protocol
-- `@bananapus/721-hook-v6` — NFT tier system (DefifaHook extends JB721Hook)
-- `@bananapus/address-registry-v6` — Deterministic deploy addresses
+- `@bananapus/721-hook-v6` — NFT tier system
+- `@bananapus/address-registry-v6` — Deterministic deploys
 - `@bananapus/permission-ids-v6` — Permission constants
-- `@openzeppelin/contracts` — Checkpoints, Clones, SafeERC20, Ownable
+- `@openzeppelin/contracts` — Checkpoints, Ownable, Clones
 - `@prb/math` — mulDiv
-- `scripty.sol` — On-chain SVG rendering
+- `scripty.sol` — On-chain scripting for SVG

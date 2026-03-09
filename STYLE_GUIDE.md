@@ -2,7 +2,7 @@
 
 How we write Solidity and organize repos across the Juicebox V6 ecosystem. `nana-core-v6` is the gold standard — when in doubt, match what it does.
 
-**This repo's deviations:** `via-ir = true` (stack depth), `build_info = true` + `extra_output = ['storageLayout']`, lower invariant test config (`runs = 256, depth = 50`), no fuzz config. Package scope: `@ballkidz/`. RPC endpoints for multi-chain fork tests.
+**This repo's deviations:** `via-ir = true`, `build_info = true`, `extra_output = ['storageLayout']`. Lower invariant runs (256/depth 50). Package scope: `@ballkidz/`.
 
 ## File Organization
 
@@ -421,7 +421,7 @@ jobs:
 
 ```json
 {
-  "name": "@bananapus/package-name-v6",
+  "name": "@ballkidz/defifa",
   "version": "x.x.x",
   "license": "MIT",
   "repository": { "type": "git", "url": "git+https://github.com/Org/repo.git" },
