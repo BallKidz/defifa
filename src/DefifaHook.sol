@@ -1007,10 +1007,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Move delegated attestations.
         _moveTierDelegateAttestations({
-            _from: _tierDelegation[_from][_tierId],
-            _to: _toDelegate,
-            _tierId: _tierId,
-            _amount: _amount
+            _from: _tierDelegation[_from][_tierId], _to: _toDelegate, _tierId: _tierId, _amount: _amount
         });
     }
 

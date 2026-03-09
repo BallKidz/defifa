@@ -224,17 +224,14 @@ contract DefifaHook_AuditFindings is JBTest, TestBaseWorkflow {
 
         // Player C (auto-delegated to self) should have gained the voting units.
         uint256 playerCDelegateUnits = _nft.getTierAttestationUnitsOf(playerC, 1);
-        assertEq(
-            playerCDelegateUnits, votingUnitsPerNft, "Player C should have gained the transferred voting units"
-        );
+        assertEq(playerCDelegateUnits, votingUnitsPerNft, "Player C should have gained the transferred voting units");
 
         // The total attestation supply should be unchanged — no units lost.
         uint256 totalAfter = _nft.getTierTotalAttestationUnitsOf(1);
         assertEq(totalAfter, totalBefore, "Total attestation units must be conserved across the transfer");
 
         // Verify conservation: sum of all delegate attestation units for tier 1 == total.
-        uint256 sumOfDelegates =
-            _nft.getTierAttestationUnitsOf(playerA, 1) + _nft.getTierAttestationUnitsOf(playerB, 1)
+        uint256 sumOfDelegates = _nft.getTierAttestationUnitsOf(playerA, 1) + _nft.getTierAttestationUnitsOf(playerB, 1)
             + _nft.getTierAttestationUnitsOf(playerC, 1);
         assertEq(sumOfDelegates, totalAfter, "Sum of all delegate attestation units must equal total supply");
     }
@@ -292,9 +289,7 @@ contract DefifaHook_AuditFindings is JBTest, TestBaseWorkflow {
 
             // Verify the recipient auto-delegated to self.
             assertEq(
-                _nft.getTierDelegateOf(nextRecipient, 1),
-                nextRecipient,
-                "Each recipient should auto-delegate to self"
+                _nft.getTierDelegateOf(nextRecipient, 1), nextRecipient, "Each recipient should auto-delegate to self"
             );
 
             // Verify the recipient has the voting units.
