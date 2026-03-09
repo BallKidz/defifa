@@ -7,3 +7,11 @@ node_modules
 lib/forge-std/
 out/
 .claude/
+
+# Audit/nemesis output
+.audit/
+.audit-logs/
+AUDIT_FINDINGS.md
+NEMESIS_SCOPE.md
+run-nemesis-all.sh
+
