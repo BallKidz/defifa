@@ -463,7 +463,7 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
     /// @notice Mint 1 NFT per tier, set delegation, return array of user addresses.
     function _mintAllTiers(
         DefifaHook _nft,
-        DefifaGovernor _governor,
+        DefifaGovernor,
         uint256 projectId,
         uint8 nTiers
     )
@@ -499,7 +499,7 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         address[] memory users,
         DefifaHook _nft,
         DefifaGovernor _governor,
-        uint256 projectId,
+        uint256,
         uint8 nTiers
     )
         internal
@@ -541,7 +541,7 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         return (_tierId * 1_000_000_000) + _tokenNumber;
     }
 
-    function _buildPayMetadata(bytes memory metadata) internal returns (bytes memory) {
+    function _buildPayMetadata(bytes memory metadata) internal view returns (bytes memory) {
         bytes[] memory data = new bytes[](1);
         data[0] = metadata;
         bytes4[] memory ids = new bytes4[](1);
@@ -549,7 +549,7 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         return metadataHelper().createMetadata(ids, data);
     }
 
-    function _buildCashOutMetadata(bytes memory metadata) internal returns (bytes memory) {
+    function _buildCashOutMetadata(bytes memory metadata) internal view returns (bytes memory) {
         bytes[] memory data = new bytes[](1);
         data[0] = metadata;
         bytes4[] memory ids = new bytes4[](1);

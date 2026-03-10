@@ -2,9 +2,7 @@
 pragma solidity 0.8.26;
 
 import {DefifaTierParams} from "./DefifaTierParams.sol";
-import {DefifaOpsData} from "./DefifaOpsData.sol";
 
-import {JBLaunchProjectConfig} from "@bananapus/721-hook-v6/src/structs/JBLaunchProjectConfig.sol";
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
 import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";

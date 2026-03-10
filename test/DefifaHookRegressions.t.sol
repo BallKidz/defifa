@@ -30,18 +30,18 @@ import {DefifaTierParams} from "../src/structs/DefifaTierParams.sol";
 import {DefifaTierCashOutWeight} from "../src/structs/DefifaTierCashOutWeight.sol";
 
 /// @dev Helper to read block.timestamp via an external call, bypassing the via-ir optimizer's timestamp caching.
-contract TimestampReaderAudit {
+contract TimestampReaderRegressions {
     function timestamp() external view returns (uint256) {
         return block.timestamp;
     }
 }
 
-/// @title DefifaHook_AuditFindings
+/// @title DefifaHookRegressions
 /// @notice Regression tests for audit findings in DefifaHook.
-contract DefifaHook_AuditFindings is JBTest, TestBaseWorkflow {
+contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
-    TimestampReaderAudit private _tsReader = new TimestampReaderAudit();
+    TimestampReaderRegressions private _tsReader = new TimestampReaderRegressions();
 
     address _protocolFeeProjectTokenAccount;
     address _defifaProjectTokenAccount;
@@ -364,7 +364,7 @@ contract DefifaHook_AuditFindings is JBTest, TestBaseWorkflow {
         return (_tierId * 1_000_000_000) + _tokenNumber;
     }
 
-    function _buildPayMetadata(bytes memory metadata) internal returns (bytes memory) {
+    function _buildPayMetadata(bytes memory metadata) internal view returns (bytes memory) {
         bytes[] memory data = new bytes[](1);
         data[0] = metadata;
         bytes4[] memory ids = new bytes4[](1);

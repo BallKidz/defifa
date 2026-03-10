@@ -37,11 +37,11 @@ contract TimestampReader2 {
     }
 }
 
-/// @title M35_GracePeriodBypass
+/// @title GracePeriodBypass
 /// @notice Regression test: grace period should extend from attestation start, not submission time.
 ///         When a scorecard is submitted early (before attestationStartTime), the grace period
 ///         must not expire before attestations begin.
-contract M35_GracePeriodBypass is JBTest, TestBaseWorkflow {
+contract GracePeriodBypass is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
     TimestampReader2 private _tsReader = new TimestampReader2();
@@ -286,7 +286,7 @@ contract M35_GracePeriodBypass is JBTest, TestBaseWorkflow {
         nft = DefifaHook(_fc.dataHook());
     }
 
-    function _buildPayMetadata(bytes memory metadata) internal returns (bytes memory) {
+    function _buildPayMetadata(bytes memory metadata) internal view returns (bytes memory) {
         bytes[] memory data = new bytes[](1);
         data[0] = metadata;
         bytes4[] memory ids = new bytes4[](1);
