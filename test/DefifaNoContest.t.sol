@@ -892,7 +892,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
             });
     }
 
-    function _cashOutMeta(uint256 tid, uint256 tnum) internal returns (bytes memory) {
+    function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {
         uint256[] memory cid = new uint256[](1);
         cid[0] = (tid * 1_000_000_000) + tnum;
         bytes[] memory data = new bytes[](1);

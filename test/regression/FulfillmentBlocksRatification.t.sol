@@ -39,11 +39,11 @@ contract TimestampReader3 {
     }
 }
 
-/// @title M36_FulfillmentBlocksRatification
+/// @title FulfillmentBlocksRatification
 /// @notice Regression test: ratification should succeed even when fulfillCommitmentsOf reverts.
 /// @dev Tests the try-catch wrapper around fulfillCommitmentsOf in ratifyScorecardFrom.
 ///      The test verifies that the FulfillmentFailed event is emitted and ratification completes.
-contract M36_FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
+contract FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
     TimestampReader3 private _tsReader = new TimestampReader3();
@@ -262,7 +262,7 @@ contract M36_FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
         nft = DefifaHook(_fc.dataHook());
     }
 
-    function _buildPayMetadata(bytes memory metadata) internal returns (bytes memory) {
+    function _buildPayMetadata(bytes memory metadata) internal view returns (bytes memory) {
         bytes[] memory data = new bytes[](1);
         data[0] = metadata;
         bytes4[] memory ids = new bytes4[](1);

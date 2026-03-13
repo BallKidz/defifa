@@ -631,7 +631,6 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         JB721Tier memory _tier = _hook.store().tierOf(address(_hook), 1, false);
         uint256 _cost = _tier.price;
 
-        address _delegateUser = address(bytes20(keccak256("_delegateUser")));
         address _refundUser = address(bytes20(keccak256("refund_user")));
         // The user should have no balance
         assertEq(_hook.balanceOf(_refundUser), 0);
@@ -931,8 +930,6 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             _durationUntilProjectLaunch > 2 && _mintPeriodDuration > 1 && _inBetweenMintAndFifa > 1 && _fifaDuration > 1
         );
         uint48 _launchProjectAt = uint48(block.timestamp) + _durationUntilProjectLaunch;
-        uint48 _end =
-            _launchProjectAt + uint48(_mintPeriodDuration) + uint48(_inBetweenMintAndFifa) + uint48(_fifaDuration);
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](1);
         tierParams[0] = DefifaTierParams({
             reservedRate: 1001,
@@ -988,12 +985,10 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
 
     function testWhenScorecardIsSubmittedWithUnmintedTier() public {
         uint8 nTiers = 10;
-        address[] memory _users = new address[](nTiers);
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(nTiers);
-        (uint256 _projectId, DefifaHook _nft, DefifaGovernor _governor) = createDefifaProject(defifaData);
+        (,, DefifaGovernor _governor) = createDefifaProject(defifaData);
         // Phase 1: Mint
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
-        //deployer.queueNextPhaseOf(_projectId);
 
         // Warp to scoring phase (past start time)
         vm.warp(defifaData.start + 1);
@@ -1007,7 +1002,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
 
         vm.expectRevert(abi.encodeWithSignature("DefifaGovernor_UnownedProposedCashoutValue()"));
         // Forward time so proposals can be created
-        uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
+        _governor.submitScorecardFor(_gameId, scorecards);
     }
 
     // function testWhenPhaseIsAlreadyQueued() public {
@@ -1256,7 +1251,6 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         assertEq(_refundUser.balance, 0);
         // The user should have have a token
         assertEq(_hook.balanceOf(_refundUser), 1);
-        uint256 _numberBurned = _hook.store().numberOfBurnedFor(address(_hook), _tierId);
         // Craft the metadata: redeem the tokenId
         bytes memory cashOutMetadata;
         {
@@ -1305,7 +1299,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         return (_tierId * 1_000_000_000) + _tokenNumber;
     }
 
-    function _buildPayMetadata(bytes memory metadata) internal returns (bytes memory) {
+    function _buildPayMetadata(bytes memory metadata) internal view returns (bytes memory) {
         // Build the metadata using the tiers to mint and the overspending flag.
         bytes[] memory data = new bytes[](1);
         data[0] = metadata;
@@ -1318,7 +1312,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         return metadataHelper().createMetadata(ids, data);
     }
 
-    function _buildCashOutMetadata(bytes memory metadata) internal returns (bytes memory) {
+    function _buildCashOutMetadata(bytes memory metadata) internal view returns (bytes memory) {
         // Build the metadata using the tiers to mint and the overspending flag.
         bytes[] memory data = new bytes[](1);
         data[0] = metadata;

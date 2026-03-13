@@ -101,7 +101,7 @@ Deep implementation-level risk analysis with line references, severity ratings, 
 
 **Severity:** MEDIUM
 **Status:** BY DESIGN
-**Tested:** `DefifaSecurityTest.testM_D6_delegationBlocked`, `DefifaHook_AuditFindings.test_M5_attestationUnitsPreservedOnTransferToUndelegatedRecipient`
+**Tested:** `DefifaSecurityTest.testM_D6_delegationBlocked`, `DefifaHookRegressions.test_M5_attestationUnitsPreservedOnTransferToUndelegatedRecipient`
 
 **Description:** `setTierDelegateTo` and `setTierDelegatesTo` only work during MINT phase (DefifaHook lines 730, 740). After MINT, NFT transfers auto-delegate to the recipient (if no delegate set), but holders cannot explicitly re-delegate.
 
@@ -140,7 +140,7 @@ Deep implementation-level risk analysis with line references, severity ratings, 
 
 **Severity:** LOW
 **Status:** MITIGATED
-**Tested:** `M36_FulfillmentBlocksRatification.test_ratificationSucceedsWhenFulfillmentReverts`
+**Tested:** `FulfillmentBlocksRatification.test_ratificationSucceedsWhenFulfillmentReverts`
 
 **Description:** `ratifyScorecardFrom` wraps `fulfillCommitmentsOf` in a try-catch (DefifaGovernor lines 402-405). If fulfillment fails (e.g., `sendPayoutsOf` reverts), the scorecard is still ratified and `FulfillmentFailed` event is emitted.
 
@@ -154,7 +154,7 @@ Deep implementation-level risk analysis with line references, severity ratings, 
 
 **Severity:** LOW
 **Status:** FIXED (Regression tested)
-**Tested:** `M35_GracePeriodBypass.test_gracePeriodExtendsFromAttestationStart`
+**Tested:** `GracePeriodBypass.test_gracePeriodExtendsFromAttestationStart`
 
 **Description:** When a scorecard is submitted before `attestationStartTime`, the grace period could previously expire before attestations even begin. Fixed by anchoring `gracePeriodEnds` to `attestationsBegin` rather than submission time.
 
@@ -245,7 +245,7 @@ Deep implementation-level risk analysis with line references, severity ratings, 
 
 **Severity:** HIGH (before fix)
 **Status:** FIXED
-**Tested:** `DefifaHook_AuditFindings.test_M5_attestationUnitsPreservedOnTransferToUndelegatedRecipient`, `test_M5_multipleTransfersToUndelegatedRecipientsPreserveUnits`
+**Tested:** `DefifaHookRegressions.test_M5_attestationUnitsPreservedOnTransferToUndelegatedRecipient`, `test_M5_multipleTransfersToUndelegatedRecipientsPreserveUnits`
 
 **Description:** Previously, transferring an NFT to a recipient with no delegate set would lose attestation units (sender's delegate lost units but no one gained them). Fixed by auto-delegating undelegated recipients to themselves in `_transferTierAttestationUnits` (DefifaHook lines 1001-1006).
 
@@ -314,15 +314,15 @@ Deep implementation-level risk analysis with line references, severity ratings, 
 | RISK-6 Delegation locked | `DefifaSecurity.t.sol` | `testM_D6_delegationBlocked` |
 | RISK-7 Single governor | (No isolation test) | Design review only |
 | RISK-8 Clone front-running | (Implicit) | All `launchGameWith` tests |
-| RISK-9 Fulfillment failure | `regression/M36_FulfillmentBlocksRatification.t.sol` | `test_ratificationSucceedsWhenFulfillmentReverts` |
-| RISK-10 Grace period bypass | `regression/M35_GracePeriodBypass.t.sol` | `test_gracePeriodExtendsFromAttestationStart` |
+| RISK-9 Fulfillment failure | `regression/FulfillmentBlocksRatification.t.sol` | `test_ratificationSucceedsWhenFulfillmentReverts` |
+| RISK-10 Grace period bypass | `regression/GracePeriodBypass.t.sol` | `test_gracePeriodExtendsFromAttestationStart` |
 | RISK-11 Overweight scorecard | `DefifaSecurity.t.sol` | `testC_D2_rejectsOverweight` |
 | RISK-12 No-contest trigger | `DefifaNoContest.t.sol` | `testNoContest_cashOutBeforeTrigger_reverts`, `testTriggerNoContest_revertsWhenNotNoContest`, `testTriggerNoContest_revertsWhenAlreadyTriggered` |
 | RISK-13 `_totalMintCost` | `DefifaMintCostInvariant.t.sol` | `invariant_totalMintCostMatchesExpected`, `invariant_totalMintCostEqualsPriceTimesLiveTokens`, `invariant_tokenCountConsistency` |
 | RISK-14 Fee accounting | `DefifaFeeAccounting.t.sol` | All 6 tests |
 | RISK-15 Cash-out reentrancy | (Code review) | State ordering analysis |
 | RISK-16 Fulfillment reentrancy | (Code review) | Guard analysis |
-| RISK-17 Attestation conservation | `DefifaHook_AuditFindings.t.sol` | `test_M5_attestationUnitsPreservedOnTransferToUndelegatedRecipient`, `test_M5_multipleTransfersToUndelegatedRecipientsPreserveUnits` |
+| RISK-17 Attestation conservation | `DefifaHookRegressions.t.sol` | `test_M5_attestationUnitsPreservedOnTransferToUndelegatedRecipient`, `test_M5_multipleTransfersToUndelegatedRecipientsPreserveUnits` |
 | RISK-18 Fund conservation | `DefifaSecurity.t.sol` | `testFuzz_fundConservation`, `testHighVolume_32tiers`, `testMultiPlayer_winnerTakesAll`, `testRefundIntegrity` |
 | RISK-19 uint208 overflow | (Bounded analysis) | Arithmetic review |
 | RISK-20 Timestamp caching | (Test infrastructure) | `TimestampReader` pattern |

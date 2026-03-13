@@ -2,7 +2,6 @@
 pragma solidity 0.8.26;
 
 import {DefifaLaunchProjectData} from "../structs/DefifaLaunchProjectData.sol";
-import {DefifaOpsData} from "../structs/DefifaOpsData.sol";
 import {IDefifaHook} from "./IDefifaHook.sol";
 import {IDefifaGovernor} from "./IDefifaGovernor.sol";
 
