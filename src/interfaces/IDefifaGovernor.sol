@@ -31,7 +31,7 @@ interface IDefifaGovernor {
 
     /// @notice The Juicebox controller used to manage projects.
     /// @return The controller contract.
-    function controller() external view returns (IJBController);
+    function CONTROLLER() external view returns (IJBController);
 
     /// @notice The scorecard proposal submitted by the default attestation delegate for a game.
     /// @param gameId The ID of the game.

@@ -16,8 +16,6 @@ import {DefifaHook} from "./DefifaHook.sol";
 
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
-import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
-import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 
 /// @title DefifaGovernor
 /// @notice Manages the ratification of Defifa scorecards.
@@ -68,7 +66,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     //*********************************************************************//
 
     /// @notice The controller with which new projects should be deployed.
-    IJBController public immutable override controller;
+    IJBController public immutable override CONTROLLER;
 
     //*********************************************************************//
     // -------------------- public stored properties --------------------- //
@@ -165,7 +163,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     {
         // Get the game's current funding cycle along with its metadata.
         // slither-disable-next-line unused-return
-        (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(_gameId);
+        (, JBRulesetMetadata memory _metadata) = CONTROLLER.currentRulesetOf(_gameId);
 
         // Get a reference to the number of tiers.
         uint256 _numberOfTiers = IDefifaHook(_metadata.dataHook).store().maxTierIdOf(_metadata.dataHook);
@@ -203,7 +201,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     function quorum(uint256 gameId) public view override returns (uint256) {
         // Get the game's current funding cycle along with its metadata.
         // slither-disable-next-line unused-return
-        (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(gameId);
+        (, JBRulesetMetadata memory _metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Get a reference to the number of tiers.
         uint256 _numberOfTiers = IDefifaHook(_metadata.dataHook).store().maxTierIdOf(_metadata.dataHook);
@@ -272,7 +270,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     //*********************************************************************//
 
     constructor(IJBController _controller, address _owner) Ownable(_owner) {
-        controller = _controller;
+        CONTROLLER = _controller;
     }
 
     //*********************************************************************//
@@ -323,7 +321,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     function attestToScorecardFrom(uint256 gameId, uint256 scorecardId) external override returns (uint256 weight) {
         // Get the game's current funding cycle along with its metadata.
         // slither-disable-next-line unused-return
-        (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(gameId);
+        (, JBRulesetMetadata memory _metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Make sure the game is in its scoring phase.
         if (IDefifaHook(_metadata.dataHook).gamePhaseReporter().currentGamePhaseOf(gameId) != DefifaGamePhase.SCORING) {
@@ -375,7 +373,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Get the game's current funding cycle along with its metadata.
         // slither-disable-next-line unused-return
-        (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(gameId);
+        (, JBRulesetMetadata memory _metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Build the calldata to the target
         bytes memory _calldata = _buildScorecardCalldataFor(tierWeights);
@@ -399,7 +397,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Fulfill any commitments for the game. Wrapped in try-catch so that a fulfillment
         // failure (e.g. from sendPayoutsOf reverting) does not permanently block ratification.
         // Fulfillment can be retried separately by calling fulfillCommitmentsOf directly.
-        try IDefifaDeployer(controller.PROJECTS().ownerOf(gameId)).fulfillCommitmentsOf(gameId) {}
+        try IDefifaDeployer(CONTROLLER.PROJECTS().ownerOf(gameId)).fulfillCommitmentsOf(gameId) {}
         catch (bytes memory reason) {
             emit FulfillmentFailed(gameId, reason);
         }
@@ -430,7 +428,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Get the game's current funding cycle along with its metadata.
         // slither-disable-next-line unused-return
-        (, JBRulesetMetadata memory _metadata) = controller.currentRulesetOf(_gameId);
+        (, JBRulesetMetadata memory _metadata) = CONTROLLER.currentRulesetOf(_gameId);
 
         // Make sure the game is in its scoring phase.
         if (IDefifaHook(_metadata.dataHook).gamePhaseReporter().currentGamePhaseOf(_gameId) != DefifaGamePhase.SCORING)
@@ -460,6 +458,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         uint256 _timeUntilAttestationsBegin =
             block.timestamp > _attestationStartTime ? 0 : _attestationStartTime - block.timestamp;
 
+        // Casting to uint48 is safe because block.timestamp fits in uint48 until year 8921556.
+        // forge-lint: disable-next-line(unsafe-typecast)
         uint48 _attestationsBegin = uint48(block.timestamp + _timeUntilAttestationsBegin);
         _scorecard.attestationsBegin = _attestationsBegin;
         // Grace period extends from when attestations begin, not from submission time.

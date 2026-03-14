@@ -34,14 +34,14 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
     //*********************************************************************//
 
     /// @notice The typeface of the SVGs.
-    ITypeface public immutable override typeface;
+    ITypeface public immutable override TYPEFACE;
 
     //*********************************************************************//
     // -------------------------- constructor ---------------------------- //
     //*********************************************************************//
 
     constructor(ITypeface _typeface) {
-        typeface = _typeface;
+        TYPEFACE = _typeface;
     }
 
     //*********************************************************************//
@@ -185,10 +185,10 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
             abi.encodePacked(
                 '<svg viewBox="0 0 500 500" xmlns="http://www.w3.org/2000/svg">',
                 '<style>@font-face{font-family:"Capsules-500";src:url(data:font/truetype;charset=utf-8;base64,',
-                DefifaFontImporter.getSkinnyFontSource(typeface),
+                DefifaFontImporter.getSkinnyFontSource(TYPEFACE),
                 ');format("opentype");}',
                 '@font-face{font-family:"Capsules-700";src:url(data:font/truetype;charset=utf-8;base64,',
-                DefifaFontImporter.getBeefyFontSource(typeface),
+                DefifaFontImporter.getBeefyFontSource(TYPEFACE),
                 ');format("opentype");}',
                 "text{white-space:pre-wrap; width:100%; }</style>",
                 '<rect width="100%" height="100%" fill="#181424"/>',

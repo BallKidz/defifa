@@ -54,7 +54,11 @@ contract DefifaProjectOwner is IERC721Receiver {
         PERMISSIONS.setPermissionsFor({
             account: address(this),
             permissionsData: JBPermissionsData({
-                operator: address(DEPLOYER), projectId: uint64(tokenId), permissionIds: permissionIds
+                // Casting to uint64 is safe because Juicebox project IDs are sequential and will not exceed uint64.
+                operator: address(DEPLOYER),
+                // forge-lint: disable-next-line(unsafe-typecast)
+                projectId: uint64(tokenId),
+                permissionIds: permissionIds
             })
         });
 
