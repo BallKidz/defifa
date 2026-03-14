@@ -7,7 +7,6 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
-import {DefifaProjectOwner} from "../src/DefifaProjectOwner.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
 import {Sphinx} from "@sphinx-labs/contracts/contracts/foundry/SphinxPlugin.sol";
 

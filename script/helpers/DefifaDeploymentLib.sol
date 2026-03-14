@@ -21,7 +21,7 @@ struct DefifaDeployment {
 library DefifaDeploymentLib {
     // Cheat code address, 0x7109709ECfa91a80626fF3989D68f67F5b1DD12D.
     address internal constant VM_ADDRESS = address(uint160(uint256(keccak256("hevm cheat code"))));
-    Vm internal constant vm = Vm(VM_ADDRESS);
+    Vm internal constant VM = Vm(VM_ADDRESS);
     string constant PROJECT_NAME = "defifa-v5";
 
     function getDeployment(string memory path) internal returns (DefifaDeployment memory deployment) {
@@ -34,7 +34,7 @@ library DefifaDeploymentLib {
 
         for (uint256 _i; _i < networks.length; _i++) {
             if (networks[_i].chainId == chainId) {
-                return getDeployment({path: path, network_name: networks[_i].name});
+                return getDeployment({path: path, networkName: networks[_i].name});
             }
         }
 
@@ -43,7 +43,7 @@ library DefifaDeploymentLib {
 
     function getDeployment(
         string memory path,
-        string memory network_name
+        string memory networkName
     )
         internal
         view
@@ -51,27 +51,27 @@ library DefifaDeploymentLib {
     {
         deployment.hook = DefifaHook(
             _getDeploymentAddress({
-                path: path, project_name: PROJECT_NAME, network_name: network_name, contractName: "DefifaHook"
+                path: path, projectName: PROJECT_NAME, networkName: networkName, contractName: "DefifaHook"
             })
         );
 
         deployment.deployer = DefifaDeployer(
             _getDeploymentAddress({
-                path: path, project_name: PROJECT_NAME, network_name: network_name, contractName: "DefifaDeployer"
+                path: path, projectName: PROJECT_NAME, networkName: networkName, contractName: "DefifaDeployer"
             })
         );
 
         deployment.governor = DefifaGovernor(
             _getDeploymentAddress({
-                path: path, project_name: PROJECT_NAME, network_name: network_name, contractName: "DefifaGovernor"
+                path: path, projectName: PROJECT_NAME, networkName: networkName, contractName: "DefifaGovernor"
             })
         );
 
         deployment.tokenUriResolver = DefifaTokenUriResolver(
             _getDeploymentAddress({
                 path: path,
-                project_name: PROJECT_NAME,
-                network_name: network_name,
+                projectName: PROJECT_NAME,
+                networkName: networkName,
                 contractName: "DefifaTokenUriResolver"
             })
         );
@@ -80,14 +80,14 @@ library DefifaDeploymentLib {
     /// @notice Get the address of a contract that was deployed by the Deploy script.
     /// @dev Reverts if the contract was not found.
     /// @param path The path to the deployment file.
-    /// @param project_name The name of the project.
-    /// @param network_name The name of the network.
+    /// @param projectName The name of the project.
+    /// @param networkName The name of the network.
     /// @param contractName The name of the contract to get the address of.
     /// @return The address of the contract.
     function _getDeploymentAddress(
         string memory path,
-        string memory project_name,
-        string memory network_name,
+        string memory projectName,
+        string memory networkName,
         string memory contractName
     )
         internal
@@ -95,7 +95,8 @@ library DefifaDeploymentLib {
         returns (address)
     {
         string memory deploymentJson =
-            vm.readFile(string.concat(path, project_name, "/", network_name, "/", contractName, ".json"));
+            // forge-lint: disable-next-line(unsafe-cheatcode)
+            VM.readFile(string.concat(path, projectName, "/", networkName, "/", contractName, ".json"));
         return stdJson.readAddress({json: deploymentJson, key: ".address"});
     }
 }

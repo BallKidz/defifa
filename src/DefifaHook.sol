@@ -106,17 +106,17 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     //*********************************************************************//
 
     /// @notice The $DEFIFA token that is expected to be issued from paying fees.
-    IERC20 public immutable override defifaToken;
+    IERC20 public immutable override DEFIFA_TOKEN;
 
     /// @notice The $BASE_PROTOCOL token that is expected to be issued from paying fees.
-    IERC20 public immutable override baseProtocolToken;
+    IERC20 public immutable override BASE_PROTOCOL_TOKEN;
 
     //*********************************************************************//
     // --------------------- public stored properties -------------------- //
     //*********************************************************************//
 
     /// @notice The address of the origin 'DefifaHook', used to check in the init if the contract is the original or not
-    address public immutable override codeOrigin;
+    address public immutable override CODE_ORIGIN;
 
     /// @notice The contract that stores and manages the NFT's data.
     IJB721TiersHookStore public override store;
@@ -267,7 +267,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Fetch the cash out hook metadata using the corresponding metadata ID.
         (bool metadataExists, bytes memory metadata) = JBMetadataResolver.getDataFor({
-            id: JBMetadataResolver.getId({purpose: "cashOut", target: codeOrigin}), metadata: context.metadata
+            id: JBMetadataResolver.getId({purpose: "cashOut", target: CODE_ORIGIN}), metadata: context.metadata
         });
 
         uint256[] memory decodedTokenIds;
@@ -356,8 +356,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         view
         returns (uint256 defifaTokenAllocation, uint256 baseProtocolTokenAllocation)
     {
-        defifaTokenAllocation = defifaToken.balanceOf(address(this));
-        baseProtocolTokenAllocation = baseProtocolToken.balanceOf(address(this));
+        defifaTokenAllocation = DEFIFA_TOKEN.balanceOf(address(this));
+        baseProtocolTokenAllocation = BASE_PROTOCOL_TOKEN.balanceOf(address(this));
     }
 
     /// @notice The metadata URI of the provided token ID.
@@ -387,8 +387,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             _store: store,
             hook: address(this),
             totalMintCost: _totalMintCost,
-            defifaBalance: defifaToken.balanceOf(address(this)),
-            baseProtocolBalance: baseProtocolToken.balanceOf(address(this))
+            defifaBalance: DEFIFA_TOKEN.balanceOf(address(this)),
+            baseProtocolBalance: BASE_PROTOCOL_TOKEN.balanceOf(address(this))
         });
     }
 
@@ -412,9 +412,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         JB721Hook(_directory)
         Ownable(msg.sender)
     {
-        codeOrigin = address(this);
-        defifaToken = _defifaToken;
-        baseProtocolToken = _baseProtocolToken;
+        CODE_ORIGIN = address(this);
+        DEFIFA_TOKEN = _defifaToken;
+        BASE_PROTOCOL_TOKEN = _baseProtocolToken;
     }
 
     //*********************************************************************//
@@ -483,7 +483,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         override
     {
         // Make the original un-initializable.
-        if (address(this) == codeOrigin) revert();
+        if (address(this) == CODE_ORIGIN) revert();
 
         // Stop re-initialization.
         if (address(store) != address(0)) revert();
@@ -788,8 +788,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             _beneficiary: _beneficiary,
             shareToBeneficiary: shareToBeneficiary,
             outOfTotal: outOfTotal,
-            _defifaToken: defifaToken,
-            _baseProtocolToken: baseProtocolToken
+            _defifaToken: DEFIFA_TOKEN,
+            _baseProtocolToken: BASE_PROTOCOL_TOKEN
         });
     }
 
@@ -892,6 +892,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             // Get the current amount for the sending delegate.
             uint208 _current = _delegateTierCheckpoints[_from][_tierId].latest();
             // Set the new amount for the sending delegate.
+            // Casting to uint208 is safe because attestation unit amounts are bounded by NFT supply counts.
+            // forge-lint: disable-next-line(unsafe-typecast)
             (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_from][_tierId].push({
                 key: uint48(block.timestamp), value: _current - uint208(_amount)
             });
@@ -902,6 +904,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         if (_to != address(0)) {
             // Get the current amount for the receiving delegate.
             uint208 _current = _delegateTierCheckpoints[_to][_tierId].latest();
+            // Casting to uint208 is safe because attestation unit amounts are bounded by NFT supply counts.
+            // forge-lint: disable-next-line(unsafe-typecast)
             // Set the new amount for the receiving delegate.
             (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_to][_tierId].push({
                 key: uint48(block.timestamp), value: _current + uint208(_amount)
@@ -918,7 +922,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Resolve the metadata.
         (bool found, bytes memory metadata) = JBMetadataResolver.getDataFor({
-            id: JBMetadataResolver.getId({purpose: "pay", target: codeOrigin}), metadata: context.payerMetadata
+            id: JBMetadataResolver.getId({purpose: "pay", target: CODE_ORIGIN}), metadata: context.payerMetadata
         });
 
         if (!found) revert DefifaHook_NothingToMint();
@@ -993,12 +997,16 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             // If minting, add to the total tier checkpoints.
             if (_from == address(0)) {
                 // slither-disable-next-line unused-return
+                // Casting to uint208 is safe because attestation unit amounts are bounded by NFT supply counts.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 _totalTierCheckpoints[_tierId].push({key: uint48(block.timestamp), value: _current + uint208(_amount)});
             }
 
             // If burning, subtract from the total tier checkpoints.
             if (_to == address(0)) {
                 // slither-disable-next-line unused-return
+                // Casting to uint208 is safe because attestation unit amounts are bounded by NFT supply counts.
+                // forge-lint: disable-next-line(unsafe-typecast)
                 _totalTierCheckpoints[_tierId].push({key: uint48(block.timestamp), value: _current - uint208(_amount)});
             }
         }
