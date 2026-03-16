@@ -161,7 +161,7 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
         // type(uint48).max + 1 should overflow the 48-bit packing.
         uint256 overflowStartTime = uint256(type(uint48).max) + 1;
 
-        vm.expectRevert();
+        vm.expectRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
         _standaloneGov.initializeGame({
             _gameId: 99, _attestationStartTime: overflowStartTime, _attestationGracePeriod: 2 days
         });
@@ -176,7 +176,7 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
         // type(uint48).max + 1 should overflow the 48-bit packing.
         uint256 overflowGracePeriod = uint256(type(uint48).max) + 1;
 
-        vm.expectRevert();
+        vm.expectRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
         _standaloneGov.initializeGame({
             _gameId: 100, _attestationStartTime: block.timestamp, _attestationGracePeriod: overflowGracePeriod
         });

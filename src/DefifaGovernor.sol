@@ -32,6 +32,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     error DefifaGovernor_IncorrectTierOrder();
     error DefifaGovernor_UnknownProposal();
     error DefifaGovernor_UnownedProposedCashoutValue();
+    error DefifaGovernor_Uint48Overflow();
 
     //*********************************************************************//
     // ---------------- immutable internal stored properties ------------- //
@@ -302,8 +303,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         if (_attestationGracePeriod < 1 days) _attestationGracePeriod = 1 days;
 
         // Ensure values fit within their allocated 48-bit widths before packing.
-        if (_attestationStartTime > type(uint48).max) revert();
-        if (_attestationGracePeriod > type(uint48).max) revert();
+        if (_attestationStartTime > type(uint48).max) revert DefifaGovernor_Uint48Overflow();
+        if (_attestationGracePeriod > type(uint48).max) revert DefifaGovernor_Uint48Overflow();
 
         // Pack the values.
         uint256 _packed;
