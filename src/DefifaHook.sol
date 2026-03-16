@@ -676,6 +676,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         }
 
         // If there's nothing being claimed and we did not distribute fee tokens, revert to prevent burning for nothing.
+        // Tokens in 0-weight tiers (losing teams) cannot burn to reclaim fees if no fee tokens were
+        // distributed. This is correct behavior — 0-weight means the tier has no claim on the pot. Burning would
+        // return 0 value regardless.
         if (context.reclaimedAmount.value == 0 && !_beneficiaryReceivedTokens) revert DefifaHook_NothingToClaim();
 
         // Decrement the paid mint cost by the cumulative mint price of the tokens being burned.
@@ -730,6 +733,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @param delegatee The account to delegate tier attestation units to.
     /// @param tierId The ID of the tier to delegate attestation units for.
     function setTierDelegateTo(address delegatee, uint256 tierId) public virtual override {
+        // Make sure a delegate is specified.
+        if (delegatee == address(0)) revert DefifaHook_DelegateAddressZero();
+
         // Make sure the current game phase is the minting phase.
         if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.MINT) {
             revert DefifaHook_DelegateChangesUnavailableInThisPhase();

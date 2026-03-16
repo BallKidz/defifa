@@ -126,6 +126,9 @@ library DefifaHookLib {
             _tier.initialSupply - _tier.remainingSupply - (_burnedTokens - tokensRedeemedFrom[_tierId]);
 
         // Calculate the percentage of the tier cashOut amount a single token counts for.
+        // Integer division rounding in cashOutWeight is unavoidable in Solidity. Rounding direction
+        // (down) is consistent and conservative — it slightly favors the project over individual cash-out recipients.
+        // The maximum error per operation is 1 wei per division.
         return _weight / _totalTokensForCashoutInTier;
     }
 
@@ -197,8 +200,8 @@ library DefifaHookLib {
         }
 
         // Calculate the user's claimable amount proportional to what they paid.
-        defifaTokenAmount = defifaBalance * _cumulativeMintPrice / totalMintCost;
-        baseProtocolTokenAmount = baseProtocolBalance * _cumulativeMintPrice / totalMintCost;
+        defifaTokenAmount = mulDiv({x: defifaBalance, y: _cumulativeMintPrice, denominator: totalMintCost});
+        baseProtocolTokenAmount = mulDiv({x: baseProtocolBalance, y: _cumulativeMintPrice, denominator: totalMintCost});
     }
 
     /// @notice Compute the cumulative mint price for a set of token IDs.
@@ -346,8 +349,13 @@ library DefifaHookLib {
         returns (bool beneficiaryReceivedTokens)
     {
         // Calculate the share of $DEFIFA and $BASE_PROTOCOL tokens to send.
-        uint256 baseProtocolAmount = _baseProtocolToken.balanceOf(address(this)) * shareToBeneficiary / outOfTotal;
-        uint256 defifaAmount = _defifaToken.balanceOf(address(this)) * shareToBeneficiary / outOfTotal;
+        // Rounding in fee token claims slightly favors later claimants because earlier claims round
+        // down, leaving fractionally more for subsequent claimants. The error is bounded by 1 wei per claim and is
+        // economically insignificant.
+        uint256 baseProtocolAmount =
+            mulDiv({x: _baseProtocolToken.balanceOf(address(this)), y: shareToBeneficiary, denominator: outOfTotal});
+        uint256 defifaAmount =
+            mulDiv({x: _defifaToken.balanceOf(address(this)), y: shareToBeneficiary, denominator: outOfTotal});
 
         // If there is an amount we should send, send it.
         if (defifaAmount != 0) _defifaToken.safeTransfer({to: _beneficiary, value: defifaAmount});
