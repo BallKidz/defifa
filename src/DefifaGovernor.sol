@@ -24,6 +24,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
     error DefifaGovernor_AlreadyAttested();
+    error DefifaGovernor_AlreadyInitialized();
     error DefifaGovernor_AlreadyRatified();
     error DefifaGovernor_GameNotFound();
     error DefifaGovernor_NotAllowed();
@@ -291,11 +292,18 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         override
         onlyOwner
     {
+        // Make sure the game hasn't already been initialized.
+        if (_packedScorecardInfoOf[_gameId] != 0) revert DefifaGovernor_AlreadyInitialized();
+
         // Set a default attestation start time if needed.
         if (_attestationStartTime == 0) _attestationStartTime = block.timestamp;
 
         // Enforce a minimum grace period of 1 day to prevent instant ratification.
         if (_attestationGracePeriod < 1 days) _attestationGracePeriod = 1 days;
+
+        // Ensure values fit within their allocated 48-bit widths before packing.
+        if (_attestationStartTime > type(uint48).max) revert();
+        if (_attestationGracePeriod > type(uint48).max) revert();
 
         // Pack the values.
         uint256 _packed;
