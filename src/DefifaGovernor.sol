@@ -170,6 +170,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Get a reference to the number of tiers.
         uint256 _numberOfTiers = IDefifaHook(_metadata.dataHook).store().maxTierIdOf(_metadata.dataHook);
 
+        // slither-disable-next-line calls-inside-a-loop
         for (uint256 _i; _i < _numberOfTiers; _i++) {
             // Tiers are 1-indexed.
             uint256 _tierId = _i + 1;
@@ -211,6 +212,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Keep a reference to the total eligible tier weight.
         uint256 _eligibleTierWeights;
 
+        // slither-disable-next-line calls-inside-a-loop
         for (uint256 _i; _i < _numberOfTiers; _i++) {
             // Each minted tier contributes MAX_ATTESTATION_POWER_TIER to the quorum denominator.
             if (IDefifaHook(_metadata.dataHook).currentSupplyOfTier(_i + 1) != 0) {

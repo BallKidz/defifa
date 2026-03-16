@@ -853,6 +853,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         uint256[] memory _tokenIds;
 
         // Record the mint. The returned token IDs correspond to the tiers passed in.
+        // slither-disable-next-line reentrancy-benign
         (_tokenIds, leftoverAmount) = store.recordMint({
             amount: _amount,
             tierIds: _mintTierIds,
@@ -1069,7 +1070,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         }
 
         // Record the transfer.
-        // slither-disable-next-line reentrency-events,calls-loop
+        // slither-disable-next-line reentrancy-events,calls-loop
         store.recordTransferForTier({tierId: tier.id, from: from, to: to});
 
         // Dont transfer on mint since the delegation will be transferred more efficiently in _processPayment.
