@@ -1,42 +1,42 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.26;
 
-import {mulDiv} from "@prb/math/src/Common.sol";
-import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
-import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
-import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
-import {IDefifaDeployer} from "./interfaces/IDefifaDeployer.sol";
-import {IDefifaHook} from "./interfaces/IDefifaHook.sol";
-import {IDefifaGamePhaseReporter} from "./interfaces/IDefifaGamePhaseReporter.sol";
-import {IDefifaGamePotReporter} from "./interfaces/IDefifaGamePotReporter.sol";
-import {IDefifaGovernor} from "./interfaces/IDefifaGovernor.sol";
-import {DefifaLaunchProjectData} from "./structs/DefifaLaunchProjectData.sol";
-import {DefifaTierParams} from "./structs/DefifaTierParams.sol";
-import {DefifaOpsData} from "./structs/DefifaOpsData.sol";
-import {DefifaHook} from "./DefifaHook.sol";
-
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
-import {IJBController, JBRulesetConfig, JBTerminalConfig} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
-import {IJBAddressRegistry} from "@bananapus/address-registry-v6/src/interfaces/IJBAddressRegistry.sol";
-import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
-import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
-import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
-import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
-import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
-import {JBCurrencyAmount} from "@bananapus/core-v6/src/structs/JBCurrencyAmount.sol";
-import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
-import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
-import {IJBSplitHook} from "@bananapus/core-v6/src/interfaces/IJBSplitHook.sol";
-import {JB721TierConfig} from "@bananapus/721-hook-v6/src/structs/JB721TierConfig.sol";
-import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
 import {
     JB721TiersRulesetMetadata,
     JB721TiersRulesetMetadataResolver
 } from "@bananapus/721-hook-v6/src/libraries/JB721TiersRulesetMetadataResolver.sol";
+import {JB721TierConfig} from "@bananapus/721-hook-v6/src/structs/JB721TierConfig.sol";
+import {IJBAddressRegistry} from "@bananapus/address-registry-v6/src/interfaces/IJBAddressRegistry.sol";
+import {IJBController, JBRulesetConfig, JBTerminalConfig} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
+import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
 import {IJBRulesetApprovalHook, JBRuleset} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
+import {IJBSplitHook} from "@bananapus/core-v6/src/interfaces/IJBSplitHook.sol";
+import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
+import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
+import {JBCurrencyAmount} from "@bananapus/core-v6/src/structs/JBCurrencyAmount.sol";
+import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
+import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
+import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
+import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
+import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Receiver.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {mulDiv} from "@prb/math/src/Common.sol";
+
+import {DefifaHook} from "./DefifaHook.sol";
+import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
+import {IDefifaDeployer} from "./interfaces/IDefifaDeployer.sol";
+import {IDefifaGamePhaseReporter} from "./interfaces/IDefifaGamePhaseReporter.sol";
+import {IDefifaGamePotReporter} from "./interfaces/IDefifaGamePotReporter.sol";
+import {IDefifaGovernor} from "./interfaces/IDefifaGovernor.sol";
+import {IDefifaHook} from "./interfaces/IDefifaHook.sol";
+import {DefifaLaunchProjectData} from "./structs/DefifaLaunchProjectData.sol";
+import {DefifaOpsData} from "./structs/DefifaOpsData.sol";
+import {DefifaTierParams} from "./structs/DefifaTierParams.sol";
 
 /// @title DefifaDeployer
 /// @notice Deploys and manages Defifa games.
