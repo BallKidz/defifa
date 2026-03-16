@@ -649,6 +649,87 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     // ------------------------ internal functions ----------------------- //
     //*********************************************************************//
 
+    function _buildSplits(
+        uint256 _gameId,
+        address _dataHook,
+        address _token,
+        JBSplit[] memory _initialSplits
+    )
+        internal
+        returns (JBSplitGroup[] memory)
+    {
+        uint256 _numberOfUserSplits = _initialSplits.length;
+
+        // Compute absolute percents for protocol fees.
+        uint256 _nanaAbsolutePercent = JBConstants.SPLITS_TOTAL_PERCENT / BASE_PROTOCOL_FEE_DIVISOR;
+        uint256 _defifaAbsolutePercent = JBConstants.SPLITS_TOTAL_PERCENT / DEFIFA_FEE_DIVISOR;
+
+        // Sum all absolute percents.
+        uint256 _totalAbsolutePercent = _nanaAbsolutePercent + _defifaAbsolutePercent;
+        for (uint256 _i; _i < _numberOfUserSplits; _i++) {
+            _totalAbsolutePercent += _initialSplits[_i].percent;
+        }
+
+        // Validate that total fee splits don't exceed 100%.
+        if (_totalAbsolutePercent > JBConstants.SPLITS_TOTAL_PERCENT) revert DefifaDeployer_SplitsDontAddUp();
+
+        // Store the total absolute percent for use in fulfillCommitmentsOf.
+        _commitmentPercentOf[_gameId] = _totalAbsolutePercent;
+
+        // Build the splits array: user splits + Defifa + NANA (NANA last to absorb rounding).
+        uint256 _splitCount = _numberOfUserSplits + 2;
+        JBSplit[] memory _splits = new JBSplit[](_splitCount);
+
+        // Normalize user splits and copy them over.
+        uint256 _normalizedTotal;
+        for (uint256 _i; _i < _numberOfUserSplits; _i++) {
+            _splits[_i] = _initialSplits[_i];
+            _splits[_i].percent = uint32(
+                mulDiv({
+                    x: _initialSplits[_i].percent,
+                    y: JBConstants.SPLITS_TOTAL_PERCENT,
+                    denominator: _totalAbsolutePercent
+                })
+            );
+            _normalizedTotal += _splits[_i].percent;
+        }
+
+        // Add Defifa fee split (normalized).
+        uint256 _defifaNormalized = mulDiv({
+            x: _defifaAbsolutePercent, y: JBConstants.SPLITS_TOTAL_PERCENT, denominator: _totalAbsolutePercent
+        });
+        _splits[_numberOfUserSplits] = JBSplit({
+            preferAddToBalance: false,
+            // forge-lint: disable-next-line(unsafe-typecast)
+            percent: uint32(_defifaNormalized),
+            // forge-lint: disable-next-line(unsafe-typecast)
+            projectId: uint64(DEFIFA_PROJECT_ID),
+            beneficiary: payable(address(_dataHook)),
+            lockedUntil: 0,
+            hook: IJBSplitHook(address(0))
+        });
+        _normalizedTotal += _defifaNormalized;
+
+        // Add NANA protocol fee split last — absorbs rounding remainder.
+        // Beneficiary is the data hook so the hook receives NANA tokens for distribution during cash-outs.
+        _splits[_splitCount - 1] = JBSplit({
+            preferAddToBalance: false,
+            // forge-lint: disable-next-line(unsafe-typecast)
+            percent: uint32(JBConstants.SPLITS_TOTAL_PERCENT - _normalizedTotal),
+            // forge-lint: disable-next-line(unsafe-typecast)
+            projectId: uint64(BASE_PROTOCOL_PROJECT_ID),
+            beneficiary: payable(address(_dataHook)),
+            lockedUntil: 0,
+            hook: IJBSplitHook(address(0))
+        });
+
+        // Build the grouped split for the payment of the game token.
+        JBSplitGroup[] memory _groupedSplits = new JBSplitGroup[](1);
+        _groupedSplits[0] = JBSplitGroup({groupId: uint256(uint160(_token)), splits: _splits});
+
+        return _groupedSplits;
+    }
+
     function _launchGame(
         DefifaLaunchProjectData memory launchProjectData,
         uint256 _gameId,
@@ -821,86 +902,5 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             terminalConfigurations: terminalConfigurations,
             memo: "Launching Defifa game."
         });
-    }
-
-    function _buildSplits(
-        uint256 _gameId,
-        address _dataHook,
-        address _token,
-        JBSplit[] memory _initialSplits
-    )
-        internal
-        returns (JBSplitGroup[] memory)
-    {
-        uint256 _numberOfUserSplits = _initialSplits.length;
-
-        // Compute absolute percents for protocol fees.
-        uint256 _nanaAbsolutePercent = JBConstants.SPLITS_TOTAL_PERCENT / BASE_PROTOCOL_FEE_DIVISOR;
-        uint256 _defifaAbsolutePercent = JBConstants.SPLITS_TOTAL_PERCENT / DEFIFA_FEE_DIVISOR;
-
-        // Sum all absolute percents.
-        uint256 _totalAbsolutePercent = _nanaAbsolutePercent + _defifaAbsolutePercent;
-        for (uint256 _i; _i < _numberOfUserSplits; _i++) {
-            _totalAbsolutePercent += _initialSplits[_i].percent;
-        }
-
-        // Validate that total fee splits don't exceed 100%.
-        if (_totalAbsolutePercent > JBConstants.SPLITS_TOTAL_PERCENT) revert DefifaDeployer_SplitsDontAddUp();
-
-        // Store the total absolute percent for use in fulfillCommitmentsOf.
-        _commitmentPercentOf[_gameId] = _totalAbsolutePercent;
-
-        // Build the splits array: user splits + Defifa + NANA (NANA last to absorb rounding).
-        uint256 _splitCount = _numberOfUserSplits + 2;
-        JBSplit[] memory _splits = new JBSplit[](_splitCount);
-
-        // Normalize user splits and copy them over.
-        uint256 _normalizedTotal;
-        for (uint256 _i; _i < _numberOfUserSplits; _i++) {
-            _splits[_i] = _initialSplits[_i];
-            _splits[_i].percent = uint32(
-                mulDiv({
-                    x: _initialSplits[_i].percent,
-                    y: JBConstants.SPLITS_TOTAL_PERCENT,
-                    denominator: _totalAbsolutePercent
-                })
-            );
-            _normalizedTotal += _splits[_i].percent;
-        }
-
-        // Add Defifa fee split (normalized).
-        uint256 _defifaNormalized = mulDiv({
-            x: _defifaAbsolutePercent, y: JBConstants.SPLITS_TOTAL_PERCENT, denominator: _totalAbsolutePercent
-        });
-        _splits[_numberOfUserSplits] = JBSplit({
-            preferAddToBalance: false,
-            // forge-lint: disable-next-line(unsafe-typecast)
-            percent: uint32(_defifaNormalized),
-            // forge-lint: disable-next-line(unsafe-typecast)
-            projectId: uint64(DEFIFA_PROJECT_ID),
-            beneficiary: payable(address(_dataHook)),
-            lockedUntil: 0,
-            hook: IJBSplitHook(address(0))
-        });
-        _normalizedTotal += _defifaNormalized;
-
-        // Add NANA protocol fee split last — absorbs rounding remainder.
-        // Beneficiary is the data hook so the hook receives NANA tokens for distribution during cash-outs.
-        _splits[_splitCount - 1] = JBSplit({
-            preferAddToBalance: false,
-            // forge-lint: disable-next-line(unsafe-typecast)
-            percent: uint32(JBConstants.SPLITS_TOTAL_PERCENT - _normalizedTotal),
-            // forge-lint: disable-next-line(unsafe-typecast)
-            projectId: uint64(BASE_PROTOCOL_PROJECT_ID),
-            beneficiary: payable(address(_dataHook)),
-            lockedUntil: 0,
-            hook: IJBSplitHook(address(0))
-        });
-
-        // Build the grouped split for the payment of the game token.
-        JBSplitGroup[] memory _groupedSplits = new JBSplitGroup[](1);
-        _groupedSplits[0] = JBSplitGroup({groupId: uint256(uint160(_token)), splits: _splits});
-
-        return _groupedSplits;
     }
 }
