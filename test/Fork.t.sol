@@ -1371,33 +1371,16 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
     function test_fork_delegateToZero_viaSetTierDelegateTo() external {
         _setupGame(4, 1 ether);
 
-        // setTierDelegateTo allows address(0) — no check (unlike setTierDelegatesTo which reverts).
+        // Both setTierDelegateTo and setTierDelegatesTo revert on address(0).
         vm.prank(_users[0]);
+        vm.expectRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
         _nft.setTierDelegateTo(address(0), 1);
 
-        // Verify setTierDelegatesTo would revert for address(0).
         DefifaDelegation[] memory dd = new DefifaDelegation[](1);
         dd[0] = DefifaDelegation({delegatee: address(0), tierId: 1});
         vm.prank(_users[0]);
         vm.expectRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
         _nft.setTierDelegatesTo(dd);
-
-        _toScoring();
-
-        DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        uint256 pid = _gov.submitScorecardFor(_gameId, sc);
-
-        uint256 attestStart = _gov.attestationStartTimeOf(_gameId);
-        uint256 current = _tsReader.timestamp();
-        vm.warp((attestStart > current ? attestStart : current) + 1);
-
-        // After delegating to address(0), user's attestation power is reduced
-        // (delegate checkpoint partially drained). Verify it's less than a normal holder.
-        vm.prank(_users[0]);
-        uint256 w0 = _gov.attestToScorecardFrom(_gameId, pid);
-        vm.prank(_users[1]);
-        uint256 w1 = _gov.attestToScorecardFrom(_gameId, pid);
-        assertTrue(w0 < w1, "address(0) delegate has less power than normal delegate");
     }
 
     // =========================================================================
