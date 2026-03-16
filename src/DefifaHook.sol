@@ -1007,17 +1007,17 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
             // If minting, add to the total tier checkpoints.
             if (_from == address(0)) {
-                // slither-disable-next-line unused-return
                 // Casting to uint208 is safe because attestation unit amounts are bounded by NFT supply counts.
                 // forge-lint: disable-next-line(unsafe-typecast)
+                // slither-disable-next-line unused-return
                 _totalTierCheckpoints[_tierId].push({key: uint48(block.timestamp), value: _current + uint208(_amount)});
             }
 
             // If burning, subtract from the total tier checkpoints.
             if (_to == address(0)) {
-                // slither-disable-next-line unused-return
                 // Casting to uint208 is safe because attestation unit amounts are bounded by NFT supply counts.
                 // forge-lint: disable-next-line(unsafe-typecast)
+                // slither-disable-next-line unused-return
                 _totalTierCheckpoints[_tierId].push({key: uint48(block.timestamp), value: _current - uint208(_amount)});
             }
         }
