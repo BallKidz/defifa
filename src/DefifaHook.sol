@@ -568,6 +568,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         JB721Tier memory _tier = store.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
 
         // Increment _totalMintCost so reserved recipients can claim their share of fee tokens ($DEFIFA/$NANA).
+        // Note: reserved mints dilute existing fee token claimants because they increase the total mint cost
+        // denominator without contributing new funds to the fee token balances. This is the intended design —
+        // reserved recipients receive a proportional claim on fee tokens as if they had paid to mint.
         _totalMintCost += _tier.price * count;
 
         for (uint256 _i; _i < count;) {
@@ -899,6 +902,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             // Get the current amount for the sending delegate.
             uint208 _current = _delegateTierCheckpoints[_from][_tierId].latest();
             // Set the new amount for the sending delegate.
+            // uint208 is sufficient for attestation values: each tier's attestation units are bounded by the NFT
+            // supply (max ~999_999_999 per tier * 128 tiers), well within uint208's ~4.1e62 range.
             // forge-lint: disable-next-line(unsafe-typecast)
             (uint256 _oldValue, uint256 _newValue) = _delegateTierCheckpoints[_from][_tierId].push({
                 // forge-lint: disable-next-line(unsafe-typecast)
@@ -1024,6 +1029,10 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Resolve the recipient's delegate. If the recipient has no delegate set, auto-delegate to themselves to
         // prevent attestation units from being permanently lost.
+        // Note: delegation persists after token transfers. If Alice delegates to Bob, then transfers her token
+        // to Carol, Carol's attestation units auto-delegate to Carol (not Bob). However, Alice's delegation
+        // to Bob persists — if Alice later receives another token, her units still go to Bob. This matches
+        // ERC5805Votes behavior where delegation is an account-level setting, not a token-level one.
         address _toDelegate = _tierDelegation[_to][_tierId];
         if (_toDelegate == address(0) && _to != address(0)) {
             _toDelegate = _to;

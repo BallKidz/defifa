@@ -34,7 +34,7 @@ contract DeployMainnet is Script, Sphinx {
     IERC20 baseProtocolToken;
 
     function configureSphinx() public override {
-        sphinxConfig.projectName = "defifa-v5";
+        sphinxConfig.projectName = "defifa-v6";
         sphinxConfig.mainnets = ["ethereum", "optimism", "base", "arbitrum"];
         sphinxConfig.testnets = ["ethereum_sepolia", "optimism_sepolia", "base_sepolia", "arbitrum_sepolia"];
     }

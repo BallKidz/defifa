@@ -416,6 +416,9 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         ) revert DefifaDeployer_InvalidGameConfiguration();
 
         // Get the game ID, optimistically knowing it will be one greater than the current count.
+        // Note: this prediction can race with other concurrent project deployments. If another project is
+        // created between reading count() and launchProjectFor(), the actual ID will differ. This is
+        // caught by the equality check after launch (gameId != _actualGameId reverts).
         gameId = CONTROLLER.PROJECTS().count() + 1;
 
         {
@@ -593,6 +596,10 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         if (noContestTriggeredFor[gameId]) revert DefifaDeployer_NoContestAlreadyTriggered();
 
         // Mark as triggered.
+        // Note: the queued ruleset does not take effect until the current ruleset's cycle ends (or immediately
+        // if duration is 0). During this gap, the game reports NO_CONTEST but the on-chain ruleset still has
+        // payout limits, so cash-out reclaim values may differ from the full-refund expectation. Callers
+        // should verify the active ruleset before cashing out.
         noContestTriggeredFor[gameId] = true;
 
         // Get the game's current ruleset metadata for the data hook address.
@@ -710,7 +717,10 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         });
         _normalizedTotal += _defifaNormalized;
 
-        // Add NANA protocol fee split last — absorbs rounding remainder.
+        // Add NANA protocol fee split last — absorbs rounding remainder from normalization.
+        // Because mulDiv rounds down, the sum of normalized percents can be slightly less than SPLITS_TOTAL_PERCENT.
+        // The NANA split receives the difference, so its effective percent may be a few basis points above its
+        // proportional share. This is economically negligible (< 1 bps at typical split counts).
         // Beneficiary is the data hook so the hook receives NANA tokens for distribution during cash-outs.
         _splits[_splitCount - 1] = JBSplit({
             preferAddToBalance: false,
