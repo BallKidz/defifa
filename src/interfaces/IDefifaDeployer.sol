@@ -13,6 +13,12 @@ import {IJBAddressRegistry} from "@bananapus/address-registry-v6/src/interfaces/
 /// @notice Deploys and manages Defifa prediction games, including lifecycle phase transitions
 /// and commitment fulfillment.
 interface IDefifaDeployer {
+    event CommitmentPayoutFailed(uint256 indexed gameId, uint256 amount, bytes reason);
+
+    event DistributeToSplit(JBSplit split, uint256 amount, address caller);
+
+    event FulfilledCommitments(uint256 indexed gameId, uint256 pot, address caller);
+
     event LaunchGame(
         uint256 indexed gameId,
         IDefifaHook indexed hook,
@@ -21,15 +27,11 @@ interface IDefifaDeployer {
         address caller
     );
 
+    event QueuedNoContest(uint256 indexed gameId, address caller);
+
     event QueuedRefundPhase(uint256 indexed gameId, address caller);
 
     event QueuedScoringPhase(uint256 indexed gameId, address caller);
-
-    event QueuedNoContest(uint256 indexed gameId, address caller);
-
-    event FulfilledCommitments(uint256 indexed gameId, uint256 pot, address caller);
-
-    event DistributeToSplit(JBSplit split, uint256 amount, address caller);
 
     /// @notice The split group ID used for distributing game pot funds.
     /// @return The split group.

@@ -172,9 +172,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         // Verify legitimate users still have full power.
         for (uint256 i; i < _users.length; i++) {
             assertGt(
-                _gov.getAttestationWeight(_gameId, _users[i], snapshotTime),
-                0,
-                "legitimate user has attestation power"
+                _gov.getAttestationWeight(_gameId, _users[i], snapshotTime), 0, "legitimate user has attestation power"
             );
         }
     }
@@ -463,9 +461,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
 
         DefifaScorecardState state = _gov.stateOf(_gameId, proposalId);
         assertEq(
-            uint256(state),
-            uint256(DefifaScorecardState.SUCCEEDED),
-            "1 attestor reaches quorum after tiers 3+4 burned"
+            uint256(state), uint256(DefifaScorecardState.SUCCEEDED), "1 attestor reaches quorum after tiers 3+4 burned"
         );
 
         // --- Step 7: Ratification should succeed ---
@@ -556,10 +552,10 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         data[0] = abi.encode(user, m);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(hook));
+        // Build metadata before vm.prank so the external call to createMetadata doesn't consume the prank.
+        bytes memory metadata = metadataHelper().createMetadata(ids, data);
         vm.prank(user);
-        jbMultiTerminal().pay{value: amt}(
-            _pid, JBConstants.NATIVE_TOKEN, amt, user, 0, "", metadataHelper().createMetadata(ids, data)
-        );
+        jbMultiTerminal().pay{value: amt}(_pid, JBConstants.NATIVE_TOKEN, amt, user, 0, "", metadata);
     }
 
     function _delegateSelf(address user, uint256 tid) internal {

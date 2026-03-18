@@ -309,10 +309,10 @@ uint256 scorecardId = governor.ratifyScorecardFrom(gameId, tierWeights);
 3. Stores `ratifiedScorecardIdOf[gameId] = scorecardId`.
 4. Executes scorecard via low-level call: `dataHook.call(abi.encodeWithSelector(setTierCashOutWeightsTo.selector, tierWeights))`.
    - This calls `DefifaHook.setTierCashOutWeightsTo()` which validates weights sum to `TOTAL_CASHOUT_WEIGHT` and sets `cashOutWeightIsSet = true`.
-5. Try-catch: calls `DefifaDeployer.fulfillCommitmentsOf(gameId)`:
-   - Sends fee payouts via `terminal.sendPayoutsOf()`.
+5. Calls `DefifaDeployer.fulfillCommitmentsOf(gameId)`:
+   - Sends fee payouts via `terminal.sendPayoutsOf()` (try-catch: if payout fails, emits `CommitmentPayoutFailed` and sets sentinel).
    - Queues final ruleset with no payout limits.
-   - If this reverts, emits `FulfillmentFailed` event but ratification still succeeds.
+   - Exceptional failures (e.g., `queueRulesetsOf` failure) propagate and revert ratification.
 6. Emits `ScorecardRatified(gameId, scorecardId, msg.sender)`.
 
 **Game state transitions to:** COMPLETE (because `cashOutWeightIsSet == true`).
@@ -519,7 +519,9 @@ hook.mintReservesFor(configs);
 **Actor:** Anyone
 **Phase:** COMPLETE (after scorecard ratification)
 
-If `fulfillCommitmentsOf()` failed during ratification (caught by try-catch), it can be retried:
+`fulfillCommitmentsOf()` is called automatically during ratification. If `sendPayoutsOf` fails internally, the try-catch in `fulfillCommitmentsOf` emits `CommitmentPayoutFailed`, sets the sentinel value, and still queues the final ruleset. The fee amount stays in the pot.
+
+If needed, `fulfillCommitmentsOf` can be called again manually — but since the sentinel is already set and the final ruleset already queued, it returns immediately (idempotent):
 
 ```solidity
 deployer.fulfillCommitmentsOf(gameId);
@@ -529,7 +531,7 @@ deployer.fulfillCommitmentsOf(gameId);
 1. If `fulfilledCommitmentsOf[gameId] != 0`: returns immediately (idempotent).
 2. Requires `cashOutWeightIsSet == true`.
 3. Computes fee from pot: `mulDiv(pot, _commitmentPercentOf[gameId], SPLITS_TOTAL_PERCENT)`.
-4. Calls `terminal.sendPayoutsOf()` to distribute fees to splits.
+4. Try-catch: calls `terminal.sendPayoutsOf()` to distribute fees to splits. On failure, emits `CommitmentPayoutFailed` and sets sentinel.
 5. Queues final ruleset with no payout limits.
 
 ---

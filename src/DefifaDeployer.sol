@@ -49,7 +49,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     //*********************************************************************//
 
     error DefifaDeployer_CantFulfillYet();
-    error DefifaDeployer_NothingToFulfill();
     error DefifaDeployer_GameOver();
     error DefifaDeployer_InvalidFeePercent();
     error DefifaDeployer_InvalidGameConfiguration();
@@ -313,8 +312,15 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         // Get the current pot and store it. This also prevents re-entrance since the check above will return early.
         uint256 _pot = _terminal.STORE().balanceOf({terminal: address(_terminal), projectId: gameId, token: _token});
+
+        // If the pot is empty, set the sentinel and queue the final ruleset without attempting payouts.
         // slither-disable-next-line incorrect-equality
-        if (_pot == 0) revert DefifaDeployer_NothingToFulfill();
+        if (_pot == 0) {
+            fulfilledCommitmentsOf[gameId] = 1;
+            _queueFinalRuleset({gameId: gameId, metadata: _metadata});
+            emit FulfilledCommitments({gameId: gameId, pot: 0, caller: msg.sender});
+            return;
+        }
 
         // Compute the fee amount based on the total absolute split percent stored at game creation.
         uint256 _feeAmount =
@@ -325,61 +331,26 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         fulfilledCommitmentsOf[gameId] = _feeAmount > 0 ? _feeAmount : 1;
 
         // Send only the fee portion as payouts. The remaining balance stays as surplus for cash-outs.
+        // Wrapped in try-catch so the final ruleset is always queued even if payout fails.
         // slither-disable-next-line unused-return
-        _terminal.sendPayoutsOf({
+        try _terminal.sendPayoutsOf({
             projectId: gameId,
             token: _token,
             amount: _feeAmount,
             // Casting address to uint32 via uint160 is the standard Juicebox token-to-currency conversion.
             // forge-lint: disable-next-line(unsafe-typecast)
             currency: _token == JBConstants.NATIVE_TOKEN ? _metadata.baseCurrency : uint32(uint160(_token)),
-            minTokensPaidOut: _feeAmount
-        });
+            minTokensPaidOut: 0
+        }) {}
+        catch (bytes memory reason) {
+            // Payout failed — fee stays in pot. Reset to sentinel (1) so currentGamePotOf
+            // doesn't double-count the fee, while preserving the reentrancy guard.
+            fulfilledCommitmentsOf[gameId] = 1;
+            emit CommitmentPayoutFailed({gameId: gameId, amount: _feeAmount, reason: reason});
+        }
 
-        // Queue the final ruleset.
-        JBRulesetConfig[] memory rulesetConfigs = new JBRulesetConfig[](1);
-        rulesetConfigs[0] = JBRulesetConfig({
-            mustStartAtOrAfter: 0,
-            duration: 0,
-            weight: 0,
-            weightCutPercent: 0,
-            approvalHook: IJBRulesetApprovalHook(address(0)),
-            metadata: JBRulesetMetadata({
-                reservedPercent: 0,
-                cashOutTaxRate: 0,
-                baseCurrency: _metadata.baseCurrency,
-                pausePay: true,
-                pauseCreditTransfers: false,
-                allowOwnerMinting: false,
-                allowSetCustomToken: false,
-                allowTerminalMigration: false,
-                allowSetTerminals: false,
-                allowSetController: false,
-                allowAddAccountingContext: false,
-                allowAddPriceFeed: false,
-                // Set this to true so only the deployer can fulfill the commitments.
-                ownerMustSendPayouts: true,
-                holdFees: false,
-                useTotalSurplusForCashOuts: false,
-                useDataHookForPay: true,
-                useDataHookForCashOut: true,
-                dataHook: _metadata.dataHook,
-                metadata: uint16(
-                    JB721TiersRulesetMetadataResolver.pack721TiersRulesetMetadata(
-                        JB721TiersRulesetMetadata({pauseTransfers: false, pauseMintPendingReserves: false})
-                    )
-                )
-            }),
-            // No more payouts.
-            splitGroups: new JBSplitGroup[](0),
-            fundAccessLimitGroups: new JBFundAccessLimitGroup[](0)
-        });
-
-        // Update the ruleset to the final one.
-        // slither-disable-next-line unused-return
-        CONTROLLER.queueRulesetsOf({
-            projectId: gameId, rulesetConfigurations: rulesetConfigs, memo: "Defifa game has finished."
-        });
+        // Queue the final ruleset and emit.
+        _queueFinalRuleset({gameId: gameId, metadata: _metadata});
 
         emit FulfilledCommitments({gameId: gameId, pot: _pot, caller: msg.sender});
     }
@@ -911,6 +882,53 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             rulesetConfigurations: rulesetConfigs,
             terminalConfigurations: terminalConfigurations,
             memo: "Launching Defifa game."
+        });
+    }
+
+    /// @notice Queues the final ruleset for a game: no payouts, no fund access limits, surplus = entire balance.
+    /// @param gameId The ID of the game.
+    /// @param metadata The current ruleset metadata (used to carry forward baseCurrency and dataHook).
+    function _queueFinalRuleset(uint256 gameId, JBRulesetMetadata memory metadata) internal {
+        JBRulesetConfig[] memory rulesetConfigs = new JBRulesetConfig[](1);
+        rulesetConfigs[0] = JBRulesetConfig({
+            mustStartAtOrAfter: 0,
+            duration: 0,
+            weight: 0,
+            weightCutPercent: 0,
+            approvalHook: IJBRulesetApprovalHook(address(0)),
+            metadata: JBRulesetMetadata({
+                reservedPercent: 0,
+                cashOutTaxRate: 0,
+                baseCurrency: metadata.baseCurrency,
+                pausePay: true,
+                pauseCreditTransfers: false,
+                allowOwnerMinting: false,
+                allowSetCustomToken: false,
+                allowTerminalMigration: false,
+                allowSetTerminals: false,
+                allowSetController: false,
+                allowAddAccountingContext: false,
+                allowAddPriceFeed: false,
+                ownerMustSendPayouts: false,
+                holdFees: false,
+                useTotalSurplusForCashOuts: false,
+                useDataHookForPay: true,
+                useDataHookForCashOut: true,
+                dataHook: metadata.dataHook,
+                metadata: uint16(
+                    JB721TiersRulesetMetadataResolver.pack721TiersRulesetMetadata(
+                        JB721TiersRulesetMetadata({pauseTransfers: false, pauseMintPendingReserves: false})
+                    )
+                )
+            }),
+            // No more payouts.
+            splitGroups: new JBSplitGroup[](0),
+            fundAccessLimitGroups: new JBFundAccessLimitGroup[](0)
+        });
+
+        // slither-disable-next-line unused-return
+        CONTROLLER.queueRulesetsOf({
+            projectId: gameId, rulesetConfigurations: rulesetConfigs, memo: "Defifa game has finished."
         });
     }
 }

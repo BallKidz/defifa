@@ -11,6 +11,10 @@ interface IDefifaGovernor {
         uint256 indexed gameId, uint256 attestationStartTime, uint256 attestationGracePeriod, address caller
     );
 
+    event ScorecardAttested(uint256 indexed gameId, uint256 indexed scorecardId, uint256 weight, address caller);
+
+    event ScorecardRatified(uint256 indexed gameId, uint256 indexed scorecardId, address caller);
+
     event ScorecardSubmitted(
         uint256 indexed gameId,
         uint256 indexed scorecardId,
@@ -18,12 +22,6 @@ interface IDefifaGovernor {
         bool isDefaultAttestationDelegate,
         address caller
     );
-
-    event ScorecardAttested(uint256 indexed gameId, uint256 indexed scorecardId, uint256 weight, address caller);
-
-    event ScorecardRatified(uint256 indexed gameId, uint256 indexed scorecardId, address caller);
-
-    event FulfillmentFailed(uint256 indexed gameId, bytes reason);
 
     /// @notice The maximum tier ID that contributes attestation power.
     /// @return The maximum attestation power tier.

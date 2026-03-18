@@ -45,7 +45,7 @@ DefifaGovernor (singleton, shared across all games)
   ├── attestToScorecardFrom() -- NFT holders during SCORING
   ├── ratifyScorecardFrom() -- anyone when SUCCEEDED
   │   ├── calls DefifaHook.setTierCashOutWeightsTo() via low-level call
-  │   └── try-catch calls DefifaDeployer.fulfillCommitmentsOf()
+  │   └── calls DefifaDeployer.fulfillCommitmentsOf() (internal try-catch on sendPayoutsOf)
   └── quorum() -- 50% of minted tiers' max attestation power
 ```
 
@@ -157,7 +157,7 @@ NO_CONTEST (safety mechanism triggered)
 1. Require no prior ratification, scorecard in SUCCEEDED state.
 2. Store `ratifiedScorecardIdOf[gameId] = scorecardId`.
 3. Execute scorecard via low-level call: `dataHook.call(abi.encodeWithSelector(setTierCashOutWeightsTo.selector, tierWeights))`.
-4. Try-catch: `IDefifaDeployer(owner).fulfillCommitmentsOf(gameId)`.
+4. Direct call: `IDefifaDeployer(owner).fulfillCommitmentsOf(gameId)`.
 
 ### Commitment Fulfillment (DefifaDeployer.fulfillCommitmentsOf)
 
@@ -165,7 +165,7 @@ NO_CONTEST (safety mechanism triggered)
 2. Require `cashOutWeightIsSet == true`.
 3. Compute `feeAmount = mulDiv(pot, _commitmentPercentOf[gameId], SPLITS_TOTAL_PERCENT)`.
 4. Store `fulfilledCommitmentsOf[gameId] = max(feeAmount, 1)` (reentrancy guard).
-5. Call `terminal.sendPayoutsOf(gameId, token, feeAmount, ...)`.
+5. Try-catch: `terminal.sendPayoutsOf(gameId, token, feeAmount, ..., minTokensPaidOut: 0)`. On failure, reset to sentinel (1) and emit `CommitmentPayoutFailed`.
 6. Queue final ruleset: no payout limits, no fund access constraints, surplus = entire balance.
 
 ### No-Contest Trigger (DefifaDeployer.triggerNoContestFor)
@@ -275,7 +275,7 @@ Where `shareToBeneficiary = cumulativeMintPrice` of burned tokens and `outOfTota
 
 4. **Scorecard execution via low-level call**: `ratifyScorecardFrom` calls `_metadata.dataHook.call(_calldata)` (DefifaGovernor line 402). The `_calldata` is `abi.encodeWithSelector(setTierCashOutWeightsTo.selector, tierWeights)`. Verify that the hash-based proposal system prevents any calldata that does not match the submitted scorecard from being executed.
 
-5. **Fee accounting during fulfillment**: `fulfillCommitmentsOf` computes `feeAmount = mulDiv(pot, _commitmentPercentOf[gameId], SPLITS_TOTAL_PERCENT)` and sends exactly this amount as payouts. Verify that `pot - feeAmount` remains as surplus for cash-outs, and that no rounding error causes `sendPayoutsOf` to revert or leave the project in an inconsistent state.
+5. **Fee accounting during fulfillment**: `fulfillCommitmentsOf` computes `feeAmount = mulDiv(pot, _commitmentPercentOf[gameId], SPLITS_TOTAL_PERCENT)` and sends this amount as payouts via try-catch. On success, `fulfilledCommitmentsOf` retains the fee amount; on failure, it resets to sentinel (1) and the fee stays in the pot. Verify that `currentGamePotOf` correctly subtracts `fulfilledCommitmentsOf` and that the sentinel value (1 wei) does not cause meaningful accounting error.
 
 ### P1 -- High (Governance Integrity)
 
