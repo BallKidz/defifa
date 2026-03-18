@@ -681,7 +681,6 @@ uint256 totalWeight = hook.cashOutWeightOf(ids);
 | Error | Condition |
 |-------|-----------|
 | `DefifaDeployer_CantFulfillYet` | `cashOutWeightIsSet == false` |
-| `DefifaDeployer_NothingToFulfill` | Project balance is 0 |
 
 ### Game Creation Errors (Journey 1)
 
