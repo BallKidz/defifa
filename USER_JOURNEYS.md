@@ -309,10 +309,10 @@ uint256 scorecardId = governor.ratifyScorecardFrom(gameId, tierWeights);
 3. Stores `ratifiedScorecardIdOf[gameId] = scorecardId`.
 4. Executes scorecard via low-level call: `dataHook.call(abi.encodeWithSelector(setTierCashOutWeightsTo.selector, tierWeights))`.
    - This calls `DefifaHook.setTierCashOutWeightsTo()` which validates weights sum to `TOTAL_CASHOUT_WEIGHT` and sets `cashOutWeightIsSet = true`.
-5. Try-catch: calls `DefifaDeployer.fulfillCommitmentsOf(gameId)`:
-   - Sends fee payouts via `terminal.sendPayoutsOf()`.
+5. Calls `DefifaDeployer.fulfillCommitmentsOf(gameId)`:
+   - Sends fee payouts via `terminal.sendPayoutsOf()` (try-catch: if payout fails, emits `CommitmentPayoutFailed` and sets sentinel).
    - Queues final ruleset with no payout limits.
-   - If this reverts, emits `FulfillmentFailed` event but ratification still succeeds.
+   - Exceptional failures (e.g., `queueRulesetsOf` failure) propagate and revert ratification.
 6. Emits `ScorecardRatified(gameId, scorecardId, msg.sender)`.
 
 **Game state transitions to:** COMPLETE (because `cashOutWeightIsSet == true`).

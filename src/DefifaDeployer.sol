@@ -325,16 +325,23 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         fulfilledCommitmentsOf[gameId] = _feeAmount > 0 ? _feeAmount : 1;
 
         // Send only the fee portion as payouts. The remaining balance stays as surplus for cash-outs.
+        // Wrapped in try-catch so the final ruleset is always queued even if payout fails.
         // slither-disable-next-line unused-return
-        _terminal.sendPayoutsOf({
+        try _terminal.sendPayoutsOf({
             projectId: gameId,
             token: _token,
             amount: _feeAmount,
             // Casting address to uint32 via uint160 is the standard Juicebox token-to-currency conversion.
             // forge-lint: disable-next-line(unsafe-typecast)
             currency: _token == JBConstants.NATIVE_TOKEN ? _metadata.baseCurrency : uint32(uint160(_token)),
-            minTokensPaidOut: _feeAmount
-        });
+            minTokensPaidOut: 0
+        }) {}
+        catch (bytes memory reason) {
+            // Payout failed — fee stays in pot. Reset to sentinel (1) so currentGamePotOf
+            // doesn't double-count the fee, while preserving the reentrancy guard.
+            fulfilledCommitmentsOf[gameId] = 1;
+            emit CommitmentPayoutFailed({gameId: gameId, amount: _feeAmount, reason: reason});
+        }
 
         // Queue the final ruleset.
         JBRulesetConfig[] memory rulesetConfigs = new JBRulesetConfig[](1);

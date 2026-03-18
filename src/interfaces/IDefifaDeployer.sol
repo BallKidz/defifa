@@ -29,6 +29,8 @@ interface IDefifaDeployer {
 
     event FulfilledCommitments(uint256 indexed gameId, uint256 pot, address caller);
 
+    event CommitmentPayoutFailed(uint256 indexed gameId, uint256 amount, bytes reason);
+
     event DistributeToSplit(JBSplit split, uint256 amount, address caller);
 
     /// @notice The split group ID used for distributing game pot funds.

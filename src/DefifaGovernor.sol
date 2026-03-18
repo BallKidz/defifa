@@ -413,17 +413,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // slither-disable-next-line unused-return
         Address.verifyCallResult({success: success, returndata: returndata});
 
-        // Fulfill any commitments for the game. Wrapped in try-catch so that a fulfillment
-        // failure (e.g. from sendPayoutsOf reverting) does not permanently block ratification.
-        // Fulfillment can be retried separately by calling fulfillCommitmentsOf directly.
-        // Note: there is a transient window between the scorecard being set (COMPLETE phase) and
-        // commitments being fulfilled. During this window, cash-out reclaim values may be inflated
-        // because the commitment portion of the pot has not yet been paid out. This is mitigated by
-        // the try-catch executing fulfillment atomically within the same transaction when possible.
-        try IDefifaDeployer(CONTROLLER.PROJECTS().ownerOf(gameId)).fulfillCommitmentsOf(gameId) {}
-        catch (bytes memory reason) {
-            emit FulfillmentFailed(gameId, reason);
-        }
+        // Fulfill any commitments for the game. The internal try-catch in fulfillCommitmentsOf
+        // handles sendPayoutsOf failures, ensuring the final ruleset is always queued.
+        IDefifaDeployer(CONTROLLER.PROJECTS().ownerOf(gameId)).fulfillCommitmentsOf(gameId);
 
         emit ScorecardRatified(gameId, scorecardId, msg.sender);
     }

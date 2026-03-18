@@ -34,6 +34,7 @@ import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
+import {JBMultiTerminal} from "@bananapus/core-v6/src/JBMultiTerminal.sol";
 
 /// @dev Helper to read block.timestamp via an external call, bypassing the via-ir optimizer's timestamp caching.
 contract TimestampReader3 {
@@ -43,9 +44,9 @@ contract TimestampReader3 {
 }
 
 /// @title FulfillmentBlocksRatification
-/// @notice Regression test: ratification should succeed even when fulfillCommitmentsOf reverts.
-/// @dev Tests the try-catch wrapper around fulfillCommitmentsOf in ratifyScorecardFrom.
-///      The test verifies that the FulfillmentFailed event is emitted and ratification completes.
+/// @notice Regression test: ratification should succeed even when sendPayoutsOf reverts inside fulfillCommitmentsOf.
+/// @dev Tests the internal try-catch wrapper around sendPayoutsOf in fulfillCommitmentsOf.
+///      The test verifies that the CommitmentPayoutFailed event is emitted and ratification completes.
 contract FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
@@ -136,10 +137,10 @@ contract FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
         governor.transferOwnership(address(deployer));
     }
 
-    /// @notice Test that ratification emits FulfillmentFailed when fulfillment reverts,
-    ///         but the scorecard is still ratified.
-    /// @dev We mock fulfillCommitmentsOf to revert, then verify the ratification still succeeds.
-    function test_ratificationSucceedsWhenFulfillmentReverts() public {
+    /// @notice Test that ratification emits CommitmentPayoutFailed when sendPayoutsOf reverts,
+    ///         but the scorecard is still ratified and the final ruleset is queued.
+    /// @dev We mock sendPayoutsOf to revert, then verify ratification still succeeds.
+    function test_ratificationSucceedsWhenPayoutReverts() public {
         uint8 nTiers = 4;
         address[] memory _users = new address[](nTiers);
         DefifaLaunchProjectData memory defifaData = _getBasicLaunchData(nTiers);
@@ -186,26 +187,25 @@ contract FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
         }
         vm.warp(_tsReader.timestamp() + _governor.attestationGracePeriodOf(_gameId) + 1);
 
-        // Mock fulfillCommitmentsOf to revert
-        address _deployer = jbController().PROJECTS().ownerOf(_gameId);
+        // Mock sendPayoutsOf on the terminal to revert
         vm.mockCallRevert(
-            _deployer,
-            abi.encodeWithSelector(IDefifaDeployer.fulfillCommitmentsOf.selector, _gameId),
-            abi.encodeWithSignature("Error(string)", "simulated fulfillment failure")
+            address(jbMultiTerminal()),
+            abi.encodeWithSelector(JBMultiTerminal.sendPayoutsOf.selector),
+            abi.encodeWithSignature("Error(string)", "simulated payout failure")
         );
 
-        // Ratification should succeed even though fulfillment will revert.
-        // We expect the FulfillmentFailed event to be emitted.
+        // Ratification should succeed. CommitmentPayoutFailed is emitted from the deployer.
         vm.expectEmit(true, false, false, false);
-        emit IDefifaGovernor.FulfillmentFailed(_gameId, "");
+        emit IDefifaDeployer.CommitmentPayoutFailed(_gameId, 0, "");
 
         _governor.ratifyScorecardFrom(_gameId, scorecards);
 
+        // Clear mock
+        vm.clearMockedCalls();
+
         // Verify the scorecard was ratified
         assertEq(
-            _governor.ratifiedScorecardIdOf(_gameId),
-            _proposalId,
-            "Scorecard should be ratified despite fulfillment failure"
+            _governor.ratifiedScorecardIdOf(_gameId), _proposalId, "Scorecard should be ratified despite payout failure"
         );
 
         // Verify the state is RATIFIED
@@ -214,6 +214,9 @@ contract FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
             uint256(DefifaScorecardState.RATIFIED),
             "Scorecard state should be RATIFIED"
         );
+
+        // Verify fulfilledCommitmentsOf is sentinel (1)
+        assertEq(deployer.fulfilledCommitmentsOf(_projectId), 1, "should be sentinel value 1");
     }
 
     // ----- Internal helpers ------
