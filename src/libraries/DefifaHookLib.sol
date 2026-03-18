@@ -1,15 +1,15 @@
 // SPDX-License-Identifier: MIT
-pragma solidity 0.8.26;
+pragma solidity ^0.8.17;
 
-import {mulDiv} from "@prb/math/src/Common.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
 import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
 import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
-import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
-import {DefifaGamePhase} from "../enums/DefifaGamePhase.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
+import {mulDiv} from "@prb/math/src/Common.sol";
 
-/// @title DefifaHookLib
+import {DefifaGamePhase} from "../enums/DefifaGamePhase.sol";
+import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
+
 /// @notice Pure/view helper functions extracted from DefifaHook to reduce contract bytecode size.
 /// @dev Public library functions are deployed separately and called via delegatecall, so their bytecode does not count
 /// toward the calling contract's EIP-170 size limit.
@@ -29,12 +29,12 @@ library DefifaHookLib {
 
     /// @notice Validates tier cash out weights and returns the weight array to store.
     /// @param tierWeights The tier weights to validate and set.
-    /// @param _store The 721 tiers hook store.
+    /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
     /// @return weights The 128-element array of validated weights.
     function validateAndBuildWeights(
         DefifaTierCashOutWeight[] memory tierWeights,
-        IJB721TiersHookStore _store,
+        IJB721TiersHookStore hookStore,
         address hook
     )
         public
@@ -42,7 +42,7 @@ library DefifaHookLib {
         returns (uint256[128] memory weights)
     {
         // Keep a reference to the max tier ID.
-        uint256 _maxTierId = _store.maxTierIdOf(hook);
+        uint256 _maxTierId = hookStore.maxTierIdOf(hook);
 
         // Keep a reference to the cumulative amounts.
         uint256 _cumulativeCashOutWeight;
@@ -62,7 +62,7 @@ library DefifaHookLib {
             _lastTierId = tierWeights[_i].id;
 
             // Get the tier.
-            _tier = _store.tierOf({hook: hook, id: tierWeights[_i].id, includeResolvedUri: false});
+            _tier = hookStore.tierOf({hook: hook, id: tierWeights[_i].id, includeResolvedUri: false});
 
             // Can't set a cashOut weight for tiers not in category 0.
             if (_tier.category != 0) revert DefifaHook_InvalidTierId();
@@ -87,14 +87,14 @@ library DefifaHookLib {
 
     /// @notice Compute the cash out weight for a single token.
     /// @param tokenId The token ID.
-    /// @param _store The 721 tiers hook store.
+    /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
     /// @param tierCashOutWeights The tier cash out weights array.
     /// @param tokensRedeemedFrom The mapping of tokens redeemed per tier (passed as a function that returns the value).
     /// @return The cash out weight.
     function computeCashOutWeight(
         uint256 tokenId,
-        IJB721TiersHookStore _store,
+        IJB721TiersHookStore hookStore,
         address hook,
         uint256[128] storage tierCashOutWeights,
         mapping(uint256 => uint256) storage tokensRedeemedFrom
@@ -104,10 +104,10 @@ library DefifaHookLib {
         returns (uint256)
     {
         // Keep a reference to the token's tier ID.
-        uint256 _tierId = _store.tierIdOfToken(tokenId);
+        uint256 _tierId = hookStore.tierIdOfToken(tokenId);
 
         // Keep a reference to the tier.
-        JB721Tier memory _tier = _store.tierOf({hook: hook, id: _tierId, includeResolvedUri: false});
+        JB721Tier memory _tier = hookStore.tierOf({hook: hook, id: _tierId, includeResolvedUri: false});
 
         // Get the tier's weight.
         uint256 _weight = tierCashOutWeights[_tierId - 1];
@@ -116,7 +116,7 @@ library DefifaHookLib {
         if (_weight == 0) return 0;
 
         // Get the amount of tokens that have already been burned.
-        uint256 _burnedTokens = _store.numberOfBurnedFor({hook: hook, tierId: _tierId});
+        uint256 _burnedTokens = hookStore.numberOfBurnedFor({hook: hook, tierId: _tierId});
 
         // If no tiers were minted, nothing to redeem.
         if (_tier.initialSupply - (_tier.remainingSupply + _burnedTokens) == 0) return 0;
@@ -134,14 +134,14 @@ library DefifaHookLib {
 
     /// @notice Compute the cumulative cash out weight for multiple tokens.
     /// @param tokenIds The token IDs.
-    /// @param _store The 721 tiers hook store.
+    /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
     /// @param tierCashOutWeights The tier cash out weights array.
     /// @param tokensRedeemedFrom The mapping of tokens redeemed per tier.
     /// @return cumulativeWeight The cumulative weight.
     function computeCashOutWeightBatch(
         uint256[] memory tokenIds,
-        IJB721TiersHookStore _store,
+        IJB721TiersHookStore hookStore,
         address hook,
         uint256[128] storage tierCashOutWeights,
         mapping(uint256 => uint256) storage tokensRedeemedFrom
@@ -154,7 +154,7 @@ library DefifaHookLib {
         for (uint256 _i; _i < _tokenCount;) {
             cumulativeWeight += computeCashOutWeight({
                 tokenId: tokenIds[_i],
-                _store: _store,
+                hookStore: hookStore,
                 hook: hook,
                 tierCashOutWeights: tierCashOutWeights,
                 tokensRedeemedFrom: tokensRedeemedFrom
@@ -167,7 +167,7 @@ library DefifaHookLib {
 
     /// @notice Compute the claimable token amounts for a set of token IDs.
     /// @param tokenIds The token IDs.
-    /// @param _store The 721 tiers hook store.
+    /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
     /// @param totalMintCost The cumulative mint cost.
     /// @param defifaBalance The current $DEFIFA balance.
@@ -176,7 +176,7 @@ library DefifaHookLib {
     /// @return baseProtocolTokenAmount The claimable $BASE_PROTOCOL amount.
     function computeTokensClaim(
         uint256[] memory tokenIds,
-        IJB721TiersHookStore _store,
+        IJB721TiersHookStore hookStore,
         address hook,
         uint256 totalMintCost,
         uint256 defifaBalance,
@@ -195,7 +195,9 @@ library DefifaHookLib {
         // Calculate the amount paid to mint the tokens that are being burned.
         uint256 _cumulativeMintPrice;
         for (uint256 _i; _i < _numberOfTokens; _i++) {
-            _cumulativeMintPrice += _store.tierOfTokenId({hook: hook, tokenId: tokenIds[_i], includeResolvedUri: false})
+            _cumulativeMintPrice += hookStore.tierOfTokenId({
+                hook: hook, tokenId: tokenIds[_i], includeResolvedUri: false
+            })
             .price;
         }
 
@@ -206,12 +208,12 @@ library DefifaHookLib {
 
     /// @notice Compute the cumulative mint price for a set of token IDs.
     /// @param tokenIds The token IDs.
-    /// @param _store The 721 tiers hook store.
+    /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
     /// @return cumulativeMintPrice The total mint price.
     function computeCumulativeMintPrice(
         uint256[] memory tokenIds,
-        IJB721TiersHookStore _store,
+        IJB721TiersHookStore hookStore,
         address hook
     )
         public
@@ -220,7 +222,9 @@ library DefifaHookLib {
     {
         uint256 _numberOfTokenIds = tokenIds.length;
         for (uint256 _i; _i < _numberOfTokenIds; _i++) {
-            cumulativeMintPrice += _store.tierOfTokenId({hook: hook, tokenId: tokenIds[_i], includeResolvedUri: false})
+            cumulativeMintPrice += hookStore.tierOfTokenId({
+                hook: hook, tokenId: tokenIds[_i], includeResolvedUri: false
+            })
             .price;
         }
     }
@@ -229,14 +233,14 @@ library DefifaHookLib {
     /// @param gamePhase The current game phase.
     /// @param cumulativeMintPrice The cumulative mint price of the tokens being cashed out.
     /// @param surplusValue The surplus value from the context.
-    /// @param _amountRedeemed The amount already redeemed.
+    /// @param totalAmountRedeemed The amount already redeemed.
     /// @param cumulativeCashOutWeight The cumulative cash out weight of the tokens.
     /// @return cashOutCount The computed cash out count.
     function computeCashOutCount(
         DefifaGamePhase gamePhase,
         uint256 cumulativeMintPrice,
         uint256 surplusValue,
-        uint256 _amountRedeemed,
+        uint256 totalAmountRedeemed,
         uint256 cumulativeCashOutWeight
     )
         public
@@ -252,18 +256,18 @@ library DefifaHookLib {
         } else {
             // If the game is in its scoring or complete phase, reclaim amount is based on the tier weights.
             cashOutCount = mulDiv({
-                x: surplusValue + _amountRedeemed, y: cumulativeCashOutWeight, denominator: TOTAL_CASHOUT_WEIGHT
+                x: surplusValue + totalAmountRedeemed, y: cumulativeCashOutWeight, denominator: TOTAL_CASHOUT_WEIGHT
             });
         }
     }
 
     /// @notice Compute the current supply of a tier (minted - burned).
-    /// @param _store The 721 tiers hook store.
+    /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
     /// @param tierId The ID of the tier.
     /// @return The current supply.
     function computeCurrentSupply(
-        IJB721TiersHookStore _store,
+        IJB721TiersHookStore hookStore,
         address hook,
         uint256 tierId
     )
@@ -271,28 +275,28 @@ library DefifaHookLib {
         view
         returns (uint256)
     {
-        JB721Tier memory _tier = _store.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
-        return _tier.initialSupply - (_tier.remainingSupply + _store.numberOfBurnedFor({hook: hook, tierId: tierId}));
+        JB721Tier memory _tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
+        return _tier.initialSupply - (_tier.remainingSupply + hookStore.numberOfBurnedFor({hook: hook, tierId: tierId}));
     }
 
     /// @notice Computes the attestation units for tiers during payment processing.
     /// @dev Returns parallel arrays: tier IDs, cumulative attestation units per tier, and whether to switch delegate.
-    /// @param _tierIdsToMint The tier IDs being minted (must be in ascending order).
-    /// @param _store The 721 tiers hook store.
+    /// @param tierIdsToMint The tier IDs being minted (must be in ascending order).
+    /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
     /// @return tierIds The unique tier IDs.
     /// @return attestationAmounts The cumulative attestation units for each unique tier.
     /// @return count The number of unique tiers.
     function computeAttestationUnits(
-        uint16[] memory _tierIdsToMint,
-        IJB721TiersHookStore _store,
+        uint16[] memory tierIdsToMint,
+        IJB721TiersHookStore hookStore,
         address hook
     )
         public
         view
         returns (uint256[] memory tierIds, uint256[] memory attestationAmounts, uint256 count)
     {
-        uint256 _numberOfTiers = _tierIdsToMint.length;
+        uint256 _numberOfTiers = tierIdsToMint.length;
         tierIds = new uint256[](_numberOfTiers);
         attestationAmounts = new uint256[](_numberOfTiers);
 
@@ -303,17 +307,17 @@ library DefifaHookLib {
         uint256 _accumulated;
 
         for (uint256 _i; _i < _numberOfTiers;) {
-            if (_currentTierId != _tierIdsToMint[_i]) {
+            if (_currentTierId != tierIdsToMint[_i]) {
                 // Flush accumulated units for previous tier.
                 if (_currentTierId != 0) {
                     tierIds[count] = _currentTierId;
                     attestationAmounts[count] = _accumulated;
                     count++;
                 }
-                if (_tierIdsToMint[_i] < _currentTierId) revert DefifaHook_BadTierOrder();
-                _currentTierId = _tierIdsToMint[_i];
+                if (tierIdsToMint[_i] < _currentTierId) revert DefifaHook_BadTierOrder();
+                _currentTierId = tierIdsToMint[_i];
                 _attestationUnits =
-                _store.tierOf({hook: hook, id: _currentTierId, includeResolvedUri: false}).votingUnits;
+                hookStore.tierOf({hook: hook, id: _currentTierId, includeResolvedUri: false}).votingUnits;
                 _accumulated = _attestationUnits;
             } else {
                 _accumulated += _attestationUnits;
@@ -332,18 +336,19 @@ library DefifaHookLib {
 
     /// @notice Claims the defifa and base protocol tokens for a beneficiary.
     /// @dev Executes via delegatecall, so `address(this)` is the calling contract. Transfers are from the hook's
-    /// balance. @param _beneficiary The address to claim tokens for.
+    /// balance.
+    /// @param beneficiary The address to claim tokens for.
     /// @param shareToBeneficiary The share relative to the `outOfTotal` to send the user.
     /// @param outOfTotal The total share that the `shareToBeneficiary` is relative to.
-    /// @param _defifaToken The $DEFIFA token.
-    /// @param _baseProtocolToken The $BASE_PROTOCOL token.
+    /// @param defifaToken The $DEFIFA token.
+    /// @param baseProtocolToken The $BASE_PROTOCOL token.
     /// @return beneficiaryReceivedTokens A flag indicating if the beneficiary received any tokens.
     function claimTokensFor(
-        address _beneficiary,
+        address beneficiary,
         uint256 shareToBeneficiary,
         uint256 outOfTotal,
-        IERC20 _defifaToken,
-        IERC20 _baseProtocolToken
+        IERC20 defifaToken,
+        IERC20 baseProtocolToken
     )
         public
         returns (bool beneficiaryReceivedTokens)
@@ -353,15 +358,15 @@ library DefifaHookLib {
         // down, leaving fractionally more for subsequent claimants. The error is bounded by 1 wei per claim and is
         // economically insignificant.
         uint256 baseProtocolAmount =
-            mulDiv({x: _baseProtocolToken.balanceOf(address(this)), y: shareToBeneficiary, denominator: outOfTotal});
+            mulDiv({x: baseProtocolToken.balanceOf(address(this)), y: shareToBeneficiary, denominator: outOfTotal});
         uint256 defifaAmount =
-            mulDiv({x: _defifaToken.balanceOf(address(this)), y: shareToBeneficiary, denominator: outOfTotal});
+            mulDiv({x: defifaToken.balanceOf(address(this)), y: shareToBeneficiary, denominator: outOfTotal});
 
         // If there is an amount we should send, send it.
-        if (defifaAmount != 0) _defifaToken.safeTransfer({to: _beneficiary, value: defifaAmount});
-        if (baseProtocolAmount != 0) _baseProtocolToken.safeTransfer({to: _beneficiary, value: baseProtocolAmount});
+        if (defifaAmount != 0) defifaToken.safeTransfer({to: beneficiary, value: defifaAmount});
+        if (baseProtocolAmount != 0) baseProtocolToken.safeTransfer({to: beneficiary, value: baseProtocolAmount});
 
-        emit ClaimedTokens(_beneficiary, defifaAmount, baseProtocolAmount, msg.sender);
+        emit ClaimedTokens(beneficiary, defifaAmount, baseProtocolAmount, msg.sender);
 
         return (defifaAmount != 0 || baseProtocolAmount != 0);
     }

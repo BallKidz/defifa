@@ -129,13 +129,13 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
         // First initialization should succeed.
         uint256 gameId = 42;
         _standaloneGov.initializeGame({
-            _gameId: gameId, _attestationStartTime: block.timestamp, _attestationGracePeriod: 2 days
+            gameId: gameId, attestationStartTime: block.timestamp, attestationGracePeriod: 2 days
         });
 
         // Second initialization for the same gameId should revert.
         vm.expectRevert(DefifaGovernor.DefifaGovernor_AlreadyInitialized.selector);
         _standaloneGov.initializeGame({
-            _gameId: gameId, _attestationStartTime: block.timestamp, _attestationGracePeriod: 2 days
+            gameId: gameId, attestationStartTime: block.timestamp, attestationGracePeriod: 2 days
         });
     }
 
@@ -163,7 +163,7 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
 
         vm.expectRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
         _standaloneGov.initializeGame({
-            _gameId: 99, _attestationStartTime: overflowStartTime, _attestationGracePeriod: 2 days
+            gameId: 99, attestationStartTime: overflowStartTime, attestationGracePeriod: 2 days
         });
     }
 
@@ -178,7 +178,7 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
 
         vm.expectRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
         _standaloneGov.initializeGame({
-            _gameId: 100, _attestationStartTime: block.timestamp, _attestationGracePeriod: overflowGracePeriod
+            gameId: 100, attestationStartTime: block.timestamp, attestationGracePeriod: overflowGracePeriod
         });
     }
 

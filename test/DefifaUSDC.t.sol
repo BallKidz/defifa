@@ -153,8 +153,8 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
             .setPermissionsFor(
                 projectOwner,
                 JBPermissionsData({
-                    // forge-lint: disable-next-line(unsafe-typecast)
                     operator: address(deployer),
+                    // forge-lint: disable-next-line(unsafe-typecast)
                     projectId: uint64(_defifaProjectId),
                     permissionIds: permissionIds
                 })
