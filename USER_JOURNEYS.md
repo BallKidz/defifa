@@ -519,7 +519,9 @@ hook.mintReservesFor(configs);
 **Actor:** Anyone
 **Phase:** COMPLETE (after scorecard ratification)
 
-If `fulfillCommitmentsOf()` failed during ratification (caught by try-catch), it can be retried:
+`fulfillCommitmentsOf()` is called automatically during ratification. If `sendPayoutsOf` fails internally, the try-catch in `fulfillCommitmentsOf` emits `CommitmentPayoutFailed`, sets the sentinel value, and still queues the final ruleset. The fee amount stays in the pot.
+
+If needed, `fulfillCommitmentsOf` can be called again manually — but since the sentinel is already set and the final ruleset already queued, it returns immediately (idempotent):
 
 ```solidity
 deployer.fulfillCommitmentsOf(gameId);
@@ -529,7 +531,7 @@ deployer.fulfillCommitmentsOf(gameId);
 1. If `fulfilledCommitmentsOf[gameId] != 0`: returns immediately (idempotent).
 2. Requires `cashOutWeightIsSet == true`.
 3. Computes fee from pot: `mulDiv(pot, _commitmentPercentOf[gameId], SPLITS_TOTAL_PERCENT)`.
-4. Calls `terminal.sendPayoutsOf()` to distribute fees to splits.
+4. Try-catch: calls `terminal.sendPayoutsOf()` to distribute fees to splits. On failure, emits `CommitmentPayoutFailed` and sets sentinel.
 5. Queues final ruleset with no payout limits.
 
 ---

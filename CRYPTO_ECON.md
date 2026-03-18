@@ -707,7 +707,7 @@ We identify five distinct scenarios in which game funds could become permanently
 
 **Scenario D: Attestation power in dead addresses.** If >50% of game pieces are transferred to contracts that cannot call `attestToScorecardFrom()`, the exercisable attestation power drops below quorum permanently. This is distinct from Scenario C because the delegation may be correct but the delegatees are inaccessible.
 
-**Scenario E: Split target reverts on ratification.** `ratifyScorecardFrom()` calls `fulfillCommitmentsOf()`, which calls `sendPayoutsOf()`. If a split target is a reverting contract, the entire ratification transaction fails. The scorecard reached SUCCEEDED state in the governor, but the on-chain execution of `setTierCashOutWeightsTo` never completes. The game is stuck in SCORING despite having a governance-approved outcome.
+**Scenario E: Split target reverts on ratification.** `ratifyScorecardFrom()` calls `fulfillCommitmentsOf()`, which calls `sendPayoutsOf()`. If a split target is a reverting contract, `sendPayoutsOf` is caught by the internal try-catch in `fulfillCommitmentsOf`. The `CommitmentPayoutFailed` event is emitted, `fulfilledCommitmentsOf` is set to the sentinel value 1, and the final ruleset is still queued. Players can cash out immediately — the fee amount stays in the pot, slightly benefiting cash-out recipients. This is no longer a stuck-funds scenario.
 
 | Scenario | Funds stuck? | Delegate resolves? | Automated resolution? |
 |:---------|:------------:|:------------------:|:---------------------:|
@@ -715,7 +715,7 @@ We identify five distinct scenarios in which game funds could become permanently
 | B: Quorum unreachable | Yes | Yes, if has power | No |
 | C: Dead delegate | Yes | No | No |
 | D: Dead attestation holders | Yes | No | No |
-| E: Split target reverts | Yes | No | No |
+| E: Split target reverts | No | N/A | Yes (try-catch) |
 
 Note: the case where *all* minters refund during REFUND is not a deadlock — the treasury balance drops to zero and there are no funds to recover.
 
@@ -900,13 +900,13 @@ _terminal.sendPayoutsOf({
     token: _token,
     amount: _pot,
     currency: ...,
-    minTokensPaidOut: _pot
+    minTokensPaidOut: 0
 });
 ```
 
-The split structure routes fees (~10%) to protocol projects and returns the remainder (~90%) back to the game treasury via `addToBalanceOf`. If `sendPayoutsOf` interprets `minTokensPaidOut` as the minimum that permanently leaves the project (rather than the total processed), this transaction will revert — because only ~10% actually leaves. This would permanently block fee extraction and game completion, trapping all funds.
+The split structure routes fees (~10%) to protocol projects and returns the remainder (~90%) back to the game treasury via `addToBalanceOf`. `minTokensPaidOut` is set to 0 to avoid reverts from partial payouts. Additionally, the entire `sendPayoutsOf` call is wrapped in a try-catch: if the payout fails for any reason, `CommitmentPayoutFailed` is emitted, `fulfilledCommitmentsOf` is reset to the sentinel value 1, and the final ruleset is still queued. The fee amount stays in the pot, slightly benefiting cash-out recipients.
 
-**Recommended fix.** Set `minTokensPaidOut` to 0 or to the expected fee amount (i.e., `_pot / baseProtocolFeeDivisor + _pot / defifaFeeDivisor`). This preserves the economic intent while removing the revert risk.
+**Status:** Resolved. `minTokensPaidOut` set to 0 and try-catch ensures the final ruleset is always queued.
 
 ---
 

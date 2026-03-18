@@ -110,7 +110,7 @@ During COMPLETE phase cash outs, players also receive proportional $DEFIFA and $
 - Scorecard attestation weight uses `mulDiv(MAX_ATTESTATION_POWER_TIER, userTierUnits, totalTierUnits)` per tier. If `totalTierUnits` is 0 for a tier (no delegations), that tier contributes no attestation power.
 - The governor's `quorum` is **dynamic**: it only counts tiers that have at least one minted token. Adding minted tiers changes the quorum retroactively for all active proposals.
 - `ratifyScorecardFrom` executes the scorecard via a **low-level `.call`** to the hook address. This is necessary because the hook's `setTierCashOutWeightsTo` is `onlyOwner` and the governor is the hook's owner.
-- `fulfillCommitmentsOf` uses `max(amount, 1)` as a reentrancy guard. If called when the pot is 0, it stores 1 as the fulfilled amount to prevent re-entry.
+- `fulfillCommitmentsOf` uses `max(amount, 1)` as a reentrancy guard. If called when the pot is 0, it stores 1 as the fulfilled amount to prevent re-entry. `sendPayoutsOf` is wrapped in try-catch: on failure, resets to sentinel (1) and emits `CommitmentPayoutFailed`.
 - `_buildSplits` normalizes all split percentages relative to the total absolute percent. Rounding remainder is absorbed by the protocol fee split (last in the array).
 - `_totalMintCost` tracks cumulative mint prices of all live tokens (paid + reserved). It's incremented on pay and reserve mint, decremented on cash out. This is the denominator for fee token ($DEFIFA/$NANA) distribution.
 - Cash outs during COMPLETE phase revert with `DefifaHook_NothingToClaim` if **both** the reclaimed ETH amount is 0 **and** no fee tokens were transferred. This prevents burning NFTs for nothing.

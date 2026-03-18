@@ -23,7 +23,7 @@ Admin privileges and their scope in defifa-collection-deployer-v6.
 | Function | Required Role | Permission Check | What It Does |
 |----------|--------------|-----------------|-------------|
 | `launchGameWith()` | Anyone | None (permissionless) | Creates a new JB project, clones DefifaHook, initializes governor, configures rulesets with MINT/REFUND/SCORING phases. Game parameters are immutable after this call. |
-| `fulfillCommitmentsOf()` | Anyone | Guarded by `fulfilledCommitmentsOf[gameId] != 0` reentrancy check; requires `cashOutWeightIsSet` on the hook | Sends fee payouts (Defifa 5% + NANA 2.5% + user splits) via `sendPayoutsOf`, then queues the final COMPLETE ruleset. Can only execute once per game. |
+| `fulfillCommitmentsOf()` | Anyone | Guarded by `fulfilledCommitmentsOf[gameId] != 0` reentrancy check; requires `cashOutWeightIsSet` on the hook | Sends fee payouts (Defifa 5% + NANA 2.5% + user splits) via try-catch `sendPayoutsOf`, then queues the final COMPLETE ruleset. If payout fails, emits `CommitmentPayoutFailed` and sets sentinel. Can only execute once per game. |
 | `triggerNoContestFor()` | Anyone | Requires `currentGamePhaseOf(gameId) == NO_CONTEST` and `!noContestTriggeredFor[gameId]` | Queues a new ruleset without payout limits so surplus equals balance, enabling full refunds. Can only execute once per game. |
 
 ### DefifaGovernor
@@ -33,7 +33,7 @@ Admin privileges and their scope in defifa-collection-deployer-v6.
 | `initializeGame()` | DefifaDeployer (owner) | `onlyOwner` (line 294) | Sets attestation start time and grace period for a game. Enforces minimum 1-day grace period. Called automatically during `launchGameWith()`. |
 | `submitScorecardFor()` | Anyone | Must be in SCORING phase; no ratified scorecard yet; no duplicate scorecard hash; weighted tiers must have nonzero supply | Submits a scorecard for attestation. Sets `attestationsBegin` and `gracePeriodEnds` timestamps. |
 | `attestToScorecardFrom()` | Any NFT holder | Must be in SCORING phase; scorecard must be ACTIVE or SUCCEEDED; caller cannot have already attested | Records attestation weight based on tier holdings at the scorecard's `attestationsBegin` timestamp. |
-| `ratifyScorecardFrom()` | Anyone | Scorecard must be in SUCCEEDED state (quorum met + grace period elapsed); no scorecard already ratified | Executes the scorecard via low-level call to `setTierCashOutWeightsTo` on the hook, then tries `fulfillCommitmentsOf`. |
+| `ratifyScorecardFrom()` | Anyone | Scorecard must be in SUCCEEDED state (quorum met + grace period elapsed); no scorecard already ratified | Executes the scorecard via low-level call to `setTierCashOutWeightsTo` on the hook, then calls `fulfillCommitmentsOf`. |
 
 ### DefifaHook
 
@@ -75,7 +75,7 @@ COUNTDOWN --> MINT --> REFUND (optional) --> SCORING --> COMPLETE or NO_CONTEST
 2. NFT holders attest based on their per-tier voting weight (`attestToScorecardFrom`)
 3. Once quorum (50% of minted tiers' attestation power) is met and grace period passes, anyone ratifies (`ratifyScorecardFrom`)
 4. The governor calls `setTierCashOutWeightsTo` on the hook via low-level call
-5. `fulfillCommitmentsOf` sends fee payouts and queues the final ruleset
+5. `fulfillCommitmentsOf` sends fee payouts (try-catch) and queues the final ruleset
 
 **No single entity controls scoring.** The process requires collective attestation from NFT holders across tiers.
 
