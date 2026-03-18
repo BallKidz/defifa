@@ -128,9 +128,11 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         jbPermissions()
             .setPermissionsFor(
                 projectOwner,
-                // forge-lint: disable-next-line(unsafe-typecast)
                 JBPermissionsData({
-                    operator: address(deployer), projectId: uint64(_defifaProjectId), permissionIds: permissionIds
+                    operator: address(deployer),
+                    // forge-lint: disable-next-line(unsafe-typecast)
+                    projectId: uint64(_defifaProjectId),
+                    permissionIds: permissionIds
                 })
             );
 

@@ -36,7 +36,6 @@ import {DefifaTierCashOutWeight} from "./structs/DefifaTierCashOutWeight.sol";
 import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 import {DefifaHookLib} from "./libraries/DefifaHookLib.sol";
 
-/// @title DefifaHook
 /// @notice A hook that transforms Juicebox treasury interactions into a Defifa game.
 contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     using Checkpoints for Checkpoints.Trace208;
@@ -279,8 +278,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         DefifaGamePhase _gamePhase = gamePhaseReporter.currentGamePhaseOf(context.projectId);
 
         // Calculate the amount paid to mint the tokens that are being burned.
-        uint256 _cumulativeMintPrice =
-            DefifaHookLib.computeCumulativeMintPrice({tokenIds: decodedTokenIds, _store: store, hook: address(this)});
+        uint256 _cumulativeMintPrice = DefifaHookLib.computeCumulativeMintPrice({
+            tokenIds: decodedTokenIds, hookStore: store, hook: address(this)
+        });
 
         // Use this contract as the only cash out hook.
         hookSpecifications = new JBCashOutHookSpecification[](1);
@@ -292,7 +292,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             gamePhase: _gamePhase,
             cumulativeMintPrice: _cumulativeMintPrice,
             surplusValue: context.surplus.value,
-            _amountRedeemed: amountRedeemed,
+            totalAmountRedeemed: amountRedeemed,
             cumulativeCashOutWeight: cashOutWeightOf(decodedTokenIds)
         });
 
@@ -315,7 +315,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     {
         cumulativeWeight = DefifaHookLib.computeCashOutWeightBatch({
             tokenIds: tokenIds,
-            _store: store,
+            hookStore: store,
             hook: address(this),
             tierCashOutWeights: _tierCashOutWeights,
             tokensRedeemedFrom: tokensRedeemedFrom
@@ -328,7 +328,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     function cashOutWeightOf(uint256 tokenId) public view override returns (uint256) {
         return DefifaHookLib.computeCashOutWeight({
             tokenId: tokenId,
-            _store: store,
+            hookStore: store,
             hook: address(this),
             tierCashOutWeights: _tierCashOutWeights,
             tokensRedeemedFrom: tokensRedeemedFrom
@@ -338,7 +338,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice The amount of tokens of a tier that are currently in circulation.
     /// @param tierId The ID of the tier to get the current supply of.
     function currentSupplyOfTier(uint256 tierId) public view returns (uint256) {
-        return DefifaHookLib.computeCurrentSupply({_store: store, hook: address(this), tierId: tierId});
+        return DefifaHookLib.computeCurrentSupply({hookStore: store, hook: address(this), tierId: tierId});
     }
 
     /// @notice Indicates if this contract adheres to the specified interface.
@@ -384,7 +384,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // slither-disable-next-line unused-return
         return DefifaHookLib.computeTokensClaim({
             tokenIds: tokenIds,
-            _store: store,
+            hookStore: store,
             hook: address(this),
             totalMintCost: _totalMintCost,
             defifaBalance: DEFIFA_TOKEN.balanceOf(address(this)),
@@ -724,7 +724,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Validate weights and build the array. Reverts on invalid input.
         _tierCashOutWeights =
-            DefifaHookLib.validateAndBuildWeights({tierWeights: tierWeights, _store: store, hook: address(this)});
+            DefifaHookLib.validateAndBuildWeights({tierWeights: tierWeights, hookStore: store, hook: address(this)});
 
         // Mark the cashOut weight as set.
         cashOutWeightIsSet = true;
@@ -794,11 +794,11 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         returns (bool beneficiaryReceivedTokens)
     {
         return DefifaHookLib.claimTokensFor({
-            _beneficiary: _beneficiary,
+            beneficiary: _beneficiary,
             shareToBeneficiary: shareToBeneficiary,
             outOfTotal: outOfTotal,
-            _defifaToken: DEFIFA_TOKEN,
-            _baseProtocolToken: BASE_PROTOCOL_TOKEN
+            defifaToken: DEFIFA_TOKEN,
+            baseProtocolToken: BASE_PROTOCOL_TOKEN
         });
     }
 
@@ -955,8 +955,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         if (_tierIdsToMint.length == 0) revert DefifaHook_NothingToMint();
 
         // Compute attestation units per unique tier (validates ascending order, reverts on bad order).
-        (uint256[] memory _tierIds, uint256[] memory _attestationAmounts, uint256 _uniqueTierCount) =
-            DefifaHookLib.computeAttestationUnits({_tierIdsToMint: _tierIdsToMint, _store: store, hook: address(this)});
+        (uint256[] memory _tierIds, uint256[] memory _attestationAmounts, uint256 _uniqueTierCount) = DefifaHookLib.computeAttestationUnits({
+            tierIdsToMint: _tierIdsToMint, hookStore: store, hook: address(this)
+        });
 
         // Apply attestation units for each unique tier.
         for (uint256 _i; _i < _uniqueTierCount;) {
@@ -1012,18 +1013,22 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
             // If minting, add to the total tier checkpoints.
             if (_from == address(0)) {
-                // Casting to uint208 is safe because attestation unit amounts are bounded by NFT supply counts.
+                // Casting to uint208/uint48 is safe because attestation unit amounts are bounded by NFT supply counts.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                uint208 newValue = _current + uint208(_amount);
                 // forge-lint: disable-next-line(unsafe-typecast)
                 // slither-disable-next-line unused-return
-                _totalTierCheckpoints[_tierId].push({key: uint48(block.timestamp), value: _current + uint208(_amount)});
+                _totalTierCheckpoints[_tierId].push({key: uint48(block.timestamp), value: newValue});
             }
 
             // If burning, subtract from the total tier checkpoints.
             if (_to == address(0)) {
-                // Casting to uint208 is safe because attestation unit amounts are bounded by NFT supply counts.
+                // Casting to uint208/uint48 is safe because attestation unit amounts are bounded by NFT supply counts.
+                // forge-lint: disable-next-line(unsafe-typecast)
+                uint208 newValue = _current - uint208(_amount);
                 // forge-lint: disable-next-line(unsafe-typecast)
                 // slither-disable-next-line unused-return
-                _totalTierCheckpoints[_tierId].push({key: uint48(block.timestamp), value: _current - uint208(_amount)});
+                _totalTierCheckpoints[_tierId].push({key: uint48(block.timestamp), value: newValue});
             }
         }
 

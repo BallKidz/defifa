@@ -38,7 +38,6 @@ import {DefifaLaunchProjectData} from "./structs/DefifaLaunchProjectData.sol";
 import {DefifaOpsData} from "./structs/DefifaOpsData.sol";
 import {DefifaTierParams} from "./structs/DefifaTierParams.sol";
 
-/// @title DefifaDeployer
 /// @notice Deploys and manages Defifa games.
 contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGamePotReporter, IERC721Receiver {
     using Strings for uint256;

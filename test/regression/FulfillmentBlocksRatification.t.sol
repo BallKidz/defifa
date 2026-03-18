@@ -8,7 +8,6 @@ import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaScorecardState} from "../../src/enums/DefifaScorecardState.sol";
-import {IDefifaGovernor} from "../../src/interfaces/IDefifaGovernor.sol";
 import {IDefifaDeployer} from "../../src/interfaces/IDefifaDeployer.sol";
 import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 

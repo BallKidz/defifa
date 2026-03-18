@@ -11,7 +11,6 @@ import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
-import {JBPermissionIds} from "@bananapus/permission-ids-v6/src/JBPermissionIds.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
@@ -35,7 +34,6 @@ import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 import {JBMultiTerminal} from "@bananapus/core-v6/src/JBMultiTerminal.sol";
-import {JBPermissionsData} from "@bananapus/core-v6/src/structs/JBPermissionsData.sol";
 
 /// @notice Mock ERC-20 token with configurable decimals for testing.
 contract AuditGapsMockToken is ERC20 {
@@ -231,6 +229,7 @@ contract TestAuditGapsERC20Games is JBTest, TestBaseWorkflow {
     function _mintErc20(address user, uint256 tid, uint104 amt) internal {
         token.mint(user, amt);
         uint16[] memory m = new uint16[](1);
+        // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
         bytes[] memory data = new bytes[](1);
         data[0] = abi.encode(user, m);
@@ -679,6 +678,7 @@ contract TestAuditGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
     function _mint(address user, uint256 pid, uint256 tid, uint256 amt) internal {
         vm.deal(user, amt);
         uint16[] memory m = new uint16[](1);
+        // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
         bytes[] memory data = new bytes[](1);
         data[0] = abi.encode(user, m);

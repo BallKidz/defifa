@@ -68,13 +68,25 @@ contract DeployMainnet is Script, Sphinx {
         if (block.chainid == 11_155_111) {
             _typeface = ITypeface(0x8C420d3388C882F40d263714d7A6e2c8DB93905F);
 
+            // Optimism.
+        } else if (block.chainid == 10) {
+            _typeface = ITypeface(0xe160e47928907894F97a0DC025c61D64E862fEAa);
+
             // Optimism sepolia.
         } else if (block.chainid == 11_155_420) {
             _typeface = ITypeface(0xe160e47928907894F97a0DC025c61D64E862fEAa);
 
+            // Base.
+        } else if (block.chainid == 8453) {
+            _typeface = ITypeface(0x3DE45A14ea0fe24037D6363Ae71Ef18F336D1C27);
+
             // Base sepolia.
         } else if (block.chainid == 84_532) {
             _typeface = ITypeface(0xEb269d9F0850CEf5e3aB0F9718fb79c466720784);
+
+            // Arbitrum.
+        } else if (block.chainid == 42_161) {
+            _typeface = ITypeface(0x431C35e9fA5152A906A38390910d0Cfcba0Fb43b);
 
             // Arb sepolia.
         } else if (block.chainid == 421_614) {
@@ -94,7 +106,7 @@ contract DeployMainnet is Script, Sphinx {
             _directory: core.directory, _defifaToken: defifaToken, _baseProtocolToken: baseProtocolToken
         });
         DefifaTokenUriResolver tokenUriResolver = new DefifaTokenUriResolver{salt: _salt}(_typeface);
-        DefifaGovernor governor = new DefifaGovernor{salt: _salt}({_controller: core.controller, _owner: safeAddress()});
+        DefifaGovernor governor = new DefifaGovernor{salt: _salt}({controller: core.controller, owner: safeAddress()});
         DefifaDeployer deployer = new DefifaDeployer{salt: _salt}({
             _hookCodeOrigin: address(hook),
             _tokenUriResolver: tokenUriResolver,
