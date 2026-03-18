@@ -17,12 +17,10 @@ import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressReg
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
-import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 import {DefifaDelegation} from "../src/structs/DefifaDelegation.sol";
 import {DefifaLaunchProjectData} from "../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../src/structs/DefifaTierParams.sol";
 import {DefifaTierCashOutWeight} from "../src/structs/DefifaTierCashOutWeight.sol";
-import {DefifaGamePhase} from "../src/enums/DefifaGamePhase.sol";
 import {DefifaScorecardState} from "../src/enums/DefifaScorecardState.sol";
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
 import {JBTerminalConfig} from "@bananapus/core-v6/src/structs/JBTerminalConfig.sol";
@@ -154,7 +152,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         for (uint256 i; i < 4; i++) {
             sc[i].cashOutWeight = tw / 4;
         }
-        uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
+        _gov.submitScorecardFor(_gameId, sc);
 
         // Now the attacker mints in a new block (after the scorecard was submitted).
         // Payments are paused in scoring phase, so this would revert. But even if somehow
