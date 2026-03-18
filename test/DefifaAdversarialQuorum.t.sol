@@ -398,6 +398,88 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
+    // TEST 9: Burns (refunds) lower quorum, allowing ratification that
+    // would otherwise require more attestors.
+    //
+    // This proves the game handles burn-to-lower-quorum gracefully.
+    // The quorum() function uses live supply (currentSupplyOfTier) rather
+    // than a snapshot, so when tokens are burned the quorum threshold
+    // decreases. This is documented and accepted behavior — see
+    // DefifaGovernor.sol lines 203-207.
+    // =========================================================================
+    function test_burnTiersLowersQuorumAllowsRatification() external {
+        // --- Step 1: Setup 4 tiers, 1 user per tier ---
+        _setupGame(4, 1 ether);
+
+        // Verify initial quorum: 4 minted tiers -> quorum = 2 * MAX_ATTESTATION_POWER_TIER.
+        uint256 initialQuorum = _gov.quorum(_gameId);
+        uint256 maxTier = _gov.MAX_ATTESTATION_POWER_TIER();
+        assertEq(initialQuorum, (4 * maxTier) / 2, "initial quorum = 50% of 4 tiers");
+
+        // With 4 tiers, a single attestor (25%) cannot reach quorum.
+        // We will demonstrate that after 2 tiers are burned, 1 attestor CAN reach quorum.
+
+        // --- Step 2: Warp to REFUND phase, users 2 and 3 refund ---
+        // _setupGame leaves us in MINT phase; advance to REFUND.
+        _toRefund();
+
+        // Users in tiers 3 and 4 refund (burn their tokens).
+        _cashOut(_users[2], 3, 1);
+        _cashOut(_users[3], 4, 1);
+
+        // Verify tiers 3 and 4 now have zero supply.
+        assertEq(_nft.currentSupplyOfTier(3), 0, "tier 3 supply = 0 after refund");
+        assertEq(_nft.currentSupplyOfTier(4), 0, "tier 4 supply = 0 after refund");
+
+        // Quorum should now reflect only 2 minted tiers.
+        uint256 newQuorum = _gov.quorum(_gameId);
+        assertEq(newQuorum, (2 * maxTier) / 2, "quorum drops to 50% of 2 remaining tiers");
+        assertLt(newQuorum, initialQuorum, "new quorum < initial quorum");
+
+        // --- Step 3: Advance to SCORING phase ---
+        _toScoring();
+
+        // --- Step 4: Submit scorecard ---
+        // Tiers 1 and 2 split the pot; tiers 3 and 4 get 0 (no supply).
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(4);
+        uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
+        sc[0].cashOutWeight = tw / 2;
+        sc[1].cashOutWeight = tw / 2;
+        // sc[2].cashOutWeight = 0; (default)
+        // sc[3].cashOutWeight = 0; (default)
+        uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
+
+        // --- Step 5: Only user 0 attests (1 of 2 remaining tiers = 50%) ---
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+
+        vm.prank(_users[0]);
+        _gov.attestToScorecardFrom(_gameId, proposalId);
+
+        // A single attestor provides MAX_ATTESTATION_POWER_TIER = the new quorum.
+        // 1 * MAX >= (2 * MAX) / 2 -> quorum met.
+
+        // --- Step 6: After grace period, proposal should be SUCCEEDED ---
+        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+
+        DefifaScorecardState state = _gov.stateOf(_gameId, proposalId);
+        assertEq(
+            uint256(state),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "1 attestor reaches quorum after tiers 3+4 burned"
+        );
+
+        // --- Step 7: Ratification should succeed ---
+        _gov.ratifyScorecardFrom(_gameId, sc);
+        assertTrue(_nft.cashOutWeightIsSet(), "scorecard ratified - weights are set");
+
+        // --- Step 8: Verify game resilience ---
+        // Tiers 1 and 2 still have supply, meaning their holders can cash out
+        // once commitments are fulfilled. The game is in a healthy state.
+        assertEq(_nft.currentSupplyOfTier(1), 1, "tier 1 supply intact");
+        assertEq(_nft.currentSupplyOfTier(2), 1, "tier 2 supply intact");
+    }
+
+    // =========================================================================
     // SETUP + PRIMITIVE HELPERS (mirrors DefifaSecurity.t.sol)
     // =========================================================================
 
@@ -487,10 +569,40 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         _nft.setTierDelegatesTo(dd);
     }
 
+    function _toRefund() internal {
+        // Advance to the refund phase (1 day after mint phase start = start - refundDuration).
+        vm.warp(_tsReader.ts() + 1 days + 1);
+    }
+
     function _buildScorecard(uint256 n) internal pure returns (DefifaTierCashOutWeight[] memory sc) {
         sc = new DefifaTierCashOutWeight[](n);
         for (uint256 i; i < n; i++) {
             sc[i].id = i + 1;
         }
+    }
+
+    function _cashOut(address user, uint256 tid, uint256 tnum) internal {
+        bytes memory meta = _cashOutMeta(tid, tnum);
+        vm.prank(user);
+        JBMultiTerminal(address(jbMultiTerminal()))
+            .cashOutTokensOf({
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: meta
+            });
+    }
+
+    function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {
+        uint256[] memory cid = new uint256[](1);
+        cid[0] = (tid * 1_000_000_000) + tnum;
+        bytes[] memory data = new bytes[](1);
+        data[0] = abi.encode(cid);
+        bytes4[] memory ids = new bytes4[](1);
+        ids[0] = metadataHelper().getId("cashOut", address(hook));
+        return metadataHelper().createMetadata(ids, data);
     }
 }
