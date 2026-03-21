@@ -678,9 +678,7 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
     }
 
     function _surplus() internal view returns (uint256) {
-        return
-            jbMultiTerminal()
-                .currentSurplusOf(_pid, jbMultiTerminal().accountingContextsOf(_pid), 18, JBCurrencyIds.ETH);
+        return jbMultiTerminal().currentSurplusOf(_pid, new address[](0), 18, JBCurrencyIds.ETH);
     }
 
     function _cashOut(address user, uint256 tid, uint256 tnum) internal {

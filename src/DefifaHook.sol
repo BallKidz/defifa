@@ -284,8 +284,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Use this contract as the only cash out hook.
         hookSpecifications = new JBCashOutHookSpecification[](1);
-        hookSpecifications[0] =
-            JBCashOutHookSpecification({hook: this, amount: 0, metadata: abi.encode(_cumulativeMintPrice)});
+        hookSpecifications[0] = JBCashOutHookSpecification({
+            hook: this, noop: false, amount: 0, metadata: abi.encode(_cumulativeMintPrice)
+        });
 
         // Compute the cash out count based on the game phase.
         cashOutCount = DefifaHookLib.computeCashOutCount({

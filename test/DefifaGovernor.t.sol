@@ -558,8 +558,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
     )
         internal
     {
-        uint256 _pot = jbMultiTerminal()
-            .currentSurplusOf(_projectId, jbMultiTerminal().accountingContextsOf(_projectId), 18, JBCurrencyIds.ETH);
+        uint256 _pot = jbMultiTerminal().currentSurplusOf(_projectId, new address[](0), 18, JBCurrencyIds.ETH);
         // Assert that the deployer did *NOT* receive any fee tokens.
         assertEq(IERC20(_protocolFeeProjectTokenAccount).balanceOf(address(deployer)), 0);
         assertEq(IERC20(_defifaProjectTokenAccount).balanceOf(address(deployer)), 0);
@@ -569,8 +568,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             _verifySingleCashOut(_projectId, _nft, scorecards[i], _users[i], _pot, _sumDistribution, distribution, i);
         }
         // All NFTs should have been redeemed, only some dust should be left
-        uint256 remainingSurplus = jbMultiTerminal()
-            .currentSurplusOf(_projectId, jbMultiTerminal().accountingContextsOf(_projectId), 18, JBCurrencyIds.ETH);
+        uint256 remainingSurplus =
+            jbMultiTerminal().currentSurplusOf(_projectId, new address[](0), 18, JBCurrencyIds.ETH);
         uint256 _expected = _pot * (_nft.TOTAL_CASHOUT_WEIGHT() - assignedCashOutWeight) / _nft.TOTAL_CASHOUT_WEIGHT();
         assertApproxEqAbs(remainingSurplus, _expected, 10 ** 14);
 
@@ -884,8 +883,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         _governor.ratifyScorecardFrom(_gameId, scorecards);
         vm.warp(block.timestamp + 1);
 
-        uint256 _pot = jbMultiTerminal()
-            .currentSurplusOf(_projectId, jbMultiTerminal().accountingContextsOf(_projectId), 18, JBCurrencyIds.ETH);
+        uint256 _pot = jbMultiTerminal().currentSurplusOf(_projectId, new address[](0), 18, JBCurrencyIds.ETH);
 
         // Verify that the cashOutWeights actually changed
         for (uint256 i = 0; i < _users.length; i++) {
@@ -932,8 +930,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         }
         // All NFTs should have been redeemed, only some dust should be left
         // Max allowed dust is 0.0001
-        uint256 remainingSurplus = jbMultiTerminal()
-            .currentSurplusOf(_projectId, jbMultiTerminal().accountingContextsOf(_projectId), 18, JBCurrencyIds.ETH);
+        uint256 remainingSurplus =
+            jbMultiTerminal().currentSurplusOf(_projectId, new address[](0), 18, JBCurrencyIds.ETH);
         assertApproxEqAbs(
             remainingSurplus, _pot * (totalCashOutWeight - assignedCashOutWeight) / totalCashOutWeight, 10 ** 14
         );

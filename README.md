@@ -97,7 +97,7 @@ Fees are taken as payouts during commitment fulfillment. The remaining surplus i
 ## Install
 
 ```bash
-npm install @ballkidz/defifa-collection-deployer
+npm install @ballkidz/defifa
 ```
 
 ## Develop
