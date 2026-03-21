@@ -306,8 +306,7 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
     }
 
     function _surplus() internal view returns (uint256) {
-        return jbMultiTerminal()
-            .currentSurplusOf(_pid, jbMultiTerminal().accountingContextsOf(_pid), 6, uint32(uint160(address(usdc))));
+        return jbMultiTerminal().currentSurplusOf(_pid, new address[](0), 6, uint32(uint160(address(usdc))));
     }
 
     function _generateTokenId(uint256 tierId, uint256 tokenNumber) internal pure returns (uint256) {

@@ -75,6 +75,8 @@ Attestor → DefifaGovernor.attestToScorecard(proposalId)
 - `@bananapus/721-hook-v6` — NFT tier system
 - `@bananapus/address-registry-v6` — Deterministic deploys
 - `@bananapus/permission-ids-v6` — Permission constants
+- `@croptop/core-v6` — Croptop integration
+- `@rev-net/core-v6` — Revnet integration
 - `@openzeppelin/contracts` — Checkpoints, Ownable, Clones
 - `@prb/math` — mulDiv
 - `scripty.sol` — On-chain scripting for SVG
