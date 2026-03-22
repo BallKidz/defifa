@@ -4,48 +4,79 @@
 
 On-chain prediction game framework built on Juicebox V6. Players mint NFT game pieces representing teams/outcomes, a governor-based scorecard system determines tier payouts, and winners burn NFTs to claim proportional shares of the pot plus accumulated fee tokens ($DEFIFA/$NANA).
 
+## Game Lifecycle
+
+```
+                     start time reached
+   COUNTDOWN ──────────────────────────────► MINT
+                                              │
+                              mintPeriodDuration expires
+                                              │
+                  ┌───────────────────────────┤
+                  │                           ▼
+                  │ (refundPeriodDuration=0)  REFUND
+                  │                           │
+                  │           refundPeriodDuration expires
+                  │                           │
+                  ├◄──────────────────────────┘
+                  ▼
+               SCORING
+                  │
+                  ├── scorecard ratified + commitments fulfilled ──► COMPLETE
+                  │
+                  └── safety trigger (minParticipation not met
+                      OR scorecardTimeout elapsed) ──────────────► NO_CONTEST
+                                                                  (full refunds)
+```
+
+- **COUNTDOWN**: Before `start`. No minting.
+- **MINT**: Players mint NFTs and delegate attestation power. Delegation changes only allowed here.
+- **REFUND**: Optional. Players can burn NFTs for full refund at mint price. Skipped if `refundPeriodDuration=0`.
+- **SCORING**: Scorecards are submitted, attested, and ratified. Cash outs blocked until scorecard is set.
+- **COMPLETE**: Commitments fulfilled. Players burn NFTs for weighted pot share + fee tokens.
+- **NO_CONTEST**: Safety exit. Full refunds enabled. Irreversible once triggered.
+
 ## Contracts
 
 | Contract | Role |
 |----------|------|
 | `DefifaDeployer` | Factory that creates games as Juicebox projects with phased rulesets, cloned hooks, and governor initialization. Manages post-game commitment fulfillment. Implements `IDefifaGamePhaseReporter` and `IDefifaGamePotReporter`. |
-| `DefifaHook` | ERC-721 hook (extends `JB721Hook`) that manages cash-out weights per tier, attestation delegation with checkpointed voting power, and proportional pot distribution on burn. Deployed as minimal proxy clones via `Clones.cloneDeterministic`. |
-| `DefifaGovernor` | Governance contract for scorecard submission, attestation, and ratification with 50% quorum requirement. Shared singleton across all games. |
-| `DefifaHookLib` | External library with pure/view helpers: scorecard validation, cash-out weight calculation, fee token distribution, attestation unit aggregation, supply computation. |
-| `DefifaTokenUriResolver` | On-chain SVG renderer for game card metadata with phase-aware display, pot size, rarity, and current value. Uses embedded Capsules typeface. |
-| `DefifaFontImporter` | Library that loads Capsules typeface font for SVG renderer. |
+| `DefifaHook` | ERC-721 hook (extends `JB721Hook`) managing cash-out weights, attestation delegation with checkpointed voting, and proportional pot distribution. Deployed as minimal proxy clones. |
+| `DefifaGovernor` | Shared singleton for scorecard submission, attestation, and ratification. |
+| `DefifaHookLib` | External library: scorecard validation, cash-out weight calculation, fee token distribution, attestation aggregation. |
+| `DefifaTokenUriResolver` | On-chain SVG renderer for game card metadata with phase-aware display. Uses embedded Capsules typeface. |
+| `DefifaFontImporter` | Loads Capsules typeface font for SVG renderer. |
 | `DefifaProjectOwner` | Receives Defifa fee project's ownership NFT and permanently grants the deployer `SET_SPLIT_GROUPS` permission. |
 
 ## Key Functions
 
 | Function | Contract | What it does |
 |----------|----------|--------------|
-| `launchGameWith(data)` | `DefifaDeployer` | Creates a new game: clones the hook via `Clones.cloneDeterministic`, initializes it with tiers and reporters, launches a Juicebox project with phased rulesets (Mint → optional Refund → Scoring), initializes the governor, transfers hook ownership to the governor. Returns the game ID (Juicebox project ID). |
-| `fulfillCommitmentsOf(gameId)` | `DefifaDeployer` | After scorecard ratification, sends the fee portion (Defifa fee + protocol fee + user splits) as payouts via `sendPayoutsOf`, then queues a final ruleset with `pausePay=true` and zero payout limits so the remaining pot is available for cash outs. Uses `max(amount, 1)` as reentrancy guard. |
-| `triggerNoContestFor(gameId)` | `DefifaDeployer` | Checks safety conditions (min participation or scorecard timeout) and queues a NO_CONTEST ruleset enabling full refunds. Can only be called once per game. |
-| `currentGamePhaseOf(gameId)` | `DefifaDeployer` | Returns the current game phase based on ruleset cycle number, cash-out weight state, and no-contest status. Implements `IDefifaGamePhaseReporter`. |
-| `currentGamePotOf(gameId, includeCommitments)` | `DefifaDeployer` | Returns pot size, token address, and decimals. If `includeCommitments` is false, subtracts already-fulfilled commitment amount. |
-| `timesFor(gameId)` | `DefifaDeployer` | Returns `(start, mintPeriodDuration, refundPeriodDuration)` for a game. |
-| `safetyParamsOf(gameId)` | `DefifaDeployer` | Returns `(minParticipation, scorecardTimeout)` for a game. |
-| `nextPhaseNeedsQueueing(gameId)` | `DefifaDeployer` | Returns true if the current ruleset has a duration > 0 and the latest queued ruleset is the same as the current one (meaning no new ruleset has been queued yet). |
-| `submitScorecardFor(gameId, tierWeights)` | `DefifaGovernor` | Submits a proposed scorecard (array of tier cash-out weights). Hashes the encoded calldata to produce a scorecard ID. Stores attestation begin and grace period end timestamps. Only during SCORING phase. If `defaultAttestationDelegateProposalOf[gameId]` is 0, the first proposal from the default delegate auto-sets it. |
-| `attestToScorecardFrom(gameId, scorecardId)` | `DefifaGovernor` | Attests to a scorecard. Weight is proportional to the caller's tier-delegated voting power at the attestation begin timestamp. Each address can only attest once per scorecard. Returns the attestation weight. |
-| `ratifyScorecardFrom(gameId, tierWeights)` | `DefifaGovernor` | Ratifies a scorecard that has reached `SUCCEEDED` state (50% quorum). Executes `setTierCashOutWeightsTo` on the hook via low-level `.call`, then calls `fulfillCommitmentsOf`. Scorecard is immutable once ratified. |
-| `initializeGame(gameId, attestationStartTime, attestationGracePeriod)` | `DefifaGovernor` | Sets attestation start time and grace period for a game. Grace period minimum is 1 day. Called by the deployer during game launch. |
-| `quorum(gameId)` | `DefifaGovernor` | Returns `50% of (MAX_ATTESTATION_POWER_TIER * numberOfMintedTiers)`. Only tiers with non-zero minted supply count toward quorum. |
-| `getAttestationWeight(gameId, account, timestamp)` | `DefifaGovernor` | Calculates an account's attestation power across all tiers (up to 128) using checkpointed delegation snapshots at `timestamp` (uint48, not uint256). Per-tier power: `mulDiv(MAX_ATTESTATION_POWER_TIER, accountTierUnits, totalTierUnits)`. |
-| `stateOf(gameId, scorecardId)` | `DefifaGovernor` | Returns scorecard state: `RATIFIED` if matches ratified ID, `PENDING` if before attestation begin, `SUCCEEDED` if quorum reached + grace period elapsed, `ACTIVE` if attestation in progress, `DEFEATED` otherwise. |
-| `setTierCashOutWeightsTo(tierWeights)` | `DefifaHook` | Sets cash-out weights for each tier. Validates weights sum to exactly `TOTAL_CASHOUT_WEIGHT` (1e18), tiers are in ascending order, and all tiers exist. Only callable by owner (the governor). Only callable during SCORING phase. Once set, cannot be changed (`cashOutWeightIsSet` flag). |
-| `afterPayRecordedWith(context)` | `DefifaHook` | Processes payments: validates caller is a project terminal and `msg.value == 0`, then delegates to `_processPayment`. Overrides `JB721Hook` to add the `msg.value != 0` check. |
-| `beforeCashOutRecordedWith(context)` | `DefifaHook` | Returns cash-out parameters based on game phase. During MINT/REFUND/NO_CONTEST: returns cumulative mint price as `cashOutCount` (full refund). During SCORING/COMPLETE: returns weighted share based on tier scorecard weights. Uses surplus as `totalSupply`. Returns a `JBCashOutHookSpecification` with `noop: false` (the hook always needs its callback to process burns and fee token distribution). |
-| `afterCashOutRecordedWith(context)` | `DefifaHook` | Burns NFTs, validates ownership, tracks redemptions per tier. During COMPLETE phase: increments `amountRedeemed`, distributes proportional $DEFIFA/$NANA tokens to the holder based on `_totalMintCost` share. Reverts with `NothingToClaim` if no ETH and no fee tokens received. Decrements `_totalMintCost` by the burned tokens' cumulative mint price. |
-| `cashOutWeightOf(tokenIds)` | `DefifaHook` | Returns the cumulative cash-out weight for an array of token IDs. Each token's weight: `tierWeight / (minted - burned)`, accounting for already-redeemed tokens. Overrides `JB721Hook`. |
-| `cashOutWeightOf(tokenId)` | `DefifaHook` | Returns the cash-out weight for a single token ID. |
-| `totalCashOutWeight()` | `DefifaHook` | Returns `TOTAL_CASHOUT_WEIGHT` (1e18). Overrides `JB721Hook`. |
-| `setTierDelegateTo(delegatee, tierId)` | `DefifaHook` | Delegates attestation voting power for a specific tier to another address. Only during MINT phase. Reverts during other phases. |
-| `setTierDelegatesTo(delegations)` | `DefifaHook` | Batch variant. Sets delegates for multiple tiers at once. Only during MINT phase. |
-| `mintReservesFor(tierId, count)` | `DefifaHook` | Mints reserved tokens for a tier. Auto-delegates to default attestation delegate if no delegate set. Increments `_totalMintCost` by `tier.price * count` so reserved recipients get their share of fee tokens. |
-| `initialize(gameId, name, symbol, ...)` | `DefifaHook` | One-time initialization for a cloned hook. Sets project ID, name, symbol, store, rulesets, reporters, tiers, tier names, and default attestation delegate. Reverts if called on code origin or if already initialized. |
+| `launchGameWith(data)` | `DefifaDeployer` | Creates a game: clones the hook, launches a Juicebox project with phased rulesets, initializes the governor, transfers hook ownership to the governor. Returns the game ID. |
+| `fulfillCommitmentsOf(gameId)` | `DefifaDeployer` | After ratification, sends fee payouts via `sendPayoutsOf`, then queues a final ruleset enabling cash outs. |
+| `triggerNoContestFor(gameId)` | `DefifaDeployer` | Checks safety conditions and queues a NO_CONTEST ruleset enabling full refunds. Once per game. |
+| `currentGamePhaseOf(gameId)` | `DefifaDeployer` | Returns the current `DefifaGamePhase`. |
+| `currentGamePotOf(gameId, includeCommitments)` | `DefifaDeployer` | Returns pot size, token address, and decimals. |
+| `timesFor(gameId)` | `DefifaDeployer` | Returns `(start, mintPeriodDuration, refundPeriodDuration)`. |
+| `safetyParamsOf(gameId)` | `DefifaDeployer` | Returns `(minParticipation, scorecardTimeout)`. |
+| `nextPhaseNeedsQueueing(gameId)` | `DefifaDeployer` | True if the next phase ruleset hasn't been queued yet. |
+| `submitScorecardFor(gameId, tierWeights)` | `DefifaGovernor` | Submits a scorecard proposal. Only during SCORING. |
+| `attestToScorecardFrom(gameId, scorecardId)` | `DefifaGovernor` | Attests to a scorecard using tier-delegated voting power. One attestation per address per scorecard. |
+| `ratifyScorecardFrom(gameId, tierWeights)` | `DefifaGovernor` | Ratifies a `SUCCEEDED` scorecard (50% quorum met + grace period elapsed). Executes weights on the hook, then fulfills commitments. |
+| `initializeGame(gameId, ...)` | `DefifaGovernor` | Sets attestation start time and grace period. Called by deployer during launch. |
+| `quorum(gameId)` | `DefifaGovernor` | Returns the quorum threshold. See Attestation & Governance for formula. |
+| `getAttestationWeight(gameId, account, timestamp)` | `DefifaGovernor` | Returns an account's attestation power. See Attestation & Governance for formula. |
+| `stateOf(gameId, scorecardId)` | `DefifaGovernor` | Returns scorecard state: `RATIFIED`, `PENDING`, `SUCCEEDED`, `ACTIVE`, or `DEFEATED`. |
+| `setTierCashOutWeightsTo(tierWeights)` | `DefifaHook` | Sets cash-out weights. Weights must sum to exactly `TOTAL_CASHOUT_WEIGHT` (1e18). Owner-only (governor), SCORING phase only, one-time. |
+| `afterPayRecordedWith(context)` | `DefifaHook` | Processes payments. Adds `msg.value != 0` check over base `JB721Hook`. |
+| `beforeCashOutRecordedWith(context)` | `DefifaHook` | Returns cash-out parameters based on game phase. Always returns `noop: false`. |
+| `afterCashOutRecordedWith(context)` | `DefifaHook` | Burns NFTs and tracks redemptions. During COMPLETE, also distributes fee tokens. |
+| `cashOutWeightOf(tokenIds)` | `DefifaHook` | Cumulative cash-out weight for token IDs: `tierWeight / (minted - burned)` per token. |
+| `totalCashOutWeight()` | `DefifaHook` | Returns `TOTAL_CASHOUT_WEIGHT` (1e18). |
+| `setTierDelegateTo(delegatee, tierId)` | `DefifaHook` | Delegates attestation power for a tier. MINT phase only. |
+| `setTierDelegatesTo(delegations)` | `DefifaHook` | Batch delegation. MINT phase only. |
+| `mintReservesFor(tierId, count)` | `DefifaHook` | Mints reserved tokens. Increments `_totalMintCost` so reserved recipients share fee tokens. |
+| `initialize(gameId, ...)` | `DefifaHook` | One-time init for cloned hook. Sets project ID, store, reporters, tiers, and default attestation delegate. |
 
 ## Integration Points
 
@@ -54,9 +85,9 @@ On-chain prediction game framework built on Juicebox V6. Players mint NFT game p
 | `@bananapus/core-v6` | `IJBController`, `IJBDirectory`, `IJBRulesets`, `IJBTerminal`, `IJBMultiTerminal`, `JBRulesetConfig`, `JBSplit`, `JBConstants`, `JBMetadataResolver` | Project creation, ruleset management, terminal interactions, payout distribution, metadata encoding. |
 | `@bananapus/721-hook-v6` | `JB721Hook`, `IJB721TiersHookStore`, `JB721TierConfig`, `JB721Tier`, `ERC721`, `JB721TiersRulesetMetadataResolver` | Hook base class, NFT tier management, tier storage, transfer pause checking. |
 | `@bananapus/address-registry-v6` | `IJBAddressRegistry` | Hook address registration for discoverability. |
-| `@bananapus/permission-ids-v6` | `JBPermissionIds` | Permission constants for split management (`SET_SPLIT_GROUPS`). |
+| `@bananapus/permission-ids-v6` | `JBPermissionIds` | Permission constants (`SET_SPLIT_GROUPS`). |
 | `@openzeppelin/contracts` | `Ownable`, `Clones`, `IERC721Receiver`, `SafeERC20`, `Checkpoints`, `Strings`, `IERC20` | Access control, minimal proxy cloning, safe token handling, checkpointed voting, string formatting, fee token transfers. |
-| `@prb/math` | `mulDiv` | Precise fixed-point arithmetic for attestation weight and pot distribution calculations. |
+| `@prb/math` | `mulDiv` | Fixed-point arithmetic for attestation weight and pot distribution. |
 
 ## Key Types
 
@@ -138,20 +169,20 @@ On-chain prediction game framework built on Juicebox V6. Players mint NFT game p
 
 | Variable | Type | Contract | Description |
 |----------|------|----------|-------------|
-| `_tierCashOutWeights` | `uint256[128]` | `DefifaHook` | Fixed-size array of cash-out weights per tier, set once by the governor via `setTierCashOutWeightsTo`. |
-| `cashOutWeightIsSet` | `bool` | `DefifaHook` | Flag indicating whether cash-out weights have been set. Prevents re-setting. |
-| `amountRedeemed` | `uint256` | `DefifaHook` | Cumulative ETH redeemed from the game pot (refunds not counted). |
-| `_totalMintCost` | `uint256` | `DefifaHook` | Cumulative mint price of all live tokens. Denominator for fee token distribution. Incremented on pay/reserve mint, decremented on cash out. |
+| `_tierCashOutWeights` | `uint256[128]` | `DefifaHook` | Fixed-size array of cash-out weights per tier, set once by the governor. |
+| `cashOutWeightIsSet` | `bool` | `DefifaHook` | Flag preventing re-setting of cash-out weights. |
+| `amountRedeemed` | `uint256` | `DefifaHook` | Cumulative ETH redeemed from the pot (refunds not counted). |
+| `_totalMintCost` | `uint256` | `DefifaHook` | Cumulative mint price of all live tokens. Denominator for fee token distribution. |
 | `tokensRedeemedFrom` | `mapping(uint256 => uint256)` | `DefifaHook` | Number of tokens redeemed per tier. |
 | `ratifiedScorecardIdOf` | `mapping(uint256 => uint256)` | `DefifaGovernor` | Maps game ID to the ratified scorecard ID (0 if none). |
-| `_packedScorecardInfoOf` | `mapping(uint256 => uint256)` | `DefifaGovernor` | Bit-packed governance params per game: attestation start time (bits 0-47), attestation grace period (bits 48-95). |
-| `_scorecardOf` | `mapping(uint256 => mapping(uint256 => DefifaScorecard))` | `DefifaGovernor` | Maps (gameId, scorecardId) to scorecard data (attestationsBegin, gracePeriodEnds). |
-| `_scorecardAttestationsOf` | `mapping(uint256 => mapping(uint256 => DefifaAttestations))` | `DefifaGovernor` | Maps (gameId, scorecardId) to attestation data (count, per-account flag). |
+| `_packedScorecardInfoOf` | `mapping(uint256 => uint256)` | `DefifaGovernor` | Bit-packed: attestation start time (bits 0-47), grace period (bits 48-95). |
+| `_scorecardOf` | `mapping(uint256 => mapping(uint256 => DefifaScorecard))` | `DefifaGovernor` | Maps (gameId, scorecardId) to scorecard data. |
+| `_scorecardAttestationsOf` | `mapping(uint256 => mapping(uint256 => DefifaAttestations))` | `DefifaGovernor` | Maps (gameId, scorecardId) to attestation data. |
 | `defaultAttestationDelegateProposalOf` | `mapping(uint256 => uint256)` | `DefifaGovernor` | Maps game ID to the scorecard ID submitted by the default attestation delegate. |
-| `fulfilledCommitmentsOf` | `mapping(uint256 => uint256)` | `DefifaDeployer` | Maps game ID to fulfilled commitment amount. Non-zero means commitments fulfilled; value of 1 is a sentinel for reentrancy guard. |
-| `noContestTriggeredFor` | `mapping(uint256 => bool)` | `DefifaDeployer` | Maps game ID to whether no-contest has been triggered. Can only be set once. |
-| `_opsOf` | `mapping(uint256 => DefifaOpsData)` | `DefifaDeployer` | Maps game ID to operational data (token, start, durations, safety params). |
-| `_commitmentPercentOf` | `mapping(uint256 => uint256)` | `DefifaDeployer` | Maps game ID to the total commitment percentage (fees + splits). |
+| `fulfilledCommitmentsOf` | `mapping(uint256 => uint256)` | `DefifaDeployer` | Non-zero means commitments fulfilled; value of 1 is a sentinel for reentrancy guard. |
+| `noContestTriggeredFor` | `mapping(uint256 => bool)` | `DefifaDeployer` | Whether no-contest has been triggered. Can only be set once. |
+| `_opsOf` | `mapping(uint256 => DefifaOpsData)` | `DefifaDeployer` | Operational data (token, start, durations, safety params). |
+| `_commitmentPercentOf` | `mapping(uint256 => uint256)` | `DefifaDeployer` | Total commitment percentage (fees + splits). |
 
 ## Constants
 
@@ -176,34 +207,32 @@ During COMPLETE phase cash outs, players also receive proportional $DEFIFA and $
 
 ## Attestation & Governance
 
-- Each tier contributes equal `MAX_ATTESTATION_POWER_TIER` to quorum regardless of supply -- a tier with 1 NFT has the same governance weight as a tier with 100.
-- Attestation power per account per tier: `mulDiv(MAX_ATTESTATION_POWER_TIER, accountTierUnits, totalTierUnits)`.
-- Quorum: `50% of (MAX_ATTESTATION_POWER_TIER * numberOfMintedTiers)`. Only tiers with at least one minted token count.
-- Attestation snapshots are taken at the scorecard's `attestationsBegin` timestamp, locking voting power to prevent post-submission manipulation.
+- **Per-tier power**: `mulDiv(MAX_ATTESTATION_POWER_TIER, accountTierUnits, totalTierUnits)`. Each tier contributes equal weight regardless of supply -- a tier with 1 NFT has the same governance weight as a tier with 100.
+- **Quorum**: `50% of (MAX_ATTESTATION_POWER_TIER * numberOfMintedTiers)`. Only tiers with at least one minted token count.
+- Snapshots taken at the scorecard's `attestationsBegin` timestamp, locking voting power to prevent post-submission manipulation.
 - Each address can only attest once per scorecard.
-- The grace period (minimum 1 day) prevents instant ratification after quorum is reached.
+- Grace period (minimum 1 day) prevents instant ratification after quorum is reached.
 
 ## Gotchas
 
-- `TOTAL_CASHOUT_WEIGHT` is 1e18. Submitted scorecard tier weights must sum to **exactly** this value or `setTierCashOutWeightsTo` reverts with `DefifaHook_InvalidCashoutWeights`. No tolerance.
-- Tier IDs in a scorecard must be in **strict ascending order** with no duplicates, or validation reverts with `DefifaHook_BadTierOrder`.
-- Tier IDs are limited to 128 (`uint256[128] _tierCashOutWeights`). Games with more than 128 tiers are not supported.
-- `DefifaHook` is deployed as a **minimal proxy clone** (`Clones.cloneDeterministic`). The `initialize` function can only be called once -- the code origin reverts (has `store != address(0)` after its own construction prevents re-init).
-- All tiers share the same price (`tierPrice` on `DefifaLaunchProjectData`). The hook enforces this uniformity.
-- Delegation changes are **only allowed during MINT phase**. During REFUND, SCORING, and COMPLETE, attestation delegation is frozen to prevent manipulation. Calling `setTierDelegateTo` outside MINT reverts with `DefifaHook_DelegateChangesUnavailableInThisPhase`.
-- Scorecard attestation weight uses `mulDiv(MAX_ATTESTATION_POWER_TIER, userTierUnits, totalTierUnits)` per tier. If `totalTierUnits` is 0 for a tier (no delegations), that tier contributes no attestation power.
-- The governor's `quorum` is **dynamic**: it only counts tiers that have at least one minted token. Adding minted tiers changes the quorum retroactively for all active proposals.
-- `ratifyScorecardFrom` executes the scorecard via a **low-level `.call`** to the hook address. This is necessary because the hook's `setTierCashOutWeightsTo` is `onlyOwner` and the governor is the hook's owner.
-- `fulfillCommitmentsOf` uses `max(amount, 1)` as a reentrancy guard. If called when the pot is 0, it stores 1 as the fulfilled amount to prevent re-entry. `sendPayoutsOf` is wrapped in try-catch: on failure, resets to sentinel (1) and emits `CommitmentPayoutFailed`.
-- `_buildSplits` normalizes all split percentages relative to the total absolute percent. Rounding remainder is absorbed by the protocol fee split (last in the array).
-- `_totalMintCost` tracks cumulative mint prices of all live tokens (paid + reserved). It's incremented on pay and reserve mint, decremented on cash out. This is the denominator for fee token ($DEFIFA/$NANA) distribution.
-- Cash outs during COMPLETE phase revert with `DefifaHook_NothingToClaim` if **both** the reclaimed ETH amount is 0 **and** no fee tokens were transferred. This prevents burning NFTs for nothing.
-- `minParticipation` is compared against the terminal's surplus. If surplus never reaches this value, `triggerNoContestFor` can be called to enter NO_CONTEST. A value of 0 disables this check.
-- `scorecardTimeout` counts seconds from when SCORING begins. If no scorecard is ratified within this window, `triggerNoContestFor` can be called. A value of 0 disables this check.
-- `triggerNoContestFor` can only be called once per game. It queues a new ruleset enabling full refunds and is irreversible.
-- `afterPayRecordedWith` overrides `JB721Hook`'s version to add a `msg.value != 0` check. The base `JB721Hook` does not include this check.
-- Token IDs follow the `JB721TiersHookStore` encoding: `tierId * 1_000_000_000 + tokenNumber`.
-- Metadata IDs for pay and cashout use the **code origin address** (the uncloned implementation), not the clone address: `JBMetadataResolver.getId("pay", codeOrigin)`.
+- `TOTAL_CASHOUT_WEIGHT` is 1e18. Submitted scorecard tier weights must sum to **exactly** this value or `setTierCashOutWeightsTo` reverts. No tolerance.
+- Tier IDs in a scorecard must be in **strict ascending order** with no duplicates.
+- Max 128 tiers (`uint256[128] _tierCashOutWeights`).
+- `DefifaHook` is a **minimal proxy clone** (`Clones.cloneDeterministic`). `initialize` can only be called once.
+- All tiers share the same price (`tierPrice` on `DefifaLaunchProjectData`).
+- **Delegation only during MINT phase**. Other phases revert with `DefifaHook_DelegateChangesUnavailableInThisPhase`.
+- If `totalTierUnits` is 0 for a tier (no delegations), that tier contributes no attestation power.
+- **Dynamic quorum**: only counts tiers with minted supply. Minting new tiers changes quorum retroactively for active proposals.
+- `ratifyScorecardFrom` uses **low-level `.call`** to execute the scorecard on the hook (necessary because `setTierCashOutWeightsTo` is `onlyOwner`).
+- `fulfillCommitmentsOf` uses `max(amount, 1)` as a reentrancy sentinel. `sendPayoutsOf` is wrapped in try-catch: on failure, resets to sentinel (1) and emits `CommitmentPayoutFailed`.
+- `_buildSplits` normalizes split percentages. Rounding remainder absorbed by the protocol fee split (last in array).
+- `_totalMintCost` tracks cumulative mint prices (paid + reserved). Incremented on pay/reserve, decremented on cash out. Denominator for fee token distribution.
+- Cash outs during COMPLETE revert with `DefifaHook_NothingToClaim` if **both** reclaimed ETH is 0 **and** no fee tokens transferred.
+- `minParticipation` is compared against terminal surplus. Value of 0 disables the check.
+- `scorecardTimeout` counts seconds from SCORING start. Value of 0 disables. Both enable `triggerNoContestFor` when exceeded.
+- `triggerNoContestFor` can only be called once per game and is irreversible.
+- Token IDs follow `JB721TiersHookStore` encoding: `tierId * 1_000_000_000 + tokenNumber`.
+- Metadata IDs use the **code origin address** (uncloned implementation), not the clone: `JBMetadataResolver.getId("pay", codeOrigin)`.
 
 ## Example Integration
 
@@ -217,14 +246,16 @@ import {DefifaTierCashOutWeight} from "./structs/DefifaTierCashOutWeight.sol";
 DefifaTierParams[] memory tiers = new DefifaTierParams[](2);
 tiers[0] = DefifaTierParams({
     name: "Team A",
-    reservedRate: 1001, // no reserves
+    // reservedRate maps to JB721's `reserveFrequency`: 1 reserved mint per N paid mints.
+    // 1001 means "1 reserve per 1001 mints" -- effectively no reserves for normal game sizes.
+    reservedRate: 1001,
     reservedTokenBeneficiary: address(0),
     encodedIPFSUri: bytes32(0),
     shouldUseReservedTokenBeneficiaryAsDefault: false
 });
 tiers[1] = DefifaTierParams({
     name: "Team B",
-    reservedRate: 1001,
+    reservedRate: 1001, // effectively no reserves (see above)
     reservedTokenBeneficiary: address(0),
     encodedIPFSUri: bytes32(0),
     shouldUseReservedTokenBeneficiaryAsDefault: false
