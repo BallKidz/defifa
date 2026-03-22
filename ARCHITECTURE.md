@@ -14,10 +14,11 @@ src/
 ├── DefifaProjectOwner.sol      — Proxy owner for Defifa projects
 ├── DefifaTokenUriResolver.sol  — On-chain SVG metadata for game NFTs
 ├── enums/
-│   ├── DefifaGamePhase.sol     — MINT → REFUND → SCORING → COMPLETE
+│   ├── DefifaGamePhase.sol     — COUNTDOWN → MINT → REFUND → SCORING → COMPLETE → NO_CONTEST
 │   └── DefifaScorecardState.sol
 ├── interfaces/                 — IDefifaDeployer, IDefifaHook, IDefifaGovernor, etc.
 ├── libraries/
+│   ├── DefifaFontImporter.sol  — Font loading for on-chain SVG rendering
 │   └── DefifaHookLib.sol       — Game logic helpers
 └── structs/                    — Scorecards, attestations, tier params, delegations
 ```
@@ -106,7 +107,7 @@ Called automatically when a scorecard is ratified (by `ratifyScorecardFrom`). It
 
 **Four distinct game phases.** The MINT, REFUND, SCORING, and COMPLETE phases enforce a strict lifecycle where each action is only valid in its phase. MINT allows buying in, REFUND provides a grace period for full refunds, SCORING locks the treasury while governance resolves, and COMPLETE enables scored cash-outs. The COUNTDOWN phase gates minting before the game starts, and NO_CONTEST acts as a fallback if no scorecard is ratified within the timeout. This phased approach prevents timing exploits (e.g., buying in after seeing results) and ensures the treasury is never drained during scoring.
 
-**Proxy owner pattern (DefifaProjectOwner).** Game projects are owned by `DefifaProjectOwner`, not the deployer or any EOA. This contract permanently holds the project NFT (it cannot be recovered) and grants only `SET_SPLIT_GROUPS` permission to the `DefifaDeployer`. This means no one can rug the game by migrating terminals, minting tokens, or changing controllers. The deployer can only set splits as needed for fee distribution.
+**Proxy owner pattern (DefifaProjectOwner).** Game projects are owned by `DefifaDeployer` itself (`launchProjectFor` sets `owner: address(this)`), which restricts game operations to the deployer's hardcoded logic -- no EOA can rug the game by migrating terminals, minting tokens, or changing controllers. Separately, `DefifaProjectOwner` permanently holds the Defifa fee project NFT (DEFIFA_PROJECT_ID) and grants only `SET_SPLIT_GROUPS` permission to the `DefifaDeployer`, so the deployer can set splits on the fee project as needed for fee distribution.
 
 **Weight-based redemption instead of per-tier pots.** Rather than splitting the treasury into separate pots per tier at scoring time, the system assigns each tier a weight out of `TOTAL_CASHOUT_WEIGHT` (1e18). Cash-outs compute their share of the entire surplus on the fly. This avoids complex accounting for partial redemptions and lets the bonding math work naturally as tokens are burned. Early and late redeemers within the same tier get the same per-token value because the formula uses `surplus + totalAmountRedeemed` as the denominator base.
 
