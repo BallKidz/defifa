@@ -478,7 +478,7 @@ hook.setTierDelegatesTo(delegations);
 **Restrictions:**
 - Only during MINT phase. Reverts with `DefifaHook_DelegateChangesUnavailableInThisPhase` after MINT.
 - Cannot delegate to `address(0)`. Reverts with `DefifaHook_DelegateAddressZero`.
-- On NFT transfer after MINT: auto-delegates to recipient if recipient has no delegate (DefifaHook lines 1027-1031).
+- On NFT transfer after MINT: auto-delegates to recipient if recipient has no delegate (DefifaHook lines 1036-1047).
 
 ---
 
