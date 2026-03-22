@@ -543,6 +543,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Add the hook to the registry, contract nonce starts at 1
         REGISTRY.registerAddress({deployer: address(this), nonce: _currentNonce});
 
+        // slither-disable-next-line reentrancy-events
         emit LaunchGame(gameId, _hook, GOVERNOR, _uriResolver, msg.sender);
     }
 
@@ -619,6 +620,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             projectId: gameId, rulesetConfigurations: rulesetConfigs, memo: "Defifa game: no contest."
         });
 
+        // slither-disable-next-line reentrancy-events
         emit QueuedNoContest(gameId, msg.sender);
     }
 

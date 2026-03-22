@@ -174,6 +174,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // handles sendPayoutsOf failures, ensuring the final ruleset is always queued.
         IDefifaDeployer(CONTROLLER.PROJECTS().ownerOf(gameId)).fulfillCommitmentsOf(gameId);
 
+        // slither-disable-next-line reentrancy-events
         emit ScorecardRatified(gameId, scorecardId, msg.sender);
     }
 
