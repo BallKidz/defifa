@@ -1,6 +1,6 @@
 # defifa-collection-deployer-v6 -- User Journeys
 
-Complete interaction paths for every user role in the Defifa prediction game system. Each journey traces exact function signatures, parameters, and state changes.
+Complete interaction paths for every user role in the Defifa prediction game system. Each journey traces exact function signatures, parameters, state changes, events, and edge cases.
 
 ---
 
@@ -23,8 +23,34 @@ Complete interaction paths for every user role in the Defifa prediction game sys
 
 ## Journey 1: Create a Game
 
+**Entry point:** `DefifaDeployer.launchGameWith(DefifaLaunchProjectData memory launchProjectData) external returns (uint256 gameId)`
+
+**Who can call:** Anyone (no access control).
+
 **Actor:** Game Creator
 **Phase:** Any (game is created and starts in COUNTDOWN)
+
+### Parameters
+
+- `launchProjectData.name` -- Game name (e.g. `"Super Bowl LXII"`).
+- `launchProjectData.projectUri` -- IPFS URI for project metadata.
+- `launchProjectData.contractUri` -- Contract-level metadata URI.
+- `launchProjectData.baseUri` -- Base URI for token metadata.
+- `launchProjectData.tiers` -- Array of `DefifaTierParams` (name, reservedRate, reservedTokenBeneficiary, encodedIPFSUri, shouldUseReservedTokenBeneficiaryAsDefault).
+- `launchProjectData.tierPrice` -- Uniform price per NFT across all tiers.
+- `launchProjectData.token` -- `JBAccountingContext` (token address, decimals, currency).
+- `launchProjectData.mintPeriodDuration` -- Duration of MINT phase in seconds.
+- `launchProjectData.refundPeriodDuration` -- Duration of REFUND phase in seconds (0 = no refund phase).
+- `launchProjectData.start` -- Unix timestamp when SCORING begins (0 = auto-calculate).
+- `launchProjectData.splits` -- Optional custom splits for fee distribution.
+- `launchProjectData.attestationStartTime` -- Timestamp when attestation begins (0 = `block.timestamp` at deploy).
+- `launchProjectData.attestationGracePeriod` -- Minimum grace period before ratification (0 = enforced minimum of 1 day).
+- `launchProjectData.defaultAttestationDelegate` -- Default attestation delegate (0 = each payer delegates to self).
+- `launchProjectData.defaultTokenUriResolver` -- Token URI resolver (0 = use default SVG).
+- `launchProjectData.terminal` -- `JBMultiTerminal` instance.
+- `launchProjectData.store` -- `JB721TiersHookStore` instance.
+- `launchProjectData.minParticipation` -- Minimum treasury balance for game to proceed to SCORING.
+- `launchProjectData.scorecardTimeout` -- Max time after SCORING begins for a scorecard to be ratified.
 
 ### Step 1: Prepare launch data
 
@@ -80,20 +106,32 @@ DefifaLaunchProjectData({
 uint256 gameId = deployer.launchGameWith(launchProjectData);
 ```
 
-**What happens internally:**
-1. `DefifaDeployer` validates timing: `mintPeriodDuration > 0`, start >= now + refund + mint.
-2. Stores `_opsOf[gameId]` with token, start, durations, safety params.
-3. If user splits provided: copies them plus a Defifa fee split, stores via `CONTROLLER.setSplitGroupsOf()`.
-4. Creates `JB721TierConfig[]` from `DefifaTierParams[]`. All tiers share `tierPrice`, `initialSupply = 999_999_999`, `category = 0`.
-5. Clones `DefifaHook` deterministically: `Clones.cloneDeterministic(HOOK_CODE_ORIGIN, keccak256(abi.encodePacked(msg.sender, nonce)))`.
-6. Calls `hook.initialize(...)` with game config, tier names, URI resolver.
-7. Launches JB project via `CONTROLLER.launchProjectFor()` with 2-3 rulesets (MINT, optional REFUND, SCORING).
-8. Initializes governor: `GOVERNOR.initializeGame(gameId, attestationStartTime, attestationGracePeriod)`.
-9. Transfers hook ownership: `hook.transferOwnership(address(GOVERNOR))`.
-10. Registers hook in address registry.
-11. Emits `LaunchGame(gameId, hook, governor, uriResolver, msg.sender)`.
+### State changes
 
-**Timing rules:**
+1. `DefifaDeployer._opsOf[gameId]` -- Stores `DefifaOpsData` with token, start, durations, safety params.
+2. `DefifaDeployer._commitmentPercentOf[gameId]` -- Stores total absolute split percent for fee distribution.
+3. `DefifaDeployer._nonce` -- Incremented for deterministic clone salt.
+4. `DefifaHook.store` -- Set to the provided `JB721TiersHookStore`.
+5. `DefifaHook.rulesets` -- Set to `CONTROLLER.RULESETS()`.
+6. `DefifaHook.pricingCurrency` -- Set to `launchProjectData.token.currency`.
+7. `DefifaHook.gamePhaseReporter` -- Set to `DefifaDeployer` (this).
+8. `DefifaHook.gamePotReporter` -- Set to `DefifaDeployer` (this).
+9. `DefifaHook.defaultAttestationDelegate` -- Set to the provided address.
+10. `DefifaHook.baseURI` -- Set if non-empty.
+11. `DefifaHook.contractURI` -- Set if non-empty.
+12. `DefifaGovernor._packedScorecardInfoOf[gameId]` -- Packed attestation start time + grace period.
+13. JB project created via `CONTROLLER.launchProjectFor()` with 2-3 rulesets (MINT, optional REFUND, SCORING).
+
+### Events
+
+- `LaunchGame(uint256 indexed gameId, IDefifaHook indexed hook, IDefifaGovernor indexed governor, IJB721TokenUriResolver tokenUriResolver, address caller)` -- Emitted by `DefifaDeployer` on successful launch.
+- `GameInitialized(uint256 indexed gameId, uint256 attestationStartTime, uint256 attestationGracePeriod, address caller)` -- Emitted by `DefifaGovernor` when `initializeGame` is called internally.
+
+### Edge cases
+
+- `DefifaDeployer_InvalidGameConfiguration` -- `mintPeriodDuration == 0` or `start < block.timestamp + refundPeriodDuration + mintPeriodDuration`.
+- `DefifaDeployer_InvalidGameConfiguration` -- JB project ID mismatch (front-run by another project creation).
+- `DefifaDeployer_SplitsDontAddUp` -- User splits + protocol fees exceed 100%.
 - If `start == 0`: auto-calculated as `block.timestamp + mintPeriodDuration + refundPeriodDuration`.
 - If `start > 0` and `mintPeriodDuration == 0`: mint duration auto-fills to `start - block.timestamp - refundPeriodDuration`.
 - MINT ruleset `mustStartAtOrAfter = start - mintPeriodDuration - refundPeriodDuration`.
@@ -104,8 +142,22 @@ uint256 gameId = deployer.launchGameWith(launchProjectData);
 
 ## Journey 2: Play a Game (Buy NFTs)
 
+**Entry point:** `JBMultiTerminal.pay{value: amount}(uint256 projectId, address token, uint256 amount, address beneficiary, uint256 minReturnedTokens, string memo, bytes metadata) external payable returns (uint256)`
+
+**Who can call:** Anyone. The terminal forwards the call to `DefifaHook.afterPayRecordedWith()` which validates the caller is a registered terminal for the project.
+
 **Actor:** Player
 **Phase:** MINT
+
+### Parameters
+
+- `projectId` -- The game ID.
+- `token` -- Token address (e.g. `JBConstants.NATIVE_TOKEN` for ETH).
+- `amount` -- Must equal `tierPrice * numberOfTiersMinted` exactly.
+- `beneficiary` -- Address that receives the minted NFTs.
+- `minReturnedTokens` -- Minimum tokens to receive (typically 0 for NFT mints).
+- `memo` -- Optional memo string.
+- `metadata` -- JBMetadataResolver-encoded bytes containing `(address attestationDelegate, uint16[] tierIds)`.
 
 ### Step 1: Prepare payment metadata
 
@@ -145,27 +197,49 @@ jbMultiTerminal.pay{value: 0.02 ether}({
 });
 ```
 
-**What happens internally:**
-1. `JBMultiTerminal` processes payment, calls `DefifaHook.afterPayRecordedWith()`.
-2. Hook verifies: caller is terminal, currency matches `pricingCurrency`.
-3. Decodes `(attestationDelegate, tierIdsToMint)` from metadata.
-4. If `attestationDelegate == address(0)`: uses `defaultAttestationDelegate` or `context.payer`.
-5. Computes attestation units per unique tier via `DefifaHookLib.computeAttestationUnits()`.
-6. For each unique tier: delegates attestation if payer has no delegate set, transfers attestation units.
-7. Calls `_mintAll()`: records mint in store, increments `_totalMintCost`, mints ERC-721 tokens.
-8. Reverts with `DefifaHook_Overspending` if payment exceeds exact tier prices.
+### State changes
 
-**Player receives:**
-- NFT token(s) representing their chosen tier(s).
-- Attestation delegation set to their chosen delegate (or themselves).
-- Attestation units proportional to tier's `votingUnits` (used for scorecard governance).
+1. `DefifaHook._totalMintCost` -- Incremented by `context.amount.value` (the paid amount).
+2. `DefifaHook._tierDelegation[payer][tierId]` -- Set to `attestationDelegate` for each minted tier (if payer had no delegate).
+3. `DefifaHook._delegateTierCheckpoints[delegate][tierId]` -- Checkpointed with new attestation units.
+4. `DefifaHook._totalTierCheckpoints[tierId]` -- Checkpointed with increased total attestation units.
+5. ERC-721 token ownership records updated (one token per tier mint).
+6. `JB721TiersHookStore` records the mint (supply, token IDs).
+
+### Events
+
+- `Mint(uint256 indexed tokenId, uint256 indexed tierId, address indexed beneficiary, uint256 totalAmountContributed, address caller)` -- Emitted per token minted by `DefifaHook._mintAll()`.
+- `DelegateChanged(address indexed delegator, address indexed fromDelegate, address indexed toDelegate)` -- Emitted when attestation delegation is set for a tier.
+- `TierDelegateAttestationsChanged(address indexed delegate, uint256 indexed tierId, uint256 previousBalance, uint256 newBalance, address caller)` -- Emitted when attestation units are transferred.
+
+### Edge cases
+
+- `DefifaHook_WrongCurrency` -- Payment currency does not match `pricingCurrency`.
+- `DefifaHook_NothingToMint` -- No tier IDs in metadata, or metadata not found.
+- `DefifaHook_Overspending` -- Payment amount exceeds exact cost of tiers minted (leftover != 0).
+- `DefifaHook_BadTierOrder` -- Tier IDs in metadata not in ascending order (validated by `DefifaHookLib.computeAttestationUnits`).
+- `JB721Hook_InvalidPay` -- Caller not a terminal, or wrong project ID, or ETH sent directly to hook.
 
 ---
 
 ## Journey 3: Refund During MINT Phase
 
+**Entry point:** `JBMultiTerminal.cashOutTokensOf(address holder, uint256 projectId, uint256 cashOutCount, address tokenToReclaim, uint256 minTokensReclaimed, address payable beneficiary, bytes metadata) external returns (uint256)`
+
+**Who can call:** Anyone can initiate, but the hook validates that `context.holder` owns the tokens being burned.
+
 **Actor:** Refunder
 **Phase:** MINT
+
+### Parameters
+
+- `holder` -- Address that holds the NFTs being cashed out.
+- `projectId` -- The game ID.
+- `cashOutCount` -- Pass `0` for NFT cash-outs.
+- `tokenToReclaim` -- Token to receive (e.g. `JBConstants.NATIVE_TOKEN`).
+- `minTokensReclaimed` -- Minimum amount to receive (set to expected mint price).
+- `beneficiary` -- Address that receives the reclaimed funds.
+- `metadata` -- JBMetadataResolver-encoded bytes containing `(uint256[] tokenIds)`.
 
 ### Step 1: Prepare cash-out metadata
 
@@ -193,29 +267,65 @@ jbMultiTerminal.cashOutTokensOf({
 });
 ```
 
-**What happens internally:**
-1. `beforeCashOutRecordedWith` computes `cashOutCount = cumulativeMintPrice` (full refund during MINT).
-2. Terminal computes reclaim amount from the bonding curve with `cashOutTaxRate = 0`.
-3. `afterCashOutRecordedWith` burns the NFT(s), decrements `_totalMintCost`.
-4. During MINT phase: `tokensRedeemedFrom` is NOT incremented (only during COMPLETE).
-5. No fee tokens distributed (game not COMPLETE).
-6. ETH returned to beneficiary at exact mint price.
+### State changes
+
+1. ERC-721 token burned via `DefifaHook._burn(tokenId)`.
+2. `DefifaHook._totalMintCost` -- Decremented by `cumulativeMintPrice` of burned tokens.
+3. `JB721TiersHookStore` records the burn.
+4. During MINT phase: `DefifaHook.tokensRedeemedFrom[tierId]` is NOT incremented (only during COMPLETE).
+5. `DefifaHook.amountRedeemed` -- NOT incremented (only during COMPLETE).
+
+### Events
+
+No Defifa-specific events are emitted during MINT/REFUND phase cash-outs. Standard ERC-721 `Transfer(from, address(0), tokenId)` is emitted by the burn.
+
+### Edge cases
+
+- `DefifaHook_Unauthorized(tokenId, owner, caller)` -- Token holder in context does not own the token.
+- `DefifaHook_NothingToClaim` -- Reclaimed amount is 0 AND no fee tokens distributed.
+- `JB721Hook_InvalidCashOut` -- Caller not a terminal, or wrong project ID.
+- During MINT phase: `cashOutTaxRate = 0`, so full mint price is refunded.
 
 ---
 
 ## Journey 4: Refund During REFUND Phase
+
+**Entry point:** Same as Journey 3: `JBMultiTerminal.cashOutTokensOf(...)`
+
+**Who can call:** Anyone (same restrictions as Journey 3).
 
 **Actor:** Refunder
 **Phase:** REFUND
 
 Identical to Journey 3. The REFUND phase has `pausePay: true` (no new mints) but cash-outs still return full mint price. The `cashOutTaxRate = 0` and the hook returns `cashOutCount = cumulativeMintPrice`.
 
+### State changes
+
+Same as Journey 3.
+
+### Events
+
+Same as Journey 3 (no Defifa-specific events; standard ERC-721 burn `Transfer` event).
+
+### Edge cases
+
+Same as Journey 3. Additionally, new payments are blocked (`pausePay: true`).
+
 ---
 
 ## Journey 5: Submit a Scorecard
 
+**Entry point:** `DefifaGovernor.submitScorecardFor(uint256 gameId, DefifaTierCashOutWeight[] calldata tierWeights) external returns (uint256 scorecardId)`
+
+**Who can call:** Anyone. No access control on submission. However, if `msg.sender == defaultAttestationDelegate`, the scorecard is stored as `defaultAttestationDelegateProposalOf[gameId]`.
+
 **Actor:** Scorer (anyone)
 **Phase:** SCORING
+
+### Parameters
+
+- `gameId` -- The ID of the game.
+- `tierWeights` -- Array of `DefifaTierCashOutWeight` structs. Each has `id` (tier ID) and `cashOutWeight` (weight). All weights must sum to exactly `TOTAL_CASHOUT_WEIGHT` (1e18). Tier IDs must be in ascending order.
 
 ### Step 1: Prepare tier weights
 
@@ -235,24 +345,40 @@ tierWeights[2] = DefifaTierCashOutWeight({id: 3, cashOutWeight: 200_000_000_000_
 uint256 scorecardId = governor.submitScorecardFor(gameId, tierWeights);
 ```
 
-**What happens internally:**
-1. Verifies: game initialized, no ratified scorecard, game in SCORING phase.
-2. For each weight > 0: verifies `currentSupplyOfTier(tierId) > 0` (cannot assign weight to unminted tiers).
-3. Hashes the scorecard: `keccak256(abi.encode(dataHook, abi.encodeWithSelector(setTierCashOutWeightsTo.selector, tierWeights)))`.
-4. Reverts with `DefifaGovernor_DuplicateScorecard` if this exact scorecard was already submitted.
-5. Sets `attestationsBegin = max(block.timestamp, attestationStartTime)`.
-6. Sets `gracePeriodEnds = attestationsBegin + attestationGracePeriod`.
-7. If sender is `defaultAttestationDelegate`: stores as `defaultAttestationDelegateProposalOf`.
-8. Emits `ScorecardSubmitted(gameId, scorecardId, tierWeights, isDefault, msg.sender)`.
+### State changes
 
-**Scorecard state:** PENDING (until `attestationsBegin`) or ACTIVE (if attestations start immediately).
+1. `DefifaGovernor._scorecardOf[gameId][scorecardId].attestationsBegin` -- Set to `max(block.timestamp, attestationStartTime)`.
+2. `DefifaGovernor._scorecardOf[gameId][scorecardId].gracePeriodEnds` -- Set to `attestationsBegin + attestationGracePeriod`.
+3. `DefifaGovernor.defaultAttestationDelegateProposalOf[gameId]` -- Set to `scorecardId` if sender is the default attestation delegate.
+
+### Events
+
+- `ScorecardSubmitted(uint256 indexed gameId, uint256 indexed scorecardId, DefifaTierCashOutWeight[] tierWeights, bool isDefaultAttestationDelegate, address caller)` -- Emitted by `DefifaGovernor`.
+
+### Edge cases
+
+- `DefifaGovernor_AlreadyRatified` -- A scorecard has already been ratified for this game.
+- `DefifaGovernor_GameNotFound` -- Game not initialized (`_packedScorecardInfoOf[gameId] == 0`).
+- `DefifaGovernor_NotAllowed` -- Game not in SCORING phase.
+- `DefifaGovernor_UnownedProposedCashoutValue` -- Weight > 0 assigned to a tier with `currentSupplyOfTier == 0`.
+- `DefifaGovernor_DuplicateScorecard` -- Identical scorecard (same hash) already submitted.
+- Scorecard state starts as PENDING (until `attestationsBegin`) or ACTIVE (if attestations start immediately).
 
 ---
 
 ## Journey 6: Attest to a Scorecard
 
+**Entry point:** `DefifaGovernor.attestToScorecardFrom(uint256 gameId, uint256 scorecardId) external returns (uint256 weight)`
+
+**Who can call:** Anyone. However, attestation weight is zero unless the caller (or their delegate) held NFTs at the `attestationsBegin` snapshot timestamp.
+
 **Actor:** Attestor (NFT holder or delegate)
 **Phase:** SCORING
+
+### Parameters
+
+- `gameId` -- The ID of the game.
+- `scorecardId` -- The scorecard ID to attest to.
 
 ### Step 1: Get scorecard ID
 
@@ -268,27 +394,38 @@ uint256 scorecardId = governor.scorecardIdOf(hookAddress, tierWeights);
 uint256 weight = governor.attestToScorecardFrom(gameId, scorecardId);
 ```
 
-**What happens internally:**
-1. Verifies: game in SCORING phase, scorecard is ACTIVE or SUCCEEDED.
-2. Verifies: `!hasAttested[msg.sender]` for this scorecard. Reverts with `DefifaGovernor_AlreadyAttested` otherwise.
-3. Computes attestation weight at `attestationsBegin` timestamp:
-   - For each tier: `MAX_ATTESTATION_POWER_TIER * (account's checkpoint units / tier's total checkpoint units)`.
-   - Uses `getPastTierAttestationUnitsOf()` (snapshot, not live).
-4. Increments `_attestations.count += weight`.
-5. Marks `hasAttested[msg.sender] = true`.
-6. Emits `ScorecardAttested(gameId, scorecardId, weight, msg.sender)`.
+### State changes
 
-**Attestation power depends on:**
-- How many NFTs the attestor (or their delegate) held at `attestationsBegin` timestamp.
-- What fraction of each tier's total supply those NFTs represent.
+1. `DefifaGovernor._scorecardAttestationsOf[gameId][scorecardId].count` -- Incremented by `weight`.
+2. `DefifaGovernor._scorecardAttestationsOf[gameId][scorecardId].hasAttested[msg.sender]` -- Set to `true`.
+
+### Events
+
+- `ScorecardAttested(uint256 indexed gameId, uint256 indexed scorecardId, uint256 weight, address caller)` -- Emitted by `DefifaGovernor`.
+
+### Edge cases
+
+- `DefifaGovernor_NotAllowed` -- Game not in SCORING phase, or scorecard not in ACTIVE/SUCCEEDED state.
+- `DefifaGovernor_AlreadyAttested` -- Account already attested to this scorecard.
+- `DefifaGovernor_UnknownProposal` -- Scorecard ID has no submission record.
+- Attestation weight is computed at `attestationsBegin` timestamp using checkpointed values (snapshot, not live).
 - Each tier caps at `MAX_ATTESTATION_POWER_TIER` (1e9) regardless of how many tokens exist in that tier.
 
 ---
 
 ## Journey 7: Ratify a Scorecard
 
+**Entry point:** `DefifaGovernor.ratifyScorecardFrom(uint256 gameId, DefifaTierCashOutWeight[] calldata tierWeights) external returns (uint256 scorecardId)`
+
+**Who can call:** Anyone. No access control -- the function validates that the scorecard is in SUCCEEDED state.
+
 **Actor:** Ratifier (anyone)
 **Phase:** SCORING (scorecard in SUCCEEDED state)
+
+### Parameters
+
+- `gameId` -- The ID of the game.
+- `tierWeights` -- The tier weights that match the scorecard being ratified (used to recompute the scorecard hash).
 
 ### Precondition
 
@@ -303,26 +440,44 @@ A scorecard must be in SUCCEEDED state:
 uint256 scorecardId = governor.ratifyScorecardFrom(gameId, tierWeights);
 ```
 
-**What happens internally:**
-1. Verifies: no prior ratification (`ratifiedScorecardIdOf[gameId] == 0`).
-2. Computes `scorecardId` from `tierWeights`, verifies it matches a SUCCEEDED scorecard.
-3. Stores `ratifiedScorecardIdOf[gameId] = scorecardId`.
-4. Executes scorecard via low-level call: `dataHook.call(abi.encodeWithSelector(setTierCashOutWeightsTo.selector, tierWeights))`.
-   - This calls `DefifaHook.setTierCashOutWeightsTo()` which validates weights sum to `TOTAL_CASHOUT_WEIGHT` and sets `cashOutWeightIsSet = true`.
-5. Calls `DefifaDeployer.fulfillCommitmentsOf(gameId)`:
-   - Sends fee payouts via `terminal.sendPayoutsOf()` (try-catch: if payout fails, emits `CommitmentPayoutFailed` and sets sentinel).
-   - Queues final ruleset with no payout limits.
-   - Exceptional failures (e.g., `queueRulesetsOf` failure) propagate and revert ratification.
-6. Emits `ScorecardRatified(gameId, scorecardId, msg.sender)`.
+### State changes
 
-**Game state transitions to:** COMPLETE (because `cashOutWeightIsSet == true`).
+1. `DefifaGovernor.ratifiedScorecardIdOf[gameId]` -- Set to `scorecardId`.
+2. `DefifaHook._tierCashOutWeights` -- Set via `setTierCashOutWeightsTo()` executed as a low-level call.
+3. `DefifaHook.cashOutWeightIsSet` -- Set to `true`.
+4. `DefifaDeployer.fulfilledCommitmentsOf[gameId]` -- Set to the fee amount (or sentinel value 1 if pot is 0 or payout fails).
+5. Final ruleset queued via `CONTROLLER.queueRulesetsOf()` with no payout limits.
+
+### Events
+
+- `TierCashOutWeightsSet(DefifaTierCashOutWeight[] tierWeights, address caller)` -- Emitted by `DefifaHook.setTierCashOutWeightsTo()`.
+- `FulfilledCommitments(uint256 indexed gameId, uint256 pot, address caller)` -- Emitted by `DefifaDeployer.fulfillCommitmentsOf()`.
+- `CommitmentPayoutFailed(uint256 indexed gameId, uint256 amount, bytes reason)` -- Emitted if `sendPayoutsOf` fails (try-catch).
+- `ScorecardRatified(uint256 indexed gameId, uint256 indexed scorecardId, address caller)` -- Emitted by `DefifaGovernor`.
+
+### Edge cases
+
+- `DefifaGovernor_AlreadyRatified` -- Game already has a ratified scorecard.
+- `DefifaGovernor_NotAllowed` -- Scorecard not in SUCCEEDED state.
+- `DefifaGovernor_UnknownProposal` -- Scorecard ID has no submission record.
+- If `sendPayoutsOf` fails: try-catch emits `CommitmentPayoutFailed`, fee stays in pot, but final ruleset is still queued.
+- If `queueRulesetsOf` fails: the entire ratification reverts (no try-catch on that call).
+- Game state transitions to COMPLETE because `cashOutWeightIsSet == true`.
 
 ---
 
 ## Journey 8: Cash Out as Winner
 
+**Entry point:** `JBMultiTerminal.cashOutTokensOf(address holder, uint256 projectId, uint256 cashOutCount, address tokenToReclaim, uint256 minTokensReclaimed, address payable beneficiary, bytes metadata) external returns (uint256)`
+
+**Who can call:** Anyone can initiate, but the hook validates that `context.holder` owns the tokens being burned.
+
 **Actor:** Winner
 **Phase:** COMPLETE
+
+### Parameters
+
+Same as Journey 3 (Refund).
 
 ### Step 1: Check claimable amounts
 
@@ -357,25 +512,36 @@ jbMultiTerminal.cashOutTokensOf({
 });
 ```
 
-**What happens internally:**
-1. `beforeCashOutRecordedWith`: computes `cashOutCount = mulDiv(surplus + amountRedeemed, cumulativeCashOutWeight, TOTAL_CASHOUT_WEIGHT)`.
-2. Terminal sends reclaimed ETH to beneficiary.
-3. `afterCashOutRecordedWith`: burns NFTs, increments `tokensRedeemedFrom[tierId]`, increments `amountRedeemed`.
-4. Distributes fee tokens: `_claimTokensFor(holder, cumulativeMintPrice, _totalMintCost)`.
-   - Transfers proportional share of `$DEFIFA` and `$NANA` tokens held by the hook.
-5. Decrements `_totalMintCost -= cumulativeMintPrice`.
+### State changes
 
-**Reclaim calculation:**
-```
-perTokenWeight = tierCashOutWeight[tierId] / totalTokensForCashoutInTier
-reclaimAmount = mulDiv(surplus + amountRedeemed, perTokenWeight, TOTAL_CASHOUT_WEIGHT)
-```
+1. ERC-721 tokens burned via `DefifaHook._burn(tokenId)`.
+2. `DefifaHook.tokensRedeemedFrom[tierId]` -- Incremented for each burned token (only during COMPLETE).
+3. `DefifaHook.amountRedeemed` -- Incremented by `context.reclaimedAmount.value`.
+4. `DefifaHook._totalMintCost` -- Decremented by `cumulativeMintPrice` of burned tokens.
+5. Fee tokens ($DEFIFA and $NANA) transferred to holder proportional to their mint cost share.
+6. `JB721TiersHookStore` records the burn.
 
-Where `totalTokensForCashoutInTier = initialSupply - remainingSupply - (burnedTokens - tokensRedeemedFrom[tierId])`.
+### Events
+
+- `ClaimedTokens(address indexed beneficiary, uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount, address caller)` -- Emitted by `DefifaHookLib.claimTokensFor()` when fee tokens are distributed.
+
+Standard ERC-721 `Transfer(from, address(0), tokenId)` emitted by the burn. Standard ERC-20 `Transfer` events emitted by the token transfers.
+
+### Edge cases
+
+- `DefifaHook_Unauthorized(tokenId, owner, caller)` -- Token holder in context does not own the token.
+- `DefifaHook_NothingToClaim` -- Reclaimed amount is 0 AND no fee tokens distributed.
+- `JB721Hook_InvalidCashOut` -- Caller not a terminal, or wrong project ID.
+- Reclaim calculation: `perTokenWeight = tierCashOutWeight[tierId] / totalTokensForCashoutInTier`, then `reclaimAmount = mulDiv(surplus + amountRedeemed, perTokenWeight, TOTAL_CASHOUT_WEIGHT)`.
+- `totalTokensForCashoutInTier = initialSupply - remainingSupply - (burnedTokens - tokensRedeemedFrom[tierId])`.
 
 ---
 
 ## Journey 9: Cash Out from Losing Tier
+
+**Entry point:** Same as Journey 8: `JBMultiTerminal.cashOutTokensOf(...)`
+
+**Who can call:** Anyone (same restrictions as Journey 8).
 
 **Actor:** Holder of a zero-weight tier
 **Phase:** COMPLETE
@@ -387,17 +553,36 @@ If a tier received `cashOutWeight = 0` in the ratified scorecard:
 // beforeCashOutRecordedWith returns cashOutCount = 0
 // afterCashOutRecordedWith: reclaimedAmount.value == 0
 // _claimTokensFor is called -- if fee tokens exist, they are distributed
-// If no fee tokens distributed either → reverts with DefifaHook_NothingToClaim
+// If no fee tokens distributed either -> reverts with DefifaHook_NothingToClaim
 ```
 
-**Result:** Holders of losing tiers can only cash out if fee tokens (`$DEFIFA`/`$NANA`) are available. They receive fee tokens proportional to their mint cost but zero ETH. If no fee tokens exist at all, the cash-out reverts.
+### State changes
+
+Same as Journey 8, but `context.reclaimedAmount.value == 0`.
+
+### Events
+
+- `ClaimedTokens(address indexed beneficiary, uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount, address caller)` -- Emitted only if fee tokens are available to distribute.
+
+### Edge cases
+
+- `DefifaHook_NothingToClaim` -- Reverts if both reclaimed ETH is 0 AND no fee tokens are distributed.
+- Holders of losing tiers receive fee tokens proportional to their mint cost but zero ETH. If no fee tokens exist at all, the cash-out reverts.
 
 ---
 
 ## Journey 10: No-Contest via Minimum Participation
 
+**Entry point:** `DefifaDeployer.triggerNoContestFor(uint256 gameId) external`
+
+**Who can call:** Anyone. No access control -- the function validates that the game is in NO_CONTEST phase.
+
 **Actor:** Any user
 **Phase:** SCORING (when balance < minParticipation)
+
+### Parameters
+
+- `gameId` -- The ID of the game to trigger no-contest for.
 
 ### Scenario
 
@@ -418,12 +603,20 @@ Since 3 ETH < 10 ETH, the game is NO_CONTEST.
 deployer.triggerNoContestFor(gameId);
 ```
 
-**What happens internally:**
-1. Verifies `currentGamePhaseOf(gameId) == NO_CONTEST`.
-2. Verifies `!noContestTriggeredFor[gameId]`.
-3. Sets `noContestTriggeredFor[gameId] = true`.
-4. Queues new ruleset: no `fundAccessLimitGroups`, making entire balance = surplus.
-5. Emits `QueuedNoContest(gameId, msg.sender)`.
+### State changes
+
+1. `DefifaDeployer.noContestTriggeredFor[gameId]` -- Set to `true`.
+2. New ruleset queued via `CONTROLLER.queueRulesetsOf()` with no `fundAccessLimitGroups`, making entire balance = surplus. Has `pausePay: true` and `cashOutTaxRate: 0`.
+
+### Events
+
+- `QueuedNoContest(uint256 indexed gameId, address caller)` -- Emitted by `DefifaDeployer`.
+
+### Edge cases
+
+- `DefifaDeployer_NotNoContest` -- Game not in NO_CONTEST phase.
+- `DefifaDeployer_NoContestAlreadyTriggered` -- Already triggered for this game.
+- The queued ruleset does not take effect until the current ruleset's cycle ends. During this gap, the game reports NO_CONTEST but the on-chain ruleset still has payout limits. Callers should verify the active ruleset before cashing out.
 
 ### Step 2: Cash out (full refund)
 
@@ -433,8 +626,16 @@ After triggering, users can cash out at mint price (same as Journey 3/4). The ne
 
 ## Journey 11: No-Contest via Scorecard Timeout
 
+**Entry point:** Same as Journey 10: `DefifaDeployer.triggerNoContestFor(uint256 gameId) external`
+
+**Who can call:** Anyone. Same restrictions as Journey 10.
+
 **Actor:** Any user
 **Phase:** SCORING (when timeout elapsed without ratification)
+
+### Parameters
+
+- `gameId` -- The ID of the game.
 
 ### Scenario
 
@@ -446,18 +647,39 @@ if (_ops.scorecardTimeout > 0 && block.timestamp > _currentRuleset.start + _ops.
 }
 ```
 
-### Steps
+### State changes
 
-Same as Journey 10: call `triggerNoContestFor()`, then cash out.
+Same as Journey 10.
 
-**Important:** If a scorecard is ratified BEFORE the timeout, the game transitions to COMPLETE and the timeout becomes irrelevant. `cashOutWeightIsSet` is checked before the timeout condition in `currentGamePhaseOf()`.
+### Events
+
+Same as Journey 10: `QueuedNoContest(uint256 indexed gameId, address caller)`.
+
+### Edge cases
+
+Same as Journey 10. Additionally: if a scorecard is ratified BEFORE the timeout, the game transitions to COMPLETE and the timeout becomes irrelevant. `cashOutWeightIsSet` is checked before the timeout condition in `currentGamePhaseOf()`.
 
 ---
 
 ## Journey 12: Delegate Attestation Power
 
+**Entry point (single tier):** `DefifaHook.setTierDelegateTo(address delegatee, uint256 tierId) public`
+
+**Entry point (multiple tiers):** `DefifaHook.setTierDelegatesTo(DefifaDelegation[] memory delegations) external`
+
+**Who can call:** Any NFT holder (`msg.sender` is the delegator). Only callable during MINT phase.
+
 **Actor:** Player (NFT holder)
 **Phase:** MINT only
+
+### Parameters (single)
+
+- `delegatee` -- Address to delegate attestation power to. Cannot be `address(0)`.
+- `tierId` -- The tier ID to delegate attestation units for.
+
+### Parameters (multiple)
+
+- `delegations` -- Array of `DefifaDelegation` structs, each containing `delegatee` and `tierId`.
 
 ### Single tier delegation
 
@@ -475,17 +697,44 @@ delegations[1] = DefifaDelegation({delegatee: anotherDelegate, tierId: 2});
 hook.setTierDelegatesTo(delegations);
 ```
 
-**Restrictions:**
-- Only during MINT phase. Reverts with `DefifaHook_DelegateChangesUnavailableInThisPhase` after MINT.
-- Cannot delegate to `address(0)`. Reverts with `DefifaHook_DelegateAddressZero`.
+### State changes
+
+1. `DefifaHook._tierDelegation[msg.sender][tierId]` -- Set to the new `delegatee`.
+2. `DefifaHook._delegateTierCheckpoints[oldDelegate][tierId]` -- Checkpointed with decreased attestation units.
+3. `DefifaHook._delegateTierCheckpoints[newDelegate][tierId]` -- Checkpointed with increased attestation units.
+
+### Events
+
+- `DelegateChanged(address indexed delegator, address indexed fromDelegate, address indexed toDelegate)` -- Emitted per tier delegation change.
+- `TierDelegateAttestationsChanged(address indexed delegate, uint256 indexed tierId, uint256 previousBalance, uint256 newBalance, address caller)` -- Emitted for both the old delegate (units removed) and the new delegate (units added).
+
+### Edge cases
+
+- `DefifaHook_DelegateAddressZero` -- Delegatee is `address(0)`.
+- `DefifaHook_DelegateChangesUnavailableInThisPhase` -- Not in MINT phase.
 - On NFT transfer after MINT: auto-delegates to recipient if recipient has no delegate (DefifaHook lines 1036-1047).
 
 ---
 
 ## Journey 13: Mint Reserved Tokens
 
+**Entry point (single tier):** `DefifaHook.mintReservesFor(uint256 tierId, uint256 count) public`
+
+**Entry point (multiple tiers):** `DefifaHook.mintReservesFor(JB721TiersMintReservesConfig[] calldata mintReservesForTiersData) external`
+
+**Who can call:** Anyone. No access control. Must not be paused (`pauseMintPendingReserves` must be false).
+
 **Actor:** Anyone
 **Phase:** After MINT (reserved minting is paused during MINT via `pauseMintPendingReserves: true`)
+
+### Parameters (single)
+
+- `tierId` -- The tier ID to mint reserved tokens for.
+- `count` -- Number of reserved tokens to mint.
+
+### Parameters (multiple)
+
+- `mintReservesForTiersData` -- Array of `JB721TiersMintReservesConfig` structs, each containing `tierId` and `count`.
 
 ### Single tier
 
@@ -502,44 +751,82 @@ configs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 5});
 hook.mintReservesFor(configs);
 ```
 
-**What happens internally:**
-1. Checks `pauseMintPendingReserves` is false in current ruleset metadata.
-2. Gets `reserveBeneficiary` from store for the tier.
-3. If beneficiary has no delegate: auto-delegates to `defaultAttestationDelegate` or self.
-4. Records mint in store, increments `_totalMintCost += tier.price * count`.
-5. Mints ERC-721 tokens to the reserve beneficiary.
-6. Transfers attestation units to the beneficiary's delegate.
+### State changes
 
-**Note:** Reserved mints inflate `_totalMintCost` even though no ETH was paid. This dilutes paid minters' share of fee tokens. This is by design (see RISKS.md, RISK-4).
+1. `DefifaHook._totalMintCost` -- Incremented by `tier.price * count`.
+2. `DefifaHook._tierDelegation[beneficiary][tierId]` -- Set to `defaultAttestationDelegate` or self (if no delegate exists).
+3. `DefifaHook._delegateTierCheckpoints[delegate][tierId]` -- Checkpointed with new attestation units.
+4. `DefifaHook._totalTierCheckpoints[tierId]` -- Checkpointed with increased total attestation units.
+5. ERC-721 tokens minted to `reserveBeneficiary`.
+6. `JB721TiersHookStore` records the reserve mint.
+
+### Events
+
+- `MintReservedToken(uint256 indexed tokenId, uint256 indexed tierId, address indexed beneficiary, address caller)` -- Emitted per reserved token minted.
+- `DelegateChanged(address indexed delegator, address indexed fromDelegate, address indexed toDelegate)` -- Emitted if delegation is set for the reserve beneficiary.
+- `TierDelegateAttestationsChanged(address indexed delegate, uint256 indexed tierId, uint256 previousBalance, uint256 newBalance, address caller)` -- Emitted when attestation units are transferred to the delegate.
+
+### Edge cases
+
+- `DefifaHook_ReservedTokenMintingPaused` -- `pauseMintPendingReserves` is true in current ruleset metadata.
+- Reserved mints inflate `_totalMintCost` even though no ETH was paid. This dilutes paid minters' share of fee tokens. This is by design (see RISKS.md, RISK-4).
 
 ---
 
 ## Journey 14: Fulfill Commitments Separately
 
+**Entry point:** `DefifaDeployer.fulfillCommitmentsOf(uint256 gameId) external`
+
+**Who can call:** Anyone. No access control. Requires `cashOutWeightIsSet == true`.
+
 **Actor:** Anyone
 **Phase:** COMPLETE (after scorecard ratification)
 
+### Parameters
+
+- `gameId` -- The ID of the game to fulfill commitments for.
+
 `fulfillCommitmentsOf()` is called automatically during ratification. If `sendPayoutsOf` fails internally, the try-catch in `fulfillCommitmentsOf` emits `CommitmentPayoutFailed`, sets the sentinel value, and still queues the final ruleset. The fee amount stays in the pot.
 
-If needed, `fulfillCommitmentsOf` can be called again manually — but since the sentinel is already set and the final ruleset already queued, it returns immediately (idempotent):
+If needed, `fulfillCommitmentsOf` can be called again manually -- but since the sentinel is already set and the final ruleset already queued, it returns immediately (idempotent):
 
 ```solidity
 deployer.fulfillCommitmentsOf(gameId);
 ```
 
-**What happens internally:**
-1. If `fulfilledCommitmentsOf[gameId] != 0`: returns immediately (idempotent).
-2. Requires `cashOutWeightIsSet == true`.
-3. Computes fee from pot: `mulDiv(pot, _commitmentPercentOf[gameId], SPLITS_TOTAL_PERCENT)`.
-4. Try-catch: calls `terminal.sendPayoutsOf()` to distribute fees to splits. On failure, emits `CommitmentPayoutFailed` and sets sentinel.
-5. Queues final ruleset with no payout limits.
+### State changes
+
+1. `DefifaDeployer.fulfilledCommitmentsOf[gameId]` -- Set to fee amount (or sentinel value 1 if pot is 0 or payout fails).
+2. Fee payouts sent via `terminal.sendPayoutsOf()` (distributes to splits).
+3. Final ruleset queued via `CONTROLLER.queueRulesetsOf()` with no payout limits.
+
+### Events
+
+- `FulfilledCommitments(uint256 indexed gameId, uint256 pot, address caller)` -- Emitted by `DefifaDeployer` on success.
+- `CommitmentPayoutFailed(uint256 indexed gameId, uint256 amount, bytes reason)` -- Emitted if `sendPayoutsOf` fails (try-catch).
+
+### Edge cases
+
+- `DefifaDeployer_CantFulfillYet` -- `cashOutWeightIsSet == false`.
+- Idempotent: If `fulfilledCommitmentsOf[gameId] != 0`, returns immediately without reverting.
+- Fee computation: `mulDiv(pot, _commitmentPercentOf[gameId], SPLITS_TOTAL_PERCENT)`.
 
 ---
 
 ## Journey 15: Transfer NFT to Another Player
 
+**Entry point:** `DefifaHook.transferFrom(address from, address to, uint256 tokenId) external` or `DefifaHook.safeTransferFrom(address from, address to, uint256 tokenId) external`
+
+**Who can call:** Token owner or approved operator (standard ERC-721 access control). Transfers may be paused if `transfersPausable` is set and paused in the current ruleset.
+
 **Actor:** NFT holder
 **Phase:** Any (unless `transfersPausable` is set and transfers are paused)
+
+### Parameters
+
+- `from` -- Current token owner.
+- `to` -- Recipient address.
+- `tokenId` -- The token to transfer.
 
 ```solidity
 hook.transferFrom(from, to, tokenId);
@@ -547,16 +834,27 @@ hook.transferFrom(from, to, tokenId);
 hook.safeTransferFrom(from, to, tokenId);
 ```
 
-**What happens internally (DefifaHook._update):**
-1. Gets tier info from store.
-2. Calls `super._update()` for standard ERC-721 transfer.
-3. If `transfersPausable` and transfers paused in current ruleset: reverts.
-4. If first transfer of this token: stores `_firstOwnerOf[tokenId] = from`.
-5. Records transfer in store: `store.recordTransferForTier(tierId, from, to)`.
-6. Skips attestation transfer on mint (handled separately in `_processPayment`).
-7. On regular transfer: `_transferTierAttestationUnits(from, to, tierId, tier.votingUnits)`.
-   - If recipient has no delegate set: auto-delegates to self.
-   - Moves attestation units from sender's delegate to recipient's delegate.
+### State changes
+
+1. ERC-721 ownership updated from `from` to `to`.
+2. `DefifaHook._firstOwnerOf[tokenId]` -- Stored as `from` on first transfer of this token.
+3. `JB721TiersHookStore` records the transfer via `recordTransferForTier(tierId, from, to)`.
+4. `DefifaHook._tierDelegation[to][tierId]` -- Auto-set to `to` if recipient has no delegate.
+5. `DefifaHook._delegateTierCheckpoints[fromDelegate][tierId]` -- Checkpointed with decreased attestation units.
+6. `DefifaHook._delegateTierCheckpoints[toDelegate][tierId]` -- Checkpointed with increased attestation units.
+
+### Events
+
+- `DelegateChanged(address indexed delegator, address indexed fromDelegate, address indexed toDelegate)` -- Emitted if recipient has no delegate and auto-delegates to self.
+- `TierDelegateAttestationsChanged(address indexed delegate, uint256 indexed tierId, uint256 previousBalance, uint256 newBalance, address caller)` -- Emitted for both sender's delegate (units removed) and recipient's delegate (units added).
+
+Standard ERC-721 `Transfer(from, to, tokenId)` is also emitted.
+
+### Edge cases
+
+- `DefifaHook_TransfersPaused` -- `transfersPausable` is set and transfers paused in current ruleset.
+- On transfer after MINT phase: attestation units are transferred but delegation cannot be changed by the sender.
+- Auto-delegation: if recipient has no delegate, they auto-delegate to themselves.
 
 ---
 
@@ -566,11 +864,19 @@ hook.safeTransferFrom(from, to, tokenId);
 
 ### Check game phase
 
+**Entry point:** `DefifaDeployer.currentGamePhaseOf(uint256 gameId) public view returns (DefifaGamePhase)`
+
+**Who can call:** Anyone (view function).
+
 ```solidity
 DefifaGamePhase phase = deployer.currentGamePhaseOf(gameId);
 ```
 
 ### Check game pot
+
+**Entry point:** `DefifaDeployer.currentGamePotOf(uint256 gameId, bool includeCommitments) external view returns (uint256, address, uint256)`
+
+**Who can call:** Anyone (view function).
 
 ```solidity
 (uint256 pot, address token, uint256 decimals) = deployer.currentGamePotOf(gameId, false);
@@ -579,11 +885,19 @@ DefifaGamePhase phase = deployer.currentGamePhaseOf(gameId);
 
 ### Check timing
 
+**Entry point:** `DefifaDeployer.timesFor(uint256 gameId) external view returns (uint48, uint24, uint24)`
+
+**Who can call:** Anyone (view function).
+
 ```solidity
 (uint48 start, uint24 mintDuration, uint24 refundDuration) = deployer.timesFor(gameId);
 ```
 
 ### Check safety params
+
+**Entry point:** `DefifaDeployer.safetyParamsOf(uint256 gameId) external view returns (uint256 minParticipation, uint32 scorecardTimeout)`
+
+**Who can call:** Anyone (view function).
 
 ```solidity
 (uint256 minParticipation, uint32 scorecardTimeout) = deployer.safetyParamsOf(gameId);
@@ -591,12 +905,23 @@ DefifaGamePhase phase = deployer.currentGamePhaseOf(gameId);
 
 ### Check scorecard state
 
+**Entry point:** `DefifaGovernor.stateOf(uint256 gameId, uint256 scorecardId) public view returns (DefifaScorecardState)`
+
+**Who can call:** Anyone (view function).
+
 ```solidity
 DefifaScorecardState state = governor.stateOf(gameId, scorecardId);
-// PENDING → ACTIVE → SUCCEEDED → RATIFIED (or DEFEATED)
+// PENDING -> ACTIVE -> SUCCEEDED -> RATIFIED (or DEFEATED)
 ```
 
 ### Check attestation status
+
+**Entry points:**
+- `DefifaGovernor.attestationCountOf(uint256 gameId, uint256 scorecardId) external view returns (uint256)`
+- `DefifaGovernor.quorum(uint256 gameId) public view returns (uint256)`
+- `DefifaGovernor.hasAttestedTo(uint256 gameId, uint256 scorecardId, address account) external view returns (bool)`
+
+**Who can call:** Anyone (view functions).
 
 ```solidity
 uint256 count = governor.attestationCountOf(gameId, scorecardId);
@@ -605,6 +930,12 @@ bool hasAttested = governor.hasAttestedTo(gameId, scorecardId, account);
 ```
 
 ### Check cash-out value
+
+**Entry points:**
+- `DefifaHook.cashOutWeightOf(uint256 tokenId) external view returns (uint256)`
+- `DefifaHook.cashOutWeightOf(uint256[] tokenIds) external view returns (uint256)` (aggregate)
+
+**Who can call:** Anyone (view functions).
 
 ```solidity
 // Single token
@@ -618,6 +949,12 @@ uint256 totalWeight = hook.cashOutWeightOf(ids);
 ```
 
 ### Check fee token claims
+
+**Entry points:**
+- `DefifaHook.tokensClaimableFor(uint256[] memory tokenIds) external view returns (uint256, uint256)`
+- `DefifaHook.tokenAllocations() external view returns (uint256, uint256)`
+
+**Who can call:** Anyone (view functions).
 
 ```solidity
 (uint256 defifaTokens, uint256 nanaTokens) = hook.tokensClaimableFor(tokenIds);
@@ -689,3 +1026,9 @@ uint256 totalWeight = hook.cashOutWeightOf(ids);
 | `DefifaDeployer_InvalidGameConfiguration` | Timing constraints violated: `mintPeriodDuration == 0` or `start < block.timestamp + refund + mint` |
 | `DefifaDeployer_SplitsDontAddUp` | User splits + protocol fees exceed 100% |
 | `DefifaDeployer_InvalidGameConfiguration` | JB project ID mismatch (front-run) |
+
+### Transfer Errors (Journey 15)
+
+| Error | Condition |
+|-------|-----------|
+| `DefifaHook_TransfersPaused` | `transfersPausable` is set and transfers paused in current ruleset |
