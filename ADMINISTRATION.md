@@ -77,6 +77,17 @@ COUNTDOWN --> MINT --> REFUND (optional) --> SCORING --> COMPLETE or NO_CONTEST
 4. The governor calls `setTierCashOutWeightsTo` on the hook via low-level call
 5. `fulfillCommitmentsOf` sends fee payouts (try-catch) and queues the final ruleset
 
+### Attestation Quorum Details
+
+The quorum threshold is 50% of the total attestation power across all tiers with nonzero mint supply. Attestation power per tier is proportional to the tier's minted supply at the `attestationsBegin` snapshot timestamp.
+
+**Edge cases:**
+- **Tiers with zero mints:** Tiers with `_suppliesOf[gameId][tierId].initialMints == 0` are excluded from the `totalPossibleAttestations` calculation. They have no attestation power and cannot influence scoring.
+- **All mints in a single tier:** If all participation concentrates in one tier, that tier's holders control the quorum. The 50% threshold still applies -- holders of 50% of that tier's supply can ratify a scorecard.
+- **Grace period:** After a scorecard reaches quorum (SUCCEEDED state), a grace period (`attestationsGracePeriod`, minimum 1 day) must elapse before ratification. This gives dissenters time to attest to a competing scorecard that could overtake the first.
+- **Competing scorecards:** Multiple scorecards can be submitted. Each tracks attestations independently. Only the first to be ratified (quorum met + grace period elapsed + `ratifyScorecardFrom()` called) takes effect. Once ratified, no other scorecard can be ratified for the same game.
+- **Scorecard timeout:** If `scorecardTimeout` is nonzero and elapses without ratification, the game enters NO_CONTEST state, enabling full refunds via `triggerNoContestFor()`.
+
 **No single entity controls scoring.** The process requires collective attestation from NFT holders across tiers.
 
 ## Immutable Configuration
