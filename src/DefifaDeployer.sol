@@ -345,12 +345,14 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             // Payout failed — fee stays in pot. Reset to sentinel (1) so currentGamePotOf
             // doesn't double-count the fee, while preserving the reentrancy guard.
             fulfilledCommitmentsOf[gameId] = 1;
+            // slither-disable-next-line reentrancy-events
             emit CommitmentPayoutFailed({gameId: gameId, amount: _feeAmount, reason: reason});
         }
 
         // Queue the final ruleset and emit.
         _queueFinalRuleset({gameId: gameId, metadata: _metadata});
 
+        // slither-disable-next-line reentrancy-events
         emit FulfilledCommitments({gameId: gameId, pot: _pot, caller: msg.sender});
     }
 
