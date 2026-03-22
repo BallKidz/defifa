@@ -9,9 +9,9 @@ Admin privileges and their scope in defifa-collection-deployer-v6.
 | **Game Creator** | Any EOA or contract that calls `DefifaDeployer.launchGameWith()` | Self-selected; permissionless |
 | **DefifaDeployer** (contract) | Singleton deployed at protocol setup | Immutable; owns all game JB projects and the governor |
 | **DefifaGovernor** (contract) | Singleton; `Ownable` by the DefifaDeployer | Ownership transferred from deployer at construction |
-| **DefifaHook** (per-game clone) | One clone per game; `Ownable` by the DefifaGovernor | Ownership transferred from deployer during `launchGameWith()` (line 567) |
+| **DefifaHook** (per-game clone) | One clone per game; `Ownable` by the DefifaGovernor | Ownership transferred from deployer during `launchGameWith()` |
 | **DefifaProjectOwner** | Optional proxy contract that holds the Defifa fee project NFT | Receives project NFT; grants `SET_SPLIT_GROUPS` to deployer |
-| **Scorecard Submitter** | Any address during SCORING phase | Permissionless (`submitScorecardFor`, DefifaGovernor line 413) |
+| **Scorecard Submitter** | Any address during SCORING phase | Permissionless (`submitScorecardFor`) |
 | **Attestor** | Any NFT holder with attestation weight | Must hold game NFTs; weight proportional to holdings per tier |
 | **Default Attestation Delegate** | Address set at game launch | Set via `DefifaLaunchProjectData.defaultAttestationDelegate` |
 | **Tier Delegate** | Any address delegated attestation units by an NFT holder | Set via `setTierDelegateTo` / `setTierDelegatesTo` during MINT phase only |
@@ -30,7 +30,7 @@ Admin privileges and their scope in defifa-collection-deployer-v6.
 
 | Function | Required Role | Permission Check | What It Does |
 |----------|--------------|-----------------|-------------|
-| `initializeGame()` | DefifaDeployer (owner) | `onlyOwner` (line 294) | Sets attestation start time and grace period for a game. Enforces minimum 1-day grace period. Called automatically during `launchGameWith()`. |
+| `initializeGame()` | DefifaDeployer (owner) | `onlyOwner` | Sets attestation start time and grace period for a game. Enforces minimum 1-day grace period. Called automatically during `launchGameWith()`. |
 | `submitScorecardFor()` | Anyone | Must be in SCORING phase; no ratified scorecard yet; no duplicate scorecard hash; weighted tiers must have nonzero supply | Submits a scorecard for attestation. Sets `attestationsBegin` and `gracePeriodEnds` timestamps. |
 | `attestToScorecardFrom()` | Any NFT holder | Must be in SCORING phase; scorecard must be ACTIVE or SUCCEEDED; caller cannot have already attested | Records attestation weight based on tier holdings at the scorecard's `attestationsBegin` timestamp. |
 | `ratifyScorecardFrom()` | Anyone | Scorecard must be in SUCCEEDED state (quorum met + grace period elapsed); no scorecard already ratified | Executes the scorecard via low-level call to `setTierCashOutWeightsTo` on the hook, then calls `fulfillCommitmentsOf`. |
@@ -39,20 +39,20 @@ Admin privileges and their scope in defifa-collection-deployer-v6.
 
 | Function | Required Role | Permission Check | What It Does |
 |----------|--------------|-----------------|-------------|
-| `initialize()` | DefifaDeployer | Reverts if `address(this) == codeOrigin` (line 484) or already initialized (`store != address(0)`, line 487) | One-time initialization of the cloned hook with game configuration, tiers, and tier names. Transfers ownership to caller. |
-| `setTierCashOutWeightsTo()` | DefifaGovernor (owner) | `onlyOwner` (line 703); must be in SCORING phase; weights not already set | Sets the cash-out weight distribution across tiers. Validates weights sum to `TOTAL_CASHOUT_WEIGHT` (1e18). Irreversible -- once set, `cashOutWeightIsSet` is permanently true. |
-| `setTierDelegateTo()` | Any NFT holder | Must be in MINT phase (line 730-732) | Delegates attestation units for a specific tier to another address. |
-| `setTierDelegatesTo()` | Any NFT holder | Must be in MINT phase (line 740-742); delegatee cannot be address(0) | Batch delegation of attestation units across multiple tiers. |
-| `mintReservesFor()` | Anyone | Reverts if `pauseMintPendingReserves` is set in ruleset metadata (line 537-539) | Mints reserved tokens to the tier's reserve beneficiary. Increments `_totalMintCost` so reserved recipients can claim fee tokens. |
-| `afterPayRecordedWith()` | JB Terminal | Caller must be a terminal of the project (line 436-439); `msg.value` must be 0 | Processes payment: validates currency, mints NFTs, sets up attestation delegation. |
-| `afterCashOutRecordedWith()` | JB Terminal | Caller must be a terminal of the project (line 610-613); `msg.value` must be 0 | Burns NFTs on cash-out, tracks redeemed amounts, distributes fee tokens during COMPLETE phase. |
+| `initialize()` | DefifaDeployer | Reverts if `address(this) == codeOrigin` or already initialized (`store != address(0)`) | One-time initialization of the cloned hook with game configuration, tiers, and tier names. Transfers ownership to caller. |
+| `setTierCashOutWeightsTo()` | DefifaGovernor (owner) | `onlyOwner`; must be in SCORING phase; weights not already set | Sets the cash-out weight distribution across tiers. Validates weights sum to `TOTAL_CASHOUT_WEIGHT` (1e18). Irreversible -- once set, `cashOutWeightIsSet` is permanently true. |
+| `setTierDelegateTo()` | Any NFT holder | Must be in MINT phase | Delegates attestation units for a specific tier to another address. |
+| `setTierDelegatesTo()` | Any NFT holder | Must be in MINT phase; delegatee cannot be address(0) | Batch delegation of attestation units across multiple tiers. |
+| `mintReservesFor()` | Anyone | Reverts if `pauseMintPendingReserves` is set in ruleset metadata | Mints reserved tokens to the tier's reserve beneficiary. Increments `_totalMintCost` so reserved recipients can claim fee tokens. |
+| `afterPayRecordedWith()` | JB Terminal | Caller must be a terminal of the project; `msg.value` must be 0 | Processes payment: validates currency, mints NFTs, sets up attestation delegation. |
+| `afterCashOutRecordedWith()` | JB Terminal | Caller must be a terminal of the project; `msg.value` must be 0 | Burns NFTs on cash-out, tracks redeemed amounts, distributes fee tokens during COMPLETE phase. |
 | `transferOwnership()` | Current owner | `onlyOwner` (inherited from Ownable) | Transfers hook ownership. Used once during deployment to transfer from deployer to governor. |
 
 ### DefifaProjectOwner
 
 | Function | Required Role | Permission Check | What It Does |
 |----------|--------------|-----------------|-------------|
-| `onERC721Received()` | JBProjects contract | `msg.sender` must be the JBProjects contract (line 47) | When the Defifa fee project NFT is transferred here, auto-grants `SET_SPLIT_GROUPS` permission to the DefifaDeployer. The project NFT is permanently locked -- cannot be recovered. |
+| `onERC721Received()` | JBProjects contract | `msg.sender` must be the JBProjects contract | When the Defifa fee project NFT is transferred here, auto-grants `SET_SPLIT_GROUPS` permission to the DefifaDeployer. The project NFT is permanently locked -- cannot be recovered. |
 
 ## Game Lifecycle Administration
 
@@ -82,7 +82,7 @@ COUNTDOWN --> MINT --> REFUND (optional) --> SCORING --> COMPLETE or NO_CONTEST
 The quorum threshold is 50% of the total attestation power across all tiers with nonzero mint supply. Attestation power per tier is proportional to the tier's minted supply at the `attestationsBegin` snapshot timestamp.
 
 **Edge cases:**
-- **Tiers with zero mints:** Tiers with `_suppliesOf[gameId][tierId].initialMints == 0` are excluded from the `totalPossibleAttestations` calculation. They have no attestation power and cannot influence scoring.
+- **Tiers with zero mints:** Tiers with `currentSupplyOfTier(tierId) == 0` are excluded from the quorum calculation. They have no attestation power and cannot influence scoring.
 - **All mints in a single tier:** If all participation concentrates in one tier, that tier's holders control the quorum. The 50% threshold still applies -- holders of 50% of that tier's supply can ratify a scorecard.
 - **Grace period:** After a scorecard reaches quorum (SUCCEEDED state), a grace period (`attestationsGracePeriod`, minimum 1 day) must elapse before ratification. This gives dissenters time to attest to a competing scorecard that could overtake the first.
 - **Competing scorecards:** Multiple scorecards can be submitted. Each tracks attestations independently. Only the first to be ratified (quorum met + grace period elapsed + `ratifyScorecardFrom()` called) takes effect. Once ratified, no other scorecard can be ratified for the same game.
@@ -102,7 +102,7 @@ The following are set at game creation and cannot be changed:
 | Payment token | `launchGameWith()` | Single token per game |
 | Fee structure | Constructor constants | `DEFIFA_FEE_DIVISOR = 20` (5%), `BASE_PROTOCOL_FEE_DIVISOR = 40` (2.5%) |
 | Attestation start time | `launchGameWith()` | Stored in governor via `initializeGame()` |
-| Attestation grace period | `launchGameWith()` | Minimum 1 day enforced (governor line 300) |
+| Attestation grace period | `launchGameWith()` | Minimum 1 day enforced in `initializeGame()` |
 | Default attestation delegate | `launchGameWith()` | Stored in hook |
 | `minParticipation` threshold | `launchGameWith()` | 0 = disabled |
 | `scorecardTimeout` | `launchGameWith()` | 0 = disabled |
@@ -127,11 +127,11 @@ What admins CANNOT do:
 
 6. **No one can change delegates after MINT phase.** `setTierDelegateTo` and `setTierDelegatesTo` both revert with `DefifaHook_DelegateChangesUnavailableInThisPhase` outside MINT.
 
-7. **No one can re-set cash-out weights.** The `cashOutWeightIsSet` flag is checked before setting (line 713) and the function reverts with `DefifaHook_CashoutWeightsAlreadySet`.
+7. **No one can re-set cash-out weights.** The `cashOutWeightIsSet` flag is checked before setting and the function reverts with `DefifaHook_CashoutWeightsAlreadySet`.
 
-8. **No one can re-ratify a scorecard.** The `ratifiedScorecardIdOf[gameId] != 0` check prevents double ratification (governor line 374).
+8. **No one can re-ratify a scorecard.** The `ratifiedScorecardIdOf[gameId] != 0` check prevents double ratification.
 
-9. **No one can fulfill commitments twice.** The `fulfilledCommitmentsOf[gameId] != 0` check (deployer line 304) prevents re-entry.
+9. **No one can fulfill commitments twice.** The `fulfilledCommitmentsOf[gameId] != 0` check prevents re-entry.
 
 10. **No one can recover the project NFT from DefifaProjectOwner.** Once transferred, the NFT is permanently locked.
 
