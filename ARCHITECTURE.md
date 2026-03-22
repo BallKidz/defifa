@@ -43,8 +43,8 @@ SCORING Phase:
     → DefifaHook receives final cash-out weights per tier
 
 COMPLETE Phase:
-  → Winners → cash out NFTs at scored weights
-  → Deployer → fulfillCommitmentsOf() distributes fee tokens
+  → Deployer → fulfillCommitmentsOf() sends fee payouts and queues the final ruleset
+  → Winners → cash out NFTs at scored weights (see "Scored Weight Redemption" below)
 ```
 
 ### Governance Flow
@@ -59,6 +59,25 @@ Attestor → DefifaGovernor.attestToScorecard(proposalId)
   → When quorum reached → scorecard ratified
   → DefifaHook.setScorecard() called
 ```
+
+### Scored Weight Redemption
+
+When a scorecard is ratified, `setTierCashOutWeightsTo` stores a weight per tier. Weights must sum to `TOTAL_CASHOUT_WEIGHT` (1e18). A tier with weight 0 means that outcome lost and holders get nothing.
+
+When a holder cashes out an NFT during the COMPLETE phase:
+
+1. **Per-token weight**: The tier's weight is divided equally among all tokens minted in that tier: `tokenWeight = tierWeight / tokensInTier`.
+2. **Cash out amount**: `amount = (surplus + totalAmountRedeemed) * tokenWeight / TOTAL_CASHOUT_WEIGHT`. The formula uses `surplus + totalAmountRedeemed` (the original pot size) so that early and late redeemers receive the same value.
+3. The token is burned and the holder receives their share of the treasury.
+
+Example: 100 ETH pot, 4 tiers, winning tier gets weight 500000000000000000 (50%). If that tier had 10 minted tokens, each token redeems for `100 * (500000000000000000 / 10) / 1e18 = 5 ETH`.
+
+### fulfillCommitmentsOf
+
+Called automatically when a scorecard is ratified (by `ratifyScorecardFrom`). It performs two actions:
+
+1. **Sends fee payouts**: Computes the fee portion of the pot based on the split percentages configured at game creation, then calls `sendPayoutsOf` to distribute fees to the protocol. If the payout fails, the fee stays in the pot and the function continues (try-catch ensures the final ruleset is always queued).
+2. **Queues the final ruleset**: Queues a new Juicebox ruleset with `pausePay: true` (no new payments), `cashOutTaxRate: 0` (no tax on cash-outs), and the data hook still active so scored weights are enforced. This transitions the game to its terminal state where only cash-outs remain.
 
 ## Extension Points
 
@@ -80,3 +99,15 @@ Attestor → DefifaGovernor.attestToScorecard(proposalId)
 - `@openzeppelin/contracts` — Checkpoints, Ownable, Clones
 - `@prb/math` — mulDiv
 - `scripty.sol` — On-chain scripting for SVG
+
+## Design Decisions
+
+**Attestation-based governance over token-weighted voting.** Each tier gets equal max attestation power (`MAX_ATTESTATION_POWER_TIER = 1e9`) regardless of how many tokens it sold. A holder's power within a tier is proportional to their share of that tier's supply. This prevents a popular outcome (e.g., the favorite team) from dominating the scorecard simply by having more buyers. Every outcome's community has equal say in ratification.
+
+**Four distinct game phases.** The MINT, REFUND, SCORING, and COMPLETE phases enforce a strict lifecycle where each action is only valid in its phase. MINT allows buying in, REFUND provides a grace period for full refunds, SCORING locks the treasury while governance resolves, and COMPLETE enables scored cash-outs. The COUNTDOWN phase gates minting before the game starts, and NO_CONTEST acts as a fallback if no scorecard is ratified within the timeout. This phased approach prevents timing exploits (e.g., buying in after seeing results) and ensures the treasury is never drained during scoring.
+
+**Proxy owner pattern (DefifaProjectOwner).** Game projects are owned by `DefifaProjectOwner`, not the deployer or any EOA. This contract permanently holds the project NFT (it cannot be recovered) and grants only `SET_SPLIT_GROUPS` permission to the `DefifaDeployer`. This means no one can rug the game by migrating terminals, minting tokens, or changing controllers. The deployer can only set splits as needed for fee distribution.
+
+**Weight-based redemption instead of per-tier pots.** Rather than splitting the treasury into separate pots per tier at scoring time, the system assigns each tier a weight out of `TOTAL_CASHOUT_WEIGHT` (1e18). Cash-outs compute their share of the entire surplus on the fly. This avoids complex accounting for partial redemptions and lets the bonding math work naturally as tokens are burned. Early and late redeemers within the same tier get the same per-token value because the formula uses `surplus + totalAmountRedeemed` as the denominator base.
+
+**Scorecard immutability after ratification.** Once a scorecard reaches quorum and is ratified, `cashOutWeightIsSet` is permanently set to `true` and no new weights can be written. Combined with the final ruleset that pauses payments, this guarantees the game's outcome is final and the treasury can only decrease through cash-outs.
