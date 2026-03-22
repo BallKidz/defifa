@@ -345,12 +345,14 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             // Payout failed — fee stays in pot. Reset to sentinel (1) so currentGamePotOf
             // doesn't double-count the fee, while preserving the reentrancy guard.
             fulfilledCommitmentsOf[gameId] = 1;
+            // slither-disable-next-line reentrancy-events
             emit CommitmentPayoutFailed({gameId: gameId, amount: _feeAmount, reason: reason});
         }
 
         // Queue the final ruleset and emit.
         _queueFinalRuleset({gameId: gameId, metadata: _metadata});
 
+        // slither-disable-next-line reentrancy-events
         emit FulfilledCommitments({gameId: gameId, pot: _pot, caller: msg.sender});
     }
 
@@ -543,6 +545,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Add the hook to the registry, contract nonce starts at 1
         REGISTRY.registerAddress({deployer: address(this), nonce: _currentNonce});
 
+        // slither-disable-next-line reentrancy-events
         emit LaunchGame(gameId, _hook, GOVERNOR, _uriResolver, msg.sender);
     }
 
@@ -619,6 +622,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             projectId: gameId, rulesetConfigurations: rulesetConfigs, memo: "Defifa game: no contest."
         });
 
+        // slither-disable-next-line reentrancy-events
         emit QueuedNoContest(gameId, msg.sender);
     }
 
