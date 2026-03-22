@@ -13,6 +13,7 @@ On-chain prediction game framework built on Juicebox V6. Players mint NFT game p
 | `DefifaGovernor` | Governance contract for scorecard submission, attestation, and ratification with 50% quorum requirement. Shared singleton across all games. |
 | `DefifaHookLib` | External library with pure/view helpers: scorecard validation, cash-out weight calculation, fee token distribution, attestation unit aggregation, supply computation. |
 | `DefifaTokenUriResolver` | On-chain SVG renderer for game card metadata with phase-aware display, pot size, rarity, and current value. Uses embedded Capsules typeface. |
+| `DefifaFontImporter` | Library that loads Capsules typeface font for SVG renderer. |
 | `DefifaProjectOwner` | Receives Defifa fee project's ownership NFT and permanently grants the deployer `SET_SPLIT_GROUPS` permission. |
 
 ## Key Functions
@@ -30,9 +31,9 @@ On-chain prediction game framework built on Juicebox V6. Players mint NFT game p
 | `submitScorecardFor(gameId, tierWeights)` | `DefifaGovernor` | Submits a proposed scorecard (array of tier cash-out weights). Hashes the encoded calldata to produce a scorecard ID. Stores attestation begin and grace period end timestamps. Only during SCORING phase. If `defaultAttestationDelegateProposalOf[gameId]` is 0, the first proposal from the default delegate auto-sets it. |
 | `attestToScorecardFrom(gameId, scorecardId)` | `DefifaGovernor` | Attests to a scorecard. Weight is proportional to the caller's tier-delegated voting power at the attestation begin timestamp. Each address can only attest once per scorecard. Returns the attestation weight. |
 | `ratifyScorecardFrom(gameId, tierWeights)` | `DefifaGovernor` | Ratifies a scorecard that has reached `SUCCEEDED` state (50% quorum). Executes `setTierCashOutWeightsTo` on the hook via low-level `.call`, then calls `fulfillCommitmentsOf`. Scorecard is immutable once ratified. |
-| `initializeGame(gameId, startTime, gracePeriod)` | `DefifaGovernor` | Sets attestation start time and grace period for a game. Grace period minimum is 1 day. Called by the deployer during game launch. |
+| `initializeGame(gameId, attestationStartTime, attestationGracePeriod)` | `DefifaGovernor` | Sets attestation start time and grace period for a game. Grace period minimum is 1 day. Called by the deployer during game launch. |
 | `quorum(gameId)` | `DefifaGovernor` | Returns `50% of (MAX_ATTESTATION_POWER_TIER * numberOfMintedTiers)`. Only tiers with non-zero minted supply count toward quorum. |
-| `getAttestationWeight(gameId, account, timestamp)` | `DefifaGovernor` | Calculates an account's attestation power across all tiers (up to 128) using checkpointed delegation snapshots at `timestamp`. Per-tier power: `mulDiv(MAX_ATTESTATION_POWER_TIER, accountTierUnits, totalTierUnits)`. |
+| `getAttestationWeight(gameId, account, timestamp)` | `DefifaGovernor` | Calculates an account's attestation power across all tiers (up to 128) using checkpointed delegation snapshots at `timestamp` (uint48, not uint256). Per-tier power: `mulDiv(MAX_ATTESTATION_POWER_TIER, accountTierUnits, totalTierUnits)`. |
 | `stateOf(gameId, scorecardId)` | `DefifaGovernor` | Returns scorecard state: `RATIFIED` if matches ratified ID, `PENDING` if before attestation begin, `SUCCEEDED` if quorum reached + grace period elapsed, `ACTIVE` if attestation in progress, `DEFEATED` otherwise. |
 | `setTierCashOutWeightsTo(tierWeights)` | `DefifaHook` | Sets cash-out weights for each tier. Validates weights sum to exactly `TOTAL_CASHOUT_WEIGHT` (1e18), tiers are in ascending order, and all tiers exist. Only callable by owner (the governor). Only callable during SCORING phase. Once set, cannot be changed (`cashOutWeightIsSet` flag). |
 | `afterPayRecordedWith(context)` | `DefifaHook` | Processes payments: validates caller is a project terminal and `msg.value == 0`, then delegates to `_processPayment`. Overrides `JB721Hook` to add the `msg.value != 0` check. |
@@ -61,13 +62,96 @@ On-chain prediction game framework built on Juicebox V6. Players mint NFT game p
 
 | Struct/Enum | Key Fields | Used In |
 |-------------|------------|---------|
-| `DefifaLaunchProjectData` | `name`, `tiers` (DefifaTierParams[]), `tierPrice` (uint104), `token` (JBAccountingContext), `mintPeriodDuration` (uint24), `refundPeriodDuration` (uint24), `start` (uint48), `splits` (JBSplit[]), `attestationStartTime`, `attestationGracePeriod`, `defaultAttestationDelegate`, `terminal`, `store`, `minParticipation` (uint256), `scorecardTimeout` (uint32) | `DefifaDeployer.launchGameWith` |
+| `DefifaLaunchProjectData` | `name`, `projectUri`, `contractUri`, `baseUri`, `tiers` (DefifaTierParams[]), `tierPrice` (uint104), `token` (JBAccountingContext), `mintPeriodDuration` (uint24), `refundPeriodDuration` (uint24), `start` (uint48), `splits` (JBSplit[]), `attestationStartTime`, `attestationGracePeriod`, `defaultAttestationDelegate`, `defaultTokenUriResolver` (IJB721TokenUriResolver), `terminal`, `store`, `minParticipation` (uint256), `scorecardTimeout` (uint32) | `DefifaDeployer.launchGameWith` |
 | `DefifaTierParams` | `name` (string), `reservedRate` (uint16), `reservedTokenBeneficiary` (address), `encodedIPFSUri` (bytes32), `shouldUseReservedTokenBeneficiaryAsDefault` (bool) | `DefifaLaunchProjectData.tiers` |
 | `DefifaTierCashOutWeight` | `id` (uint256), `cashOutWeight` (uint256) | Scorecard proposals, `DefifaHook.setTierCashOutWeightsTo` |
 | `DefifaOpsData` | `token` (address), `start` (uint48), `mintPeriodDuration` (uint24), `refundPeriodDuration` (uint24), `minParticipation` (uint256), `scorecardTimeout` (uint32) | Internal game state in `DefifaDeployer` |
 | `DefifaDelegation` | `delegatee` (address), `tierId` (uint256) | `DefifaHook.setTierDelegatesTo` |
 | `DefifaGamePhase` | `COUNTDOWN`, `MINT`, `REFUND`, `SCORING`, `COMPLETE`, `NO_CONTEST` | Phase reporting throughout |
+| `DefifaScorecard` | `attestationsBegin` (uint48), `gracePeriodEnds` (uint48) | `DefifaGovernor._scorecardOf` |
+| `DefifaAttestations` | `count` (uint256), `hasAttested` (mapping(address => bool)) | `DefifaGovernor._scorecardAttestationsOf` |
 | `DefifaScorecardState` | `PENDING`, `ACTIVE`, `DEFEATED`, `SUCCEEDED`, `RATIFIED` | `DefifaGovernor.stateOf` |
+
+## Events
+
+| Event | Contract | Parameters |
+|-------|----------|------------|
+| `LaunchGame` | `DefifaDeployer` | `gameId` (indexed), `hook` (indexed), `governor` (indexed), `tokenUriResolver`, `caller` |
+| `FulfilledCommitments` | `DefifaDeployer` | `gameId` (indexed), `pot`, `caller` |
+| `CommitmentPayoutFailed` | `DefifaDeployer` | `gameId` (indexed), `amount`, `reason` (bytes) |
+| `DistributeToSplit` | `DefifaDeployer` | `split` (JBSplit), `amount`, `caller` |
+| `QueuedNoContest` | `DefifaDeployer` | `gameId` (indexed), `caller` |
+| `QueuedRefundPhase` | `DefifaDeployer` | `gameId` (indexed), `caller` |
+| `QueuedScoringPhase` | `DefifaDeployer` | `gameId` (indexed), `caller` |
+| `Mint` | `DefifaHook` | `tokenId` (indexed), `tierId` (indexed), `beneficiary` (indexed), `totalAmountContributed`, `caller` |
+| `MintReservedToken` | `DefifaHook` | `tokenId` (indexed), `tierId` (indexed), `beneficiary` (indexed), `caller` |
+| `TierDelegateAttestationsChanged` | `DefifaHook` | `delegate` (indexed), `tierId` (indexed), `previousBalance`, `newBalance`, `caller` |
+| `DelegateChanged` | `DefifaHook` | `delegator` (indexed), `fromDelegate` (indexed), `toDelegate` (indexed) |
+| `ClaimedTokens` | `DefifaHook` | `beneficiary` (indexed), `defifaTokenAmount`, `baseProtocolTokenAmount`, `caller` |
+| `TierCashOutWeightsSet` | `DefifaHook` | `tierWeights` (DefifaTierCashOutWeight[]), `caller` |
+| `GameInitialized` | `DefifaGovernor` | `gameId` (indexed), `attestationStartTime`, `attestationGracePeriod`, `caller` |
+| `ScorecardSubmitted` | `DefifaGovernor` | `gameId` (indexed), `scorecardId` (indexed), `tierWeights` (DefifaTierCashOutWeight[]), `isDefaultAttestationDelegate`, `caller` |
+| `ScorecardAttested` | `DefifaGovernor` | `gameId` (indexed), `scorecardId` (indexed), `weight`, `caller` |
+| `ScorecardRatified` | `DefifaGovernor` | `gameId` (indexed), `scorecardId` (indexed), `caller` |
+
+## Errors
+
+| Error | Contract | When |
+|-------|----------|------|
+| `DefifaDeployer_CantFulfillYet` | `DefifaDeployer` | `fulfillCommitmentsOf` called before scorecard is ratified. |
+| `DefifaDeployer_GameOver` | `DefifaDeployer` | Attempting to queue a phase after the game is already complete. |
+| `DefifaDeployer_InvalidFeePercent` | `DefifaDeployer` | Fee configuration is invalid. |
+| `DefifaDeployer_InvalidGameConfiguration` | `DefifaDeployer` | Launch data fails validation (e.g., missing tiers, bad durations). |
+| `DefifaDeployer_IncorrectDecimalAmount` | `DefifaDeployer` | Token accounting context has wrong decimal count. |
+| `DefifaDeployer_NotNoContest` | `DefifaDeployer` | Safety conditions for no-contest are not met. |
+| `DefifaDeployer_NoContestAlreadyTriggered` | `DefifaDeployer` | `triggerNoContestFor` called more than once for the same game. |
+| `DefifaDeployer_TerminalNotFound` | `DefifaDeployer` | No terminal found for the game's project. |
+| `DefifaDeployer_PhaseAlreadyQueued` | `DefifaDeployer` | The next phase ruleset has already been queued. |
+| `DefifaDeployer_SplitsDontAddUp` | `DefifaDeployer` | Split percentages don't sum correctly. |
+| `DefifaDeployer_UnexpectedTerminalCurrency` | `DefifaDeployer` | Terminal's accounting currency doesn't match expected currency. |
+| `DefifaHook_BadTierOrder` | `DefifaHook` | Scorecard tier IDs are not in strict ascending order. |
+| `DefifaHook_DelegateAddressZero` | `DefifaHook` | Attempting to delegate to the zero address. |
+| `DefifaHook_DelegateChangesUnavailableInThisPhase` | `DefifaHook` | Delegation change attempted outside MINT phase. |
+| `DefifaHook_GameIsntScoringYet` | `DefifaHook` | `setTierCashOutWeightsTo` called before SCORING phase. |
+| `DefifaHook_InvalidTierId` | `DefifaHook` | Tier ID in scorecard doesn't exist. |
+| `DefifaHook_InvalidCashoutWeights` | `DefifaHook` | Scorecard tier weights don't sum to exactly `TOTAL_CASHOUT_WEIGHT` (1e18). |
+| `DefifaHook_NothingToClaim` | `DefifaHook` | Cash out during COMPLETE yields no ETH and no fee tokens. |
+| `DefifaHook_NothingToMint` | `DefifaHook` | Reserved mint attempted with zero count or no available reserves. |
+| `DefifaHook_WrongCurrency` | `DefifaHook` | Payment currency doesn't match the hook's pricing currency. |
+| `DefifaHook_Overspending` | `DefifaHook` | Payment exceeds allowed amount for the tier. |
+| `DefifaHook_CashoutWeightsAlreadySet` | `DefifaHook` | `setTierCashOutWeightsTo` called after weights were already set. |
+| `DefifaHook_ReservedTokenMintingPaused` | `DefifaHook` | Reserved token minting is paused in the current ruleset. |
+| `DefifaHook_TransfersPaused` | `DefifaHook` | Token transfers are paused in the current ruleset. |
+| `DefifaHook_Unauthorized(tokenId, owner, caller)` | `DefifaHook` | Caller doesn't own the token being operated on. |
+| `DefifaGovernor_AlreadyAttested` | `DefifaGovernor` | Account already attested to this scorecard. |
+| `DefifaGovernor_AlreadyInitialized` | `DefifaGovernor` | `initializeGame` called for a game that's already initialized. |
+| `DefifaGovernor_AlreadyRatified` | `DefifaGovernor` | Attempting to submit or ratify when a scorecard is already ratified. |
+| `DefifaGovernor_DuplicateScorecard` | `DefifaGovernor` | Submitting a scorecard that produces the same hash as an existing one. |
+| `DefifaGovernor_GameNotFound` | `DefifaGovernor` | Game has not been initialized (`_packedScorecardInfoOf` is 0). |
+| `DefifaGovernor_IncorrectTierOrder` | `DefifaGovernor` | Tier weights not in ascending order. |
+| `DefifaGovernor_NotAllowed` | `DefifaGovernor` | Operation not permitted in the current game phase or scorecard state. |
+| `DefifaGovernor_Uint48Overflow` | `DefifaGovernor` | `attestationStartTime` or `attestationGracePeriod` exceeds uint48 max. |
+| `DefifaGovernor_UnknownProposal` | `DefifaGovernor` | `stateOf` called with a scorecard ID that hasn't been submitted. |
+| `DefifaGovernor_UnownedProposedCashoutValue` | `DefifaGovernor` | Scorecard assigns non-zero weight to a tier with zero minted supply. |
+
+## Storage
+
+| Variable | Type | Contract | Description |
+|----------|------|----------|-------------|
+| `_tierCashOutWeights` | `uint256[128]` | `DefifaHook` | Fixed-size array of cash-out weights per tier, set once by the governor via `setTierCashOutWeightsTo`. |
+| `cashOutWeightIsSet` | `bool` | `DefifaHook` | Flag indicating whether cash-out weights have been set. Prevents re-setting. |
+| `amountRedeemed` | `uint256` | `DefifaHook` | Cumulative ETH redeemed from the game pot (refunds not counted). |
+| `_totalMintCost` | `uint256` | `DefifaHook` | Cumulative mint price of all live tokens. Denominator for fee token distribution. Incremented on pay/reserve mint, decremented on cash out. |
+| `tokensRedeemedFrom` | `mapping(uint256 => uint256)` | `DefifaHook` | Number of tokens redeemed per tier. |
+| `ratifiedScorecardIdOf` | `mapping(uint256 => uint256)` | `DefifaGovernor` | Maps game ID to the ratified scorecard ID (0 if none). |
+| `_packedScorecardInfoOf` | `mapping(uint256 => uint256)` | `DefifaGovernor` | Bit-packed governance params per game: attestation start time (bits 0-47), attestation grace period (bits 48-95). |
+| `_scorecardOf` | `mapping(uint256 => mapping(uint256 => DefifaScorecard))` | `DefifaGovernor` | Maps (gameId, scorecardId) to scorecard data (attestationsBegin, gracePeriodEnds). |
+| `_scorecardAttestationsOf` | `mapping(uint256 => mapping(uint256 => DefifaAttestations))` | `DefifaGovernor` | Maps (gameId, scorecardId) to attestation data (count, per-account flag). |
+| `defaultAttestationDelegateProposalOf` | `mapping(uint256 => uint256)` | `DefifaGovernor` | Maps game ID to the scorecard ID submitted by the default attestation delegate. |
+| `fulfilledCommitmentsOf` | `mapping(uint256 => uint256)` | `DefifaDeployer` | Maps game ID to fulfilled commitment amount. Non-zero means commitments fulfilled; value of 1 is a sentinel for reentrancy guard. |
+| `noContestTriggeredFor` | `mapping(uint256 => bool)` | `DefifaDeployer` | Maps game ID to whether no-contest has been triggered. Can only be set once. |
+| `_opsOf` | `mapping(uint256 => DefifaOpsData)` | `DefifaDeployer` | Maps game ID to operational data (token, start, durations, safety params). |
+| `_commitmentPercentOf` | `mapping(uint256 => uint256)` | `DefifaDeployer` | Maps game ID to the total commitment percentage (fees + splits). |
 
 ## Constants
 
