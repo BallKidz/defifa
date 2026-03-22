@@ -265,6 +265,21 @@ Where `shareToBeneficiary = cumulativeMintPrice` of burned tokens and `outOfTota
 
 ## Priority Audit Areas
 
+### Entry Points for Review
+
+Start with the money: follow ETH from payment to cash-out.
+
+1. `DefifaHook._processPayment()` (line 929) -- where tokens enter
+2. `DefifaHook.beforeCashOutRecordedWith()` (line 253) -- reclaim calculation
+3. `DefifaHook.afterCashOutRecordedWith()` (line 605) -- where tokens leave
+4. `DefifaDeployer.fulfillCommitmentsOf()` (line 296) -- fee distribution
+5. `DefifaGovernor.ratifyScorecardFrom()` (line 372) -- scorecard execution
+6. `DefifaHookLib.validateAndBuildWeights()` (line 35) -- weight validation
+7. `DefifaHookLib.computeCashOutWeight()` (line 95) -- per-token value
+8. `DefifaDeployer._buildSplits()` (line 826) -- fee normalization
+9. `DefifaDeployer.currentGamePhaseOf()` (line 221) -- phase state machine
+10. `DefifaDeployer.triggerNoContestFor()` (line 586) -- no-contest safety valve
+
 ### P0 -- Critical (Fund Safety)
 
 1. **Cash-out weight arithmetic**: Verify `computeCashOutWeight()` and `computeCashOutCount()` in `DefifaHookLib` cannot overflow or return inflated values. The `_weight / _totalTokensForCashoutInTier` division is the core economic calculation. Confirm `tokensRedeemedFrom` tracking is correct: incremented ONLY during COMPLETE cash-outs (line 656), NOT during MINT/REFUND refunds.
@@ -406,17 +421,79 @@ forge test --match-contract DefifaMintCostInvariant -vvv
 
 ---
 
-## Entry Points for Review
+## Anti-Patterns to Hunt
 
-Start with the money: follow ETH from payment to cash-out.
+| Pattern | Where | Why Dangerous |
+|---------|-------|---------------|
+| Low-level `.call()` with arbitrary calldata | `DefifaGovernor.ratifyScorecardFrom()` line 169 | Executes `_metadata.dataHook.call(_calldata)` -- if hash-based proposal verification is flawed, arbitrary calldata could be executed on the hook |
+| `unchecked` block around state mutation | `DefifaHook.afterCashOutRecordedWith()` line 659 | `++tokensRedeemedFrom[tierId]` in `unchecked` -- overflow of this counter would corrupt cash-out weight calculations for the tier |
+| Optimistic project ID prediction | `DefifaDeployer.launchGameWith()` line 394 | `gameId = PROJECTS.count() + 1` -- race condition with concurrent project creation. Mitigated by post-launch equality check, but `_opsOf[gameId]` is written before the check |
+| No reentrancy guard (no `ReentrancyGuard`) | All contracts | Relies on state ordering (storage writes before external calls) instead of explicit reentrancy locks. Any future refactor that reorders could introduce reentrancy |
+| `minTokensPaidOut: 0` on `sendPayoutsOf` | `DefifaDeployer.fulfillCommitmentsOf()` line 342 | Zero slippage protection -- MEV sandwich could extract value from the payout if the terminal swaps tokens |
+| Casting `address` to `uint32` for currency | `DefifaDeployer.fulfillCommitmentsOf()` line 341 | `uint32(uint160(_token))` truncates the address to 32 bits. Must match terminal's accounting context exactly or payout fails |
+| Clone initialization window | `DefifaDeployer.launchGameWith()` lines 499-543 | Hook is initialized before `transferOwnership(GOVERNOR)`. Between `initialize()` (owner = deployer) and `transferOwnership()`, the hook's `onlyOwner` functions are callable by the deployer. Mitigated by atomic transaction |
+| `delegatecall` from library | `DefifaHookLib.claimTokensFor()` line 346 | Executes via `delegatecall` to the library -- `address(this)` is the hook's address, `safeTransfer` sends from the hook's balance. Incorrect library linkage could drain the hook |
+| Live supply in quorum calculation | `DefifaGovernor.quorum()` line 437 | Uses `currentSupplyOfTier()` (live, not snapshotted). If burns become possible during SCORING, quorum could be manipulated downward after attestations begin |
+| Integer division dust accumulation | `DefifaHookLib.computeCashOutWeight()` line 132 | `_weight / _totalTokensForCashoutInTier` rounds down. Dust (up to 1 wei per tier) is permanently locked. 128 tiers = max 128 wei locked per game |
+| `_totalMintCost` as fee token denominator | `DefifaHook._totalMintCost` internal variable | Incremented on mint, decremented on cash-out. If any path allows underflow (e.g., reserved mint followed by full refund), fee token claims revert or distribute incorrectly |
+| Try-catch swallowing failures silently | `DefifaDeployer.fulfillCommitmentsOf()` line 334 | `sendPayoutsOf` failure is caught and fee stays in pot. The sentinel value (1 wei) subtracted from pot in `currentGamePotOf` is an accounting approximation |
+| External call in view function | `DefifaTokenUriResolver.tokenUriOf()` line 57 | Calls `gamePotReporter.currentGamePotOf()`, `hook.cashOutWeightOf()`, and `hook.store().totalSupplyOf()`. A malicious URI resolver could cause excessive gas consumption in off-chain reads |
+| `block.timestamp` as scorecard ID component | `DefifaGovernor.submitScorecardFor()` line 236 | `attestationsBegin = uint48(block.timestamp + ...)` -- miner manipulation of timestamp (within 15s drift) could affect grace period boundaries |
 
-1. `DefifaHook._processPayment()` (line 929) -- where tokens enter
-2. `DefifaHook.beforeCashOutRecordedWith()` (line 253) -- reclaim calculation
-3. `DefifaHook.afterCashOutRecordedWith()` (line 605) -- where tokens leave
-4. `DefifaDeployer.fulfillCommitmentsOf()` (line 296) -- fee distribution
-5. `DefifaGovernor.ratifyScorecardFrom()` (line 372) -- scorecard execution
-6. `DefifaHookLib.validateAndBuildWeights()` (line 35) -- weight validation
-7. `DefifaHookLib.computeCashOutWeight()` (line 95) -- per-token value
-8. `DefifaDeployer._buildSplits()` (line 826) -- fee normalization
-9. `DefifaDeployer.currentGamePhaseOf()` (line 221) -- phase state machine
-10. `DefifaDeployer.triggerNoContestFor()` (line 586) -- no-contest safety valve
+---
+
+## How to Report Findings
+
+### Finding Format
+
+Each finding should use this 7-point structure:
+
+1. **Title** -- One-line summary (e.g., "Quorum manipulation via token burns during SCORING phase")
+2. **Affected Contract(s)** -- List the specific contract(s) and function(s) involved
+3. **Description** -- Clear explanation of the vulnerability and its root cause
+4. **Trigger Sequence** -- Step-by-step reproduction instructions:
+   - Step 1: Deploy game with X configuration...
+   - Step 2: Attacker calls Y with Z parameters...
+   - Step 3: Observe unexpected state change...
+5. **Impact** -- Concrete consequences: funds at risk (in ETH/USD), governance bypass capability, denial-of-service scope, affected user count
+6. **Proof** -- Code snippet showing the vulnerable path, or a Foundry PoC test (`forge test --match-test testExploitName -vvvv`)
+7. **Fix** -- Suggested remediation with specific code changes
+
+### Severity Guide
+
+| Severity | Criteria | Examples |
+|----------|----------|---------|
+| **CRITICAL** | Direct, unconditional fund loss or theft. Exploitable by anyone without special permissions. | Draining the game pot, bypassing cash-out weight validation, minting unlimited tokens |
+| **HIGH** | Conditional fund loss requiring specific timing or state, or authorization/access-control bypass. | Scorecard ratification without quorum, fulfillment reentrancy, phase transition manipulation |
+| **MEDIUM** | State inconsistency, griefing, or economic damage bounded by dust amounts or requiring unlikely conditions. | Quorum drift from live supply, fee token dilution from reserved mints, rounding errors above documented bounds |
+| **LOW** | Cosmetic issues, gas inefficiencies, informational observations, or theoretical attacks with no practical exploit path. | Token URI gas consumption, unused return values, documentation inaccuracies |
+
+---
+
+## Previous Audit Findings
+
+No prior formal audit with finding IDs has been conducted for defifa-collection-deployer-v6. Known risks, trust assumptions, and economic edge cases are documented in [RISKS.md](./RISKS.md). The test suite (14 files, ~100 test functions) includes regression tests for specific issues discovered during development:
+
+- `DefifaHookRegressions.t.sol` -- Attestation unit conservation on transfer to undelegated recipients (M-5 equivalent)
+- `regression/FulfillmentBlocksRatification.t.sol` -- Fulfillment failure does not block ratification
+- `regression/GracePeriodBypass.t.sol` -- Grace period extends from attestation start, not submission time
+
+---
+
+## Compiler and Version Info
+
+| Setting | Value | Source |
+|---------|-------|--------|
+| Solidity version | `0.8.26` | `foundry.toml` `solc` field; all `src/*.sol` files use `pragma solidity 0.8.26` (library uses `^0.8.17`) |
+| EVM target | `cancun` | `foundry.toml` `evm_version` field |
+| Optimizer | Enabled, 200 runs | `foundry.toml` `optimizer_runs = 200` |
+| Via IR | `true` | `foundry.toml` `via_ir = true` -- uses the Yul-based compilation pipeline |
+| Fuzz runs | 4096 | `foundry.toml` `[fuzz]` section |
+| Invariant runs | 1024, depth 100 | `foundry.toml` `[invariant]` section |
+| Invariant fail-on-revert | `false` | `foundry.toml` -- reverts do not fail invariant tests |
+| Framework | Foundry (forge) | Standard Foundry project layout |
+
+**Notes for auditors:**
+- `via_ir = true` enables the Yul intermediate representation pipeline, which can produce different optimization artifacts than the legacy pipeline. Stack-too-deep workarounds may mask complexity.
+- `optimizer_runs = 200` balances deployment cost vs. runtime gas. Low run counts favor deployment cost, which may produce less-optimized runtime bytecode.
+- `evm_version = cancun` enables Cancun opcodes (TSTORE/TLOAD, MCOPY, etc.). Verify the target deployment chain supports Cancun.
