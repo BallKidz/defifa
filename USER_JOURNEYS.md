@@ -47,7 +47,7 @@ Complete interaction paths for every user role in the Defifa prediction game sys
 - `launchProjectData.attestationGracePeriod` -- Minimum grace period before ratification (0 = enforced minimum of 1 day).
 - `launchProjectData.defaultAttestationDelegate` -- Default attestation delegate (0 = each payer delegates to self).
 - `launchProjectData.defaultTokenUriResolver` -- Token URI resolver (0 = use default SVG).
-- `launchProjectData.terminal` -- `JBMultiTerminal` instance.
+- `launchProjectData.terminal` -- `IJBTerminal` instance (e.g. a `JBMultiTerminal`).
 - `launchProjectData.store` -- `JB721TiersHookStore` instance.
 - `launchProjectData.minParticipation` -- Minimum treasury balance for game to proceed to SCORING.
 - `launchProjectData.scorecardTimeout` -- Max time after SCORING begins for a scorecard to be ratified.
@@ -93,7 +93,7 @@ DefifaLaunchProjectData({
     attestationGracePeriod: 0,               // 0 = enforced minimum of 1 day
     defaultAttestationDelegate: address(0),  // 0 = each payer delegates to self
     defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),  // use default SVG
-    terminal: jbMultiTerminal,
+    terminal: IJBTerminal(address(jbMultiTerminal)),
     store: jb721TiersHookStore,
     minParticipation: 1 ether,               // Game needs >= 1 ETH to proceed
     scorecardTimeout: 7 days                 // 7 days to ratify or NO_CONTEST
@@ -200,7 +200,7 @@ jbMultiTerminal.pay{value: 0.02 ether}({
 ### State changes
 
 1. `DefifaHook._totalMintCost` -- Incremented by `context.amount.value` (the paid amount).
-2. `DefifaHook._tierDelegation[payer][tierId]` -- Set to `attestationDelegate` for each minted tier (if payer had no delegate).
+2. `DefifaHook._tierDelegation[payer][tierId]` -- Set to `attestationDelegate` for each minted tier (if different from the payer's existing delegate for that tier).
 3. `DefifaHook._delegateTierCheckpoints[delegate][tierId]` -- Checkpointed with new attestation units.
 4. `DefifaHook._totalTierCheckpoints[tierId]` -- Checkpointed with increased total attestation units.
 5. ERC-721 token ownership records updated (one token per tier mint).
@@ -725,7 +725,7 @@ hook.setTierDelegatesTo(delegations);
 **Who can call:** Anyone. No access control. Must not be paused (`pauseMintPendingReserves` must be false).
 
 **Actor:** Anyone
-**Phase:** After MINT (reserved minting is paused during MINT via `pauseMintPendingReserves: true`)
+**Phase:** SCORING or later (reserved minting is paused during both MINT and REFUND via `pauseMintPendingReserves: true`)
 
 ### Parameters (single)
 
@@ -985,19 +985,19 @@ uint256 totalWeight = hook.cashOutWeightOf(ids);
 
 ### Scorecard Errors (Journeys 5, 6, 7)
 
-| Error | Condition |
-|-------|-----------|
-| `DefifaGovernor_NotAllowed` | Game not in SCORING, or scorecard not in correct state |
-| `DefifaGovernor_UnownedProposedCashoutValue` | Weight > 0 assigned to tier with 0 supply |
-| `DefifaGovernor_DuplicateScorecard` | Identical scorecard already submitted |
-| `DefifaGovernor_AlreadyAttested` | Account already attested to this scorecard |
-| `DefifaGovernor_AlreadyRatified` | Game already has a ratified scorecard |
-| `DefifaGovernor_UnknownProposal` | Scorecard ID has no submission record |
-| `DefifaHook_InvalidCashoutWeights` | Weights do not sum to TOTAL_CASHOUT_WEIGHT |
-| `DefifaHook_BadTierOrder` | Tier IDs not in ascending order |
-| `DefifaHook_InvalidTierId` | Tier not in category 0, or tier ID > maxTierId |
-| `DefifaHook_GameIsntScoringYet` | Game not in SCORING phase when setting weights |
-| `DefifaHook_CashoutWeightsAlreadySet` | Weights already set (double-set attempt) |
+| Error | Condition | Journey |
+|-------|-----------|---------|
+| `DefifaGovernor_NotAllowed` | Game not in SCORING, or scorecard not in correct state | 5, 6, 7 |
+| `DefifaGovernor_UnownedProposedCashoutValue` | Weight > 0 assigned to tier with 0 supply | 5 |
+| `DefifaGovernor_DuplicateScorecard` | Identical scorecard already submitted | 5 |
+| `DefifaGovernor_AlreadyAttested` | Account already attested to this scorecard | 6 |
+| `DefifaGovernor_AlreadyRatified` | Game already has a ratified scorecard | 5, 7 |
+| `DefifaGovernor_UnknownProposal` | Scorecard ID has no submission record | 6, 7 |
+| `DefifaHook_InvalidCashoutWeights` | Weights do not sum to TOTAL_CASHOUT_WEIGHT | 7 (ratification) |
+| `DefifaHook_BadTierOrder` | Tier IDs not in ascending order | 7 (ratification) |
+| `DefifaHook_InvalidTierId` | Tier not in category 0, or tier ID > maxTierId | 7 (ratification) |
+| `DefifaHook_GameIsntScoringYet` | Game not in SCORING phase when setting weights | 7 (ratification) |
+| `DefifaHook_CashoutWeightsAlreadySet` | Weights already set (double-set attempt) | 7 (ratification) |
 
 ### No-Contest Errors (Journeys 10, 11)
 
