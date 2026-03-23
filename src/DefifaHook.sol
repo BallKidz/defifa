@@ -947,9 +947,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Decode the metadata.
         (address _attestationDelegate, uint16[] memory _tierIdsToMint) = abi.decode(metadata, (address, uint16[]));
 
-        // Set the payer as the attestation delegate by default.
+        // Set the beneficiary as the attestation delegate by default.
         if (_attestationDelegate == address(0)) {
-            _attestationDelegate = defaultAttestationDelegate != address(0) ? defaultAttestationDelegate : context.payer;
+            _attestationDelegate = defaultAttestationDelegate != address(0) ? defaultAttestationDelegate : context.beneficiary;
         }
 
         // Make sure something is being minted.
