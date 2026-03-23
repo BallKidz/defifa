@@ -364,7 +364,7 @@ These properties should hold for all games in all states. The test suite validat
 
 ## Testing
 
-### Test Files (15 files, ~155 test functions)
+### Test Files (16 files, ~172 test functions)
 
 | File | Focus |
 |------|-------|
@@ -383,6 +383,7 @@ These properties should hold for all games in all states. The test suite validat
 | `deployScript.t.sol` | Deploy script smoke test. |
 | `DefifaUSDC.t.sol` | ERC-20 (USDC) game variant. |
 | `SVG.t.sol` | Token URI resolver SVG rendering. |
+| `TestAuditGaps.sol` | Audit gap coverage: ERC-20 game mechanics (mint, refund, scoring, fee fulfillment, cash-out distribution, no-contest with ERC-20 tokens, pot reporting), multi-game governor isolation (independent project IDs, balances, NFT hooks, scorecard submission/attestation/ratification isolation, quorum independence, fulfilled commitments independence). 17 tests across 2 test contracts. |
 
 ### Running Tests
 
@@ -400,9 +401,9 @@ forge test --match-contract DefifaMintCostInvariant -vvv
 
 | Area | Current Coverage | Risk |
 |------|-----------------|------|
-| ERC-20 token games (non-ETH) | Single USDC test file | LOW |
+| ERC-20 token games (non-ETH) | Expanded: USDC test file + 8 ERC-20 tests in TestAuditGaps.sol (mint, refund, scoring, fee accounting, even distribution, no-contest, pot calculation) | LOW |
 | Games with >32 tiers | Fuzz caps at 12, one test at 32 | LOW |
-| Concurrent multi-game governor | Tests use single game per governor | MEDIUM |
+| Concurrent multi-game governor | Expanded: 9 multi-game isolation tests in TestAuditGaps.sol (independent IDs, balances, hooks, scorecard isolation, attestation power isolation, quorum, fulfilled commitments, full lifecycle) | LOW |
 | Adversarial token URI resolver | No malicious resolver test | LOW |
 | Clone address collision | No explicit collision test | LOW |
 
@@ -475,7 +476,7 @@ Each finding should use this 7-point structure:
 
 ## Previous Audit Findings
 
-No prior formal audit with finding IDs has been conducted for defifa-collection-deployer-v6. Known risks, trust assumptions, and economic edge cases are documented in [RISKS.md](./RISKS.md). The test suite (15 files, ~155 test functions) includes regression tests for specific issues discovered during development:
+No prior formal audit with finding IDs has been conducted for defifa-collection-deployer-v6. Known risks, trust assumptions, and economic edge cases are documented in [RISKS.md](./RISKS.md). The test suite (16 files, ~172 test functions) includes regression tests for specific issues discovered during development:
 
 - `DefifaHookRegressions.t.sol` -- Attestation unit conservation on transfer to undelegated recipients (M-5 equivalent)
 - `regression/FulfillmentBlocksRatification.t.sol` -- Fulfillment failure does not block ratification
