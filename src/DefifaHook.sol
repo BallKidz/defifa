@@ -949,7 +949,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Set the beneficiary as the attestation delegate by default.
         if (_attestationDelegate == address(0)) {
-            _attestationDelegate = defaultAttestationDelegate != address(0) ? defaultAttestationDelegate : context.beneficiary;
+            _attestationDelegate =
+                defaultAttestationDelegate != address(0) ? defaultAttestationDelegate : context.beneficiary;
         }
 
         // Make sure something is being minted.

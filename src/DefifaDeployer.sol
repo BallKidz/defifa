@@ -331,7 +331,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         // Send only the fee portion as payouts. The remaining balance stays as surplus for cash-outs.
         // Wrapped in try-catch so the final ruleset is always queued even if payout fails.
-        // slither-disable-next-line unused-return
+        // slither-disable-next-line unused-return,reentrancy-no-eth
         try _terminal.sendPayoutsOf({
             projectId: gameId,
             token: _token,

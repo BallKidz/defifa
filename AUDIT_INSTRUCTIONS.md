@@ -67,7 +67,7 @@ DefifaGovernor (singleton, shared across all games)
 
 ### Phase State Machine
 
-Phases are determined by Juicebox ruleset cycle numbers, safety mechanism checks, and scorecard ratification status. The state machine is in `DefifaDeployer.currentGamePhaseOf()` (line 219-255).
+Phases are determined by Juicebox ruleset cycle numbers, safety mechanism checks, and scorecard ratification status. The state machine is in `DefifaDeployer.currentGamePhaseOf()`.
 
 ```
 COUNTDOWN (cycleNumber == 0)
@@ -269,26 +269,26 @@ Where `shareToBeneficiary = cumulativeMintPrice` of burned tokens and `outOfTota
 
 Start with the money: follow ETH from payment to cash-out.
 
-1. `DefifaHook._processPayment()` (line 936) -- where tokens enter
-2. `DefifaHook.beforeCashOutRecordedWith()` (line 252) -- reclaim calculation
-3. `DefifaHook.afterCashOutRecordedWith()` (line 609) -- where tokens leave
-4. `DefifaDeployer.fulfillCommitmentsOf()` (line 294) -- fee distribution
-5. `DefifaGovernor.ratifyScorecardFrom()` (line 139) -- scorecard execution
-6. `DefifaHookLib.validateAndBuildWeights()` (line 35) -- weight validation
-7. `DefifaHookLib.computeCashOutWeight()` (line 95) -- per-token value
-8. `DefifaDeployer._buildSplits()` (line 633) -- fee normalization
-9. `DefifaDeployer.currentGamePhaseOf()` (line 219) -- phase state machine
-10. `DefifaDeployer.triggerNoContestFor()` (line 562) -- no-contest safety valve
+1. `DefifaHook._processPayment()` -- where tokens enter
+2. `DefifaHook.beforeCashOutRecordedWith()` -- reclaim calculation
+3. `DefifaHook.afterCashOutRecordedWith()` -- where tokens leave
+4. `DefifaDeployer.fulfillCommitmentsOf()` -- fee distribution
+5. `DefifaGovernor.ratifyScorecardFrom()` -- scorecard execution
+6. `DefifaHookLib.validateAndBuildWeights()` -- weight validation
+7. `DefifaHookLib.computeCashOutWeight()` -- per-token value
+8. `DefifaDeployer._buildSplits()` -- fee normalization
+9. `DefifaDeployer.currentGamePhaseOf()` -- phase state machine
+10. `DefifaDeployer.triggerNoContestFor()` -- no-contest safety valve
 
 ### P0 -- Critical (Fund Safety)
 
-1. **Cash-out weight arithmetic**: Verify `computeCashOutWeight()` and `computeCashOutCount()` in `DefifaHookLib` cannot overflow or return inflated values. The `_weight / _totalTokensForCashoutInTier` division is the core economic calculation. Confirm `tokensRedeemedFrom` tracking is correct: incremented ONLY during COMPLETE cash-outs (line 660), NOT during MINT/REFUND refunds.
+1. **Cash-out weight arithmetic**: Verify `computeCashOutWeight()` and `computeCashOutCount()` in `DefifaHookLib` cannot overflow or return inflated values. The `_weight / _totalTokensForCashoutInTier` division is the core economic calculation. Confirm `tokensRedeemedFrom` tracking is correct: incremented ONLY during COMPLETE cash-outs, NOT during MINT/REFUND refunds.
 
-2. **`_totalMintCost` integrity**: This variable is the denominator for fee token distribution. It is incremented on paid mint (`_mintAll`, line 874), reserved mint (`mintReservesFor`, line 575), and decremented on cash-out (`afterCashOutRecordedWith`, line 689). Verify no path exists where `_totalMintCost` underflows or becomes inconsistent with actual live token count.
+2. **`_totalMintCost` integrity**: This variable is the denominator for fee token distribution. It is incremented on paid mint (`_mintAll`), reserved mint (`mintReservesFor`), and decremented on cash-out (`afterCashOutRecordedWith`). Verify no path exists where `_totalMintCost` underflows or becomes inconsistent with actual live token count.
 
-3. **Fulfillment reentrancy guard**: `fulfilledCommitmentsOf[gameId]` is set to `max(feeAmount, 1)` BEFORE external calls to `sendPayoutsOf` and `queueRulesetsOf` (DefifaDeployer lines 324-357). Verify this guard prevents double fulfillment via reentrancy through the terminal.
+3. **Fulfillment reentrancy guard**: `fulfilledCommitmentsOf[gameId]` is set to `max(feeAmount, 1)` BEFORE external calls to `sendPayoutsOf` and `queueRulesetsOf`. Verify this guard prevents double fulfillment via reentrancy through the terminal.
 
-4. **Scorecard execution via low-level call**: `ratifyScorecardFrom` calls `_metadata.dataHook.call(_calldata)` (DefifaGovernor line 169). The `_calldata` is `abi.encodeWithSelector(setTierCashOutWeightsTo.selector, tierWeights)`. Verify that the hash-based proposal system prevents any calldata that does not match the submitted scorecard from being executed.
+4. **Scorecard execution via low-level call**: `ratifyScorecardFrom` calls `_metadata.dataHook.call(_calldata)`. The `_calldata` is `abi.encodeWithSelector(setTierCashOutWeightsTo.selector, tierWeights)`. Verify that the hash-based proposal system prevents any calldata that does not match the submitted scorecard from being executed.
 
 5. **Fee accounting during fulfillment**: `fulfillCommitmentsOf` computes `feeAmount = mulDiv(pot, _commitmentPercentOf[gameId], SPLITS_TOTAL_PERCENT)` and sends this amount as payouts via try-catch. On success, `fulfilledCommitmentsOf` retains the fee amount; on failure, it resets to sentinel (1) and the fee stays in the pot. Verify that `currentGamePotOf` correctly subtracts `fulfilledCommitmentsOf` and that the sentinel value (1 wei) does not cause meaningful accounting error.
 
@@ -298,19 +298,19 @@ Start with the money: follow ETH from payment to cash-out.
 
 7. **Attestation snapshotting**: Attestation weight is computed at the `attestationsBegin` timestamp via `getPastTierAttestationUnitsOf()`. Verify that the `Checkpoints.Trace208.upperLookup()` correctly captures the state at that exact timestamp, and that minting or transferring NFTs after `attestationsBegin` does not retroactively affect attestation power.
 
-8. **Double attestation prevention**: `_attestations.hasAttested[msg.sender]` (DefifaGovernor line 121) prevents double voting. But verify that an attacker cannot attest, transfer NFTs to another address, and have that address attest with the same attestation power (the snapshot at `attestationsBegin` should prevent this, but verify the checkpoint resolution).
+8. **Double attestation prevention**: `_attestations.hasAttested[msg.sender]` prevents double voting. But verify that an attacker cannot attest, transfer NFTs to another address, and have that address attest with the same attestation power (the snapshot at `attestationsBegin` should prevent this, but verify the checkpoint resolution).
 
-9. **Grace period anchoring**: `gracePeriodEnds = attestationsBegin + attestationGracePeriod` (DefifaGovernor line 241). Verify that early scorecard submission (before `attestationStartTime`) correctly delays the grace period start, preventing instant ratification.
+9. **Grace period anchoring**: `gracePeriodEnds = attestationsBegin + attestationGracePeriod`. Verify that early scorecard submission (before `attestationStartTime`) correctly delays the grace period start, preventing instant ratification.
 
 ### P2 -- Medium (Access Control and State Transitions)
 
-10. **Hook ownership chain**: DefifaDeployer creates the hook clone, calls `initialize()`, then `transferOwnership(GOVERNOR)` (line 543). Verify that no window exists between `initialize()` and `transferOwnership()` where an attacker could call `setTierCashOutWeightsTo()` (requires `onlyOwner`).
+10. **Hook ownership chain**: DefifaDeployer creates the hook clone, calls `initialize()`, then `transferOwnership(GOVERNOR)`. Verify that no window exists between `initialize()` and `transferOwnership()` where an attacker could call `setTierCashOutWeightsTo()` (requires `onlyOwner`).
 
-11. **Phase check ordering in `currentGamePhaseOf()`**: The function checks `cashOutWeightIsSet` BEFORE `noContestTriggeredFor` (lines 231-234). Verify this ordering is correct: a ratified scorecard should always take priority over no-contest.
+11. **Phase check ordering in `currentGamePhaseOf()`**: The function checks `cashOutWeightIsSet` BEFORE `noContestTriggeredFor`. Verify this ordering is correct: a ratified scorecard should always take priority over no-contest.
 
-12. **Clone initialization guard**: `DefifaHook.initialize()` checks `address(this) == CODE_ORIGIN` (line 487, prevents initializing the implementation) and `address(store) != address(0)` (line 490, prevents re-initialization). Verify these guards are sufficient against proxy/clone attacks.
+12. **Clone initialization guard**: `DefifaHook.initialize()` checks `address(this) == CODE_ORIGIN` (prevents initializing the implementation) and `address(store) != address(0)` (prevents re-initialization). Verify these guards are sufficient against proxy/clone attacks.
 
-13. **Delegation lockdown**: `setTierDelegateTo` and `setTierDelegatesTo` require `MINT` phase (DefifaHook lines 739, 753). Verify that auto-delegation on transfer (`_transferTierAttestationUnits`, lines 1042-1047) correctly handles the case where a recipient already has a delegate set.
+13. **Delegation lockdown**: `setTierDelegateTo` and `setTierDelegatesTo` require `MINT` phase. Verify that auto-delegation on transfer (`_transferTierAttestationUnits`) correctly handles the case where a recipient already has a delegate set.
 
 ### P3 -- Low (Edge Cases and Rounding)
 
@@ -347,7 +347,7 @@ These properties should hold for all games in all states. The test suite validat
 - Attestation power is snapshotted at `attestationsBegin` (not live)
 - Quorum threshold: 50% of minted tiers' total max attestation power (live at call time)
 - Only one scorecard can be ratified per game
-- Minimum grace period: 1 day (enforced in `initializeGame`, line 317)
+- Minimum grace period: 1 day (enforced in `initializeGame`)
 
 ### Phase Transitions
 - A ratified scorecard (`cashOutWeightIsSet == true`) always produces COMPLETE, regardless of other conditions
@@ -413,14 +413,14 @@ forge test --match-contract DefifaMintCostInvariant -vvv
 
 | Constant | Value | Location |
 |----------|-------|---------|
-| `TOTAL_CASHOUT_WEIGHT` | 1e18 | DefifaHookLib line 28 |
-| `MAX_ATTESTATION_POWER_TIER` | 1e9 | DefifaGovernor line 42 |
-| `DEFIFA_FEE_DIVISOR` | 20 (5%) | DefifaDeployer line 109 |
-| `BASE_PROTOCOL_FEE_DIVISOR` | 40 (2.5%) | DefifaDeployer line 105 |
-| `SPLITS_TOTAL_PERCENT` | 1e9 | JBConstants |
-| `initialSupply` per tier | 999,999,999 | DefifaDeployer line 466 |
-| Max tiers per game | 128 | DefifaHook `uint256[128]` (line 75) |
-| Min grace period | 1 day | DefifaGovernor line 317 |
+| `TOTAL_CASHOUT_WEIGHT` | 1e18 | `DefifaHookLib` |
+| `MAX_ATTESTATION_POWER_TIER` | 1e9 | `DefifaGovernor` |
+| `DEFIFA_FEE_DIVISOR` | 20 (5%) | `DefifaDeployer` |
+| `BASE_PROTOCOL_FEE_DIVISOR` | 40 (2.5%) | `DefifaDeployer` |
+| `SPLITS_TOTAL_PERCENT` | 1e9 | `JBConstants` |
+| `initialSupply` per tier | 999,999,999 | `DefifaDeployer` |
+| Max tiers per game | 128 | `DefifaHook` (`uint256[128]`) |
+| Min grace period | 1 day | `DefifaGovernor` |
 | Compiler | Solidity 0.8.26 | All files |
 
 ---
@@ -429,20 +429,20 @@ forge test --match-contract DefifaMintCostInvariant -vvv
 
 | Pattern | Where | Why Dangerous |
 |---------|-------|---------------|
-| Low-level `.call()` with arbitrary calldata | `DefifaGovernor.ratifyScorecardFrom()` line 169 | Executes `_metadata.dataHook.call(_calldata)` -- if hash-based proposal verification is flawed, arbitrary calldata could be executed on the hook |
-| `unchecked` block around state mutation | `DefifaHook.afterCashOutRecordedWith()` line 660 | `++tokensRedeemedFrom[tierId]` in `unchecked` -- overflow of this counter would corrupt cash-out weight calculations for the tier |
-| Optimistic project ID prediction | `DefifaDeployer.launchGameWith()` line 394 | `gameId = PROJECTS.count() + 1` -- race condition with concurrent project creation. Mitigated by post-launch equality check, but `_opsOf[gameId]` is written before the check |
+| Low-level `.call()` with arbitrary calldata | `DefifaGovernor.ratifyScorecardFrom()` | Executes `_metadata.dataHook.call(_calldata)` -- if hash-based proposal verification is flawed, arbitrary calldata could be executed on the hook |
+| `unchecked` block around state mutation | `DefifaHook.afterCashOutRecordedWith()` | `++tokensRedeemedFrom[tierId]` in `unchecked` -- overflow of this counter would corrupt cash-out weight calculations for the tier |
+| Optimistic project ID prediction | `DefifaDeployer.launchGameWith()` | `gameId = PROJECTS.count() + 1` -- race condition with concurrent project creation. Mitigated by post-launch equality check, but `_opsOf[gameId]` is written before the check |
 | No reentrancy guard (no `ReentrancyGuard`) | All contracts | Relies on state ordering (storage writes before external calls) instead of explicit reentrancy locks. Any future refactor that reorders could introduce reentrancy |
-| `minTokensPaidOut: 0` on `sendPayoutsOf` | `DefifaDeployer.fulfillCommitmentsOf()` line 342 | Zero slippage protection -- MEV sandwich could extract value from the payout if the terminal swaps tokens |
-| Casting `address` to `uint32` for currency | `DefifaDeployer.fulfillCommitmentsOf()` line 341 | `uint32(uint160(_token))` truncates the address to 32 bits. Must match terminal's accounting context exactly or payout fails |
-| Clone initialization window | `DefifaDeployer.launchGameWith()` lines 499-543 | Hook is initialized before `transferOwnership(GOVERNOR)`. Between `initialize()` (owner = deployer) and `transferOwnership()`, the hook's `onlyOwner` functions are callable by the deployer. Mitigated by atomic transaction |
-| `delegatecall` from library | `DefifaHookLib.claimTokensFor()` line 346 | Executes via `delegatecall` to the library -- `address(this)` is the hook's address, `safeTransfer` sends from the hook's balance. Incorrect library linkage could drain the hook |
-| Live supply in quorum calculation | `DefifaGovernor.quorum()` line 423 | Uses `currentSupplyOfTier()` (live, not snapshotted). If burns become possible during SCORING, quorum could be manipulated downward after attestations begin |
-| Integer division dust accumulation | `DefifaHookLib.computeCashOutWeight()` line 132 | `_weight / _totalTokensForCashoutInTier` rounds down. Dust (up to 1 wei per tier) is permanently locked. 128 tiers = max 128 wei locked per game |
+| `minTokensPaidOut: 0` on `sendPayoutsOf` | `DefifaDeployer.fulfillCommitmentsOf()` | Zero slippage protection -- MEV sandwich could extract value from the payout if the terminal swaps tokens |
+| Casting `address` to `uint32` for currency | `DefifaDeployer.fulfillCommitmentsOf()` | `uint32(uint160(_token))` truncates the address to 32 bits. Must match terminal's accounting context exactly or payout fails |
+| Clone initialization window | `DefifaDeployer.launchGameWith()` | Hook is initialized before `transferOwnership(GOVERNOR)`. Between `initialize()` (owner = deployer) and `transferOwnership()`, the hook's `onlyOwner` functions are callable by the deployer. Mitigated by atomic transaction |
+| `delegatecall` from library | `DefifaHookLib.claimTokensFor()` | Executes via `delegatecall` to the library -- `address(this)` is the hook's address, `safeTransfer` sends from the hook's balance. Incorrect library linkage could drain the hook |
+| Live supply in quorum calculation | `DefifaGovernor.quorum()` | Uses `currentSupplyOfTier()` (live, not snapshotted). If burns become possible during SCORING, quorum could be manipulated downward after attestations begin |
+| Integer division dust accumulation | `DefifaHookLib.computeCashOutWeight()` | `_weight / _totalTokensForCashoutInTier` rounds down. Dust (up to 1 wei per tier) is permanently locked. 128 tiers = max 128 wei locked per game |
 | `_totalMintCost` as fee token denominator | `DefifaHook._totalMintCost` internal variable | Incremented on mint, decremented on cash-out. If any path allows underflow (e.g., reserved mint followed by full refund), fee token claims revert or distribute incorrectly |
-| Try-catch swallowing failures silently | `DefifaDeployer.fulfillCommitmentsOf()` line 335 | `sendPayoutsOf` failure is caught and fee stays in pot. The sentinel value (1 wei) subtracted from pot in `currentGamePotOf` is an accounting approximation |
-| External call in view function | `DefifaTokenUriResolver.tokenUriOf()` line 57 | Calls `gamePotReporter.currentGamePotOf()`, `hook.cashOutWeightOf()`, and `hook.store().totalSupplyOf()`. A malicious URI resolver could cause excessive gas consumption in off-chain reads |
-| `block.timestamp` as scorecard ID component | `DefifaGovernor.submitScorecardFor()` line 236 | `attestationsBegin = uint48(block.timestamp + ...)` -- miner manipulation of timestamp (within 15s drift) could affect grace period boundaries |
+| Try-catch swallowing failures silently | `DefifaDeployer.fulfillCommitmentsOf()` | `sendPayoutsOf` failure is caught and fee stays in pot. The sentinel value (1 wei) subtracted from pot in `currentGamePotOf` is an accounting approximation |
+| External call in view function | `DefifaTokenUriResolver.tokenUriOf()` | Calls `gamePotReporter.currentGamePotOf()`, `hook.cashOutWeightOf()`, and `hook.store().totalSupplyOf()`. A malicious URI resolver could cause excessive gas consumption in off-chain reads |
+| `block.timestamp` as scorecard ID component | `DefifaGovernor.submitScorecardFor()` | `attestationsBegin = uint48(block.timestamp + ...)` -- miner manipulation of timestamp (within 15s drift) could affect grace period boundaries |
 
 ---
 
@@ -479,6 +479,7 @@ Each finding should use this 7-point structure:
 No prior formal audit with finding IDs has been conducted for defifa-collection-deployer-v6. Known risks, trust assumptions, and economic edge cases are documented in [RISKS.md](./RISKS.md). The test suite (16 files, ~172 test functions) includes regression tests for specific issues discovered during development:
 
 - `DefifaHookRegressions.t.sol` -- Attestation unit conservation on transfer to undelegated recipients (M-5 equivalent)
+- `regression/AttestationDelegateBeneficiary.t.sol` -- Default attestation delegate is beneficiary, not payer (H-6)
 - `regression/FulfillmentBlocksRatification.t.sol` -- Fulfillment failure does not block ratification
 - `regression/GracePeriodBypass.t.sol` -- Grace period extends from attestation start, not submission time
 
