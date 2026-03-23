@@ -45,7 +45,7 @@ Complete interaction paths for every user role in the Defifa prediction game sys
 - `launchProjectData.splits` -- Optional custom splits for fee distribution.
 - `launchProjectData.attestationStartTime` -- Timestamp when attestation begins (0 = `block.timestamp` at deploy).
 - `launchProjectData.attestationGracePeriod` -- Minimum grace period before ratification (0 = enforced minimum of 1 day).
-- `launchProjectData.defaultAttestationDelegate` -- Default attestation delegate (0 = each payer delegates to self).
+- `launchProjectData.defaultAttestationDelegate` -- Default attestation delegate (0 = each beneficiary delegates to self).
 - `launchProjectData.defaultTokenUriResolver` -- Token URI resolver (0 = use default SVG).
 - `launchProjectData.terminal` -- `IJBTerminal` instance (e.g. a `JBMultiTerminal`).
 - `launchProjectData.store` -- `JB721TiersHookStore` instance.
@@ -91,7 +91,7 @@ DefifaLaunchProjectData({
     splits: [],                              // Optional custom splits
     attestationStartTime: 0,                 // 0 = block.timestamp at deploy
     attestationGracePeriod: 0,               // 0 = enforced minimum of 1 day
-    defaultAttestationDelegate: address(0),  // 0 = each payer delegates to self
+    defaultAttestationDelegate: address(0),  // 0 = each beneficiary delegates to self
     defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),  // use default SVG
     terminal: IJBTerminal(address(jbMultiTerminal)),
     store: jb721TiersHookStore,
@@ -200,7 +200,7 @@ jbMultiTerminal.pay{value: 0.02 ether}({
 ### State changes
 
 1. `DefifaHook._totalMintCost` -- Incremented by `context.amount.value` (the paid amount).
-2. `DefifaHook._tierDelegation[payer][tierId]` -- Set to `attestationDelegate` for each minted tier (if different from the payer's existing delegate for that tier).
+2. `DefifaHook._tierDelegation[payer][tierId]` -- Set to `attestationDelegate` for each minted tier (if different from the payer's existing delegate for that tier). When no explicit delegate is provided and no `defaultAttestationDelegate` is configured, defaults to the beneficiary.
 3. `DefifaHook._delegateTierCheckpoints[delegate][tierId]` -- Checkpointed with new attestation units.
 4. `DefifaHook._totalTierCheckpoints[tierId]` -- Checkpointed with increased total attestation units.
 5. ERC-721 token ownership records updated (one token per tier mint).
@@ -712,7 +712,7 @@ hook.setTierDelegatesTo(delegations);
 
 - `DefifaHook_DelegateAddressZero` -- Delegatee is `address(0)`.
 - `DefifaHook_DelegateChangesUnavailableInThisPhase` -- Not in MINT phase.
-- On NFT transfer after MINT: auto-delegates to recipient if recipient has no delegate (DefifaHook lines 1036-1047).
+- On NFT transfer after MINT: auto-delegates to recipient if recipient has no delegate.
 
 ---
 

@@ -312,6 +312,42 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
         }
     }
 
+    /// @notice Paying for another account mints the NFT to the beneficiary but defaults attestation power to the payer.
+    /// @dev This proves governance power can be separated from NFT ownership when `payer != beneficiary`
+    ///      and the metadata leaves the delegate unset.
+    function test_attestationUnitsFollowPayerInsteadOfBeneficiary() public {
+        DefifaLaunchProjectData memory defifaData = _getBasicLaunchData(2);
+        (uint256 projectId, DefifaHook nft, DefifaGovernor _governor) = _createProject(defifaData);
+
+        address payer = address(bytes20(keccak256("payer")));
+        address beneficiary = address(bytes20(keccak256("beneficiary")));
+
+        // Phase 1: Mint.
+        vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
+
+        vm.deal(payer, 1 ether);
+
+        uint16[] memory rawMetadata = new uint16[](1);
+        rawMetadata[0] = 1;
+        bytes memory metadata = _buildPayMetadata(abi.encode(address(0), rawMetadata));
+
+        vm.prank(payer);
+        jbMultiTerminal().pay{value: 1 ether}(
+            projectId, JBConstants.NATIVE_TOKEN, 1 ether, beneficiary, 0, "", metadata
+        );
+
+        assertEq(nft.balanceOf(beneficiary), 1, "beneficiary should receive the NFT");
+        assertEq(nft.balanceOf(payer), 0, "payer should not receive the NFT");
+
+        vm.warp(_tsReader.timestamp() + 1);
+
+        uint256 payerWeight = _governor.getAttestationWeight(projectId, payer, uint48(block.timestamp));
+        uint256 beneficiaryWeight = _governor.getAttestationWeight(projectId, beneficiary, uint48(block.timestamp));
+
+        assertGt(payerWeight, 0, "payer receives the default attestation power");
+        assertEq(beneficiaryWeight, 0, "beneficiary receives no default attestation power");
+    }
+
     // ----- Internal helpers ------
 
     function _getBasicLaunchData(uint8 nTiers) internal returns (DefifaLaunchProjectData memory) {

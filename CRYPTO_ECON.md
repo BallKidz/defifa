@@ -829,7 +829,7 @@ where $n_{\text{min}} \geq 2$ (or better, a configurable parameter). Alternative
 
 **Severity: Significant.**
 
-The weight validation in `setTierCashOutWeightsTo` (`DefifaHook.sol:643`) uses a strict greater-than check:
+The weight validation in `setTierCashOutWeightsTo` (`DefifaHook.sol`) uses a strict greater-than check:
 
 ```solidity
 if (_cumulativeCashOutWeight > TOTAL_CASHOUT_WEIGHT) revert INVALID_CASHOUT_WEIGHTS();
@@ -892,7 +892,7 @@ if (gamePhaseReporter.currentGamePhaseOf(_gameId) != DefifaGamePhase.SCORING) {
 
 **Severity: Moderate.**
 
-In `fulfillCommitmentsOf` (`DefifaDeployer.sol:439–445`), the function calls `sendPayoutsOf` with `minTokensPaidOut` set to the full treasury balance:
+In `fulfillCommitmentsOf` (`DefifaDeployer.sol`), the function calls `sendPayoutsOf` with `minTokensPaidOut` set to the full treasury balance:
 
 ```solidity
 _terminal.sendPayoutsOf({

@@ -8,7 +8,7 @@ Each game is a Juicebox project with phased rulesets that move through Countdown
 
 ### Minting
 
-During the Mint phase, players pay the project's terminal to mint ERC-721 game pieces. Each tier represents a team or outcome -- all tiers share the same price. Minting delegates attestation power to the payer (or a specified delegate), which is used later during scorecard governance.
+During the Mint phase, players pay the project's terminal to mint ERC-721 game pieces. Each tier represents a team or outcome -- all tiers share the same price. Minting delegates attestation power to the beneficiary (or a specified delegate), which is used later during scorecard governance.
 
 ### Refunds
 
@@ -196,6 +196,7 @@ defifa-collection-deployer-v6/
 │   ├── TestQALastMile.t.sol
 │   ├── deployScript.t.sol
 │   └── regression/
+│       ├── AttestationDelegateBeneficiary.t.sol
 │       ├── FulfillmentBlocksRatification.t.sol
 │       └── GracePeriodBypass.t.sol
 ├── script/
