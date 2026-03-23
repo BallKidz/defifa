@@ -332,7 +332,9 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
         bytes memory metadata = _buildPayMetadata(abi.encode(address(0), rawMetadata));
 
         vm.prank(payer);
-        jbMultiTerminal().pay{value: 1 ether}(projectId, JBConstants.NATIVE_TOKEN, 1 ether, beneficiary, 0, "", metadata);
+        jbMultiTerminal().pay{value: 1 ether}(
+            projectId, JBConstants.NATIVE_TOKEN, 1 ether, beneficiary, 0, "", metadata
+        );
 
         assertEq(nft.balanceOf(beneficiary), 1, "beneficiary should receive the NFT");
         assertEq(nft.balanceOf(payer), 0, "payer should not receive the NFT");

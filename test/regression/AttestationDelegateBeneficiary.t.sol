@@ -94,8 +94,7 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
         _defifaProjectId =
             jbController().launchProjectFor(address(projectOwner), "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
-        address _defifaToken =
-            address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+        address _defifaToken = address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
 
         hook = new DefifaHook(jbDirectory(), IERC20(_defifaToken), IERC20(_nanaToken));
         governor = new DefifaGovernor(jbController(), address(this));
