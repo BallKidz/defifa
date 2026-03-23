@@ -6,15 +6,15 @@ Prediction game platform built on Juicebox V6. Players buy NFT tiers representin
 
 ## Architecture
 
-Five contracts, one library. Total ~3,990 lines of production Solidity.
+Five contracts, one library. Total ~3,990 lines in `src/` (~3,320 in the six main files below).
 
 ```
 DefifaDeployer.sol       (937 lines)  -- Game factory. Owns all game JB projects. Manages lifecycle rulesets, fee splits, fulfillment, no-contest.
 DefifaHook.sol           (1097 lines) -- Pay/cashout hook. NFT minting, burning, attestation delegation, fee token distribution, cash-out weight logic.
-DefifaGovernor.sol       (514 lines)  -- Scorecard governance. Submit, attest, ratify scorecards. Singleton across all games.
-DefifaHookLib.sol        (368 lines)  -- Pure/view helpers. Weight validation, cash-out math, attestation computation, token claiming.
+DefifaGovernor.sol       (516 lines)  -- Scorecard governance. Submit, attest, ratify scorecards. Singleton across all games.
+DefifaHookLib.sol        (373 lines)  -- Pure/view helpers. Weight validation, cash-out math, attestation computation, token claiming.
 DefifaProjectOwner.sol   (86 lines)   -- Permanent holder of the Defifa project NFT. Grants SET_SPLIT_GROUPS permission.
-DefifaTokenUriResolver.sol (313 lines) -- On-chain SVG metadata for game NFTs.
+DefifaTokenUriResolver.sol (315 lines) -- On-chain SVG metadata for game NFTs.
 ```
 
 ### Contract Relationships
@@ -364,7 +364,7 @@ These properties should hold for all games in all states. The test suite validat
 
 ## Testing
 
-### Test Files (14 files, ~100 test functions)
+### Test Files (15 files, ~155 test functions)
 
 | File | Focus |
 |------|-------|
@@ -375,9 +375,12 @@ These properties should hold for all games in all states. The test suite validat
 | `DefifaMintCostInvariant.t.sol` | Stateful fuzz: `_totalMintCost` invariant across random mints and refunds. |
 | `DefifaHookRegressions.t.sol` | Audit finding M-5: attestation unit conservation on transfer to undelegated recipients. |
 | `DefifaAuditLowGuards.t.sol` | Input validation: double initialization, uint48 overflow, zero-address delegation. |
-| `Fork.t.sol` | Mainnet fork tests: full lifecycle, edge cases, all revert conditions, scorecard state machine. ~50 tests. |
+| `Fork.t.sol` | Mainnet fork tests: full lifecycle, edge cases, all revert conditions, scorecard state machine. 69 tests. |
 | `regression/FulfillmentBlocksRatification.t.sol` | Fulfillment failure does not block ratification (try-catch behavior). |
 | `regression/GracePeriodBypass.t.sol` | Grace period extends from attestation start, not submission time. |
+| `DefifaAdversarialQuorum.t.sol` | Adversarial governance: late-buyer attestation power, delegation lockdown, double attestation, quorum manipulation, competing scorecards. 9 tests. |
+| `TestQALastMile.t.sol` | Edge cases: cash-out DoS during fulfillment window, game ID prediction race condition. 2 tests. |
+| `deployScript.t.sol` | Deploy script smoke test. |
 | `DefifaUSDC.t.sol` | ERC-20 (USDC) game variant. |
 | `SVG.t.sol` | Token URI resolver SVG rendering. |
 
@@ -472,7 +475,7 @@ Each finding should use this 7-point structure:
 
 ## Previous Audit Findings
 
-No prior formal audit with finding IDs has been conducted for defifa-collection-deployer-v6. Known risks, trust assumptions, and economic edge cases are documented in [RISKS.md](./RISKS.md). The test suite (14 files, ~100 test functions) includes regression tests for specific issues discovered during development:
+No prior formal audit with finding IDs has been conducted for defifa-collection-deployer-v6. Known risks, trust assumptions, and economic edge cases are documented in [RISKS.md](./RISKS.md). The test suite (15 files, ~155 test functions) includes regression tests for specific issues discovered during development:
 
 - `DefifaHookRegressions.t.sol` -- Attestation unit conservation on transfer to undelegated recipients (M-5 equivalent)
 - `regression/FulfillmentBlocksRatification.t.sol` -- Fulfillment failure does not block ratification
