@@ -91,7 +91,7 @@ sequenceDiagram
     Player->>JB: pay (mint price)
     JB->>Hook: afterPayRecordedWith (mint NFT)
     Hook-->>Player: ERC-721 game piece
-    Player->>Hook: setTierDelegates (delegate attestation power)
+    Player->>Hook: setTierDelegatesTo (delegate attestation power)
 
     Note over JB,Player: REFUND (optional)
     Player->>JB: cashOutTokensOf (burn NFT)
@@ -229,7 +229,7 @@ npm install && forge install
 | Command | Description |
 |---------|-------------|
 | `forge build` | Compile contracts and write artifacts to `out`. |
-| `forge test` | Run the test suite (53 tests: unit, fuzz, invariant). |
+| `forge test` | Run the test suite (155 tests: unit, fuzz, invariant). |
 | `forge test -vvvv` | Run tests with full traces. |
 | `forge fmt` | Format Solidity files. |
 | `forge build --sizes` | Get contract sizes. |
