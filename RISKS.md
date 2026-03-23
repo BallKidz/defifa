@@ -27,8 +27,6 @@
 ## 4. Reentrancy Surface
 
 - **afterCashOutRecordedWith.** Burns tokens before external calls. `_claimTokensFor` calls `safeTransfer` on ERC-20 tokens (DEFIFA_TOKEN, BASE_PROTOCOL_TOKEN). Preceding burn and state updates prevent meaningful reentrancy profit.
-- **fulfillCommitmentsOf.** Uses `fulfilledCommitmentsOf[gameId]` as a reentrancy guard (set before `sendPayoutsOf`). Returns early if already non-zero. Uses `max(feeAmount, 1)` to ensure the guard works even when pot rounds to 0. `sendPayoutsOf` is wrapped in try-catch: on failure, resets to sentinel (1) and emits `CommitmentPayoutFailed`, ensuring the final ruleset is always queued.
-- **ratifyScorecardFrom.** Executes arbitrary calldata on the hook via low-level call. The hook's `setTierCashOutWeightsTo` has an `onlyOwner` guard and a `cashOutWeightIsSet` check preventing double-set.
 
 ## 5. DoS Vectors
 
@@ -61,3 +59,11 @@ If `scorecardTimeout` elapses before ratification, the game permanently enters N
 ### 8.2 Permanent cash-out weights (no correction mechanism)
 
 Cash-out weights set via `ratifyScorecardFrom` cannot be updated or corrected. This is accepted because: (1) allowing weight changes would introduce governance attack surfaces where a quorum re-ratifies to steal from other tiers, (2) the attestation process provides a dispute window (grace period) before ratification finalizes, and (3) the alternative (upgradeable weights) would undermine the trust-minimized game design. If a scorecard is wrong, the game should be allowed to timeout into NO_CONTEST for refunds.
+
+### 8.3 fulfillCommitmentsOf reentrancy is guarded
+
+`fulfillCommitmentsOf` uses `fulfilledCommitmentsOf[gameId]` as a reentrancy guard (set before `sendPayoutsOf`). Returns early if already non-zero. Uses `max(feeAmount, 1)` to ensure the guard works even when pot rounds to 0. `sendPayoutsOf` is wrapped in try-catch: on failure, resets to sentinel (1) and emits `CommitmentPayoutFailed`, ensuring the final ruleset is always queued.
+
+### 8.4 ratifyScorecardFrom reentrancy is double-guarded
+
+`ratifyScorecardFrom` executes arbitrary calldata on the hook via low-level call. The hook's `setTierCashOutWeightsTo` has an `onlyOwner` guard and a `cashOutWeightIsSet` check preventing double-set. Both guards prevent reentrancy exploitation.
