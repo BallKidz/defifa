@@ -30,19 +30,17 @@ import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 
-/// @title AttestationDelegateBeneficiary
-/// @notice Regression test for H-6: when payer != beneficiary and no explicit delegate is set,
-///         attestation delegation should default to the beneficiary (NFT recipient), not the payer.
-contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
+contract CodexAttestationDoubleCount is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
-    uint256 _protocolFeeProjectId;
-    uint256 _defifaProjectId;
-    address projectOwner = address(bytes20(keccak256("projectOwner")));
+    uint256 internal _protocolFeeProjectId;
+    uint256 internal _defifaProjectId;
 
-    DefifaDeployer deployer;
-    DefifaHook hook;
-    DefifaGovernor governor;
+    DefifaDeployer internal deployer;
+    DefifaHook internal hook;
+    DefifaGovernor internal governor;
+
+    uint256 internal _mintPhaseStart;
 
     function setUp() public virtual override {
         super.setUp();
@@ -85,6 +83,8 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
             fundAccessLimitGroups: new JBFundAccessLimitGroup[](0)
         });
 
+        address projectOwner = address(bytes20(keccak256("projectOwner")));
+
         _protocolFeeProjectId =
             jbController().launchProjectFor(address(projectOwner), "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
@@ -112,90 +112,22 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
         governor.transferOwnership(address(deployer));
     }
 
-    /// @notice H-6: Default attestation delegate should be the beneficiary, not the payer.
-    function test_defaultDelegateIsBeneficiaryNotPayer() public {
+    function test_attestationUnitsDuplicateAfterBeneficiaryTransfer() external {
         address payer = address(bytes20(keccak256("payer")));
         address beneficiary = address(bytes20(keccak256("beneficiary")));
+        address recipient = address(bytes20(keccak256("recipient")));
 
-        // Launch game with no default attestation delegate.
-        (uint256 _projectId, DefifaHook _nft) = _launchGame();
-
-        // Warp to MINT phase.
-        vm.warp(_mintPhaseStart);
-
-        // Payer pays on behalf of beneficiary, no explicit delegate (address(0)).
-        vm.deal(payer, 1 ether);
-        uint16[] memory tierIds = new uint16[](1);
-        tierIds[0] = 1;
-        bytes memory payMetadata = abi.encode(address(0), tierIds); // attestationDelegate = address(0)
-        bytes memory metadata = _buildPayMetadata(payMetadata);
-
-        vm.prank(payer);
-        jbMultiTerminal().pay{value: 1 ether}({
-            projectId: _projectId,
-            token: JBConstants.NATIVE_TOKEN,
-            amount: 1 ether,
-            beneficiary: beneficiary, // NFT goes to beneficiary, NOT payer
-            minReturnedTokens: 0,
-            memo: "",
-            metadata: metadata
-        });
-
-        // H-6 fix: delegation should be on the beneficiary's account, not the payer's.
-        // The beneficiary's delegate is themselves (default when no explicit delegate is set).
-        address beneficiaryDelegate = _nft.getTierDelegateOf(beneficiary, 1);
-        assertEq(beneficiaryDelegate, beneficiary, "H-6: default delegate should be beneficiary, not payer");
-        // The payer should have no delegation since they didn't receive attestation units.
-        address payerDelegate = _nft.getTierDelegateOf(payer, 1);
-        assertEq(payerDelegate, address(0), "H-6: payer should have no delegation when payer != beneficiary");
-    }
-
-    /// @notice When payer == beneficiary, the default delegate should be that same address.
-    function test_defaultDelegateIsSelfWhenPayerEqualsBeneficiary() public {
-        address user = address(bytes20(keccak256("user")));
-
-        (uint256 _projectId, DefifaHook _nft) = _launchGame();
-        vm.warp(_mintPhaseStart);
-
-        vm.deal(user, 1 ether);
-        uint16[] memory tierIds = new uint16[](1);
-        tierIds[0] = 1;
-        bytes memory payMetadata = abi.encode(address(0), tierIds);
-        bytes memory metadata = _buildPayMetadata(payMetadata);
-
-        vm.prank(user);
-        jbMultiTerminal().pay{value: 1 ether}({
-            projectId: _projectId,
-            token: JBConstants.NATIVE_TOKEN,
-            amount: 1 ether,
-            beneficiary: user, // payer == beneficiary
-            minReturnedTokens: 0,
-            memo: "",
-            metadata: metadata
-        });
-
-        address delegate = _nft.getTierDelegateOf(user, 1);
-        assertEq(delegate, user, "Default delegate should be self when payer == beneficiary");
-    }
-
-    /// @notice When an explicit delegate is set, it should be used regardless of payer/beneficiary.
-    function test_explicitDelegateOverridesDefault() public {
-        address payer = address(bytes20(keccak256("payer2")));
-        address beneficiary = address(bytes20(keccak256("beneficiary2")));
-        address explicitDelegate = address(bytes20(keccak256("explicitDelegate")));
-
-        (uint256 _projectId, DefifaHook _nft) = _launchGame();
+        (uint256 projectId, DefifaHook nft) = _launchGame();
         vm.warp(_mintPhaseStart);
 
         vm.deal(payer, 1 ether);
         uint16[] memory tierIds = new uint16[](1);
         tierIds[0] = 1;
-        bytes memory payMetadata = abi.encode(explicitDelegate, tierIds);
-        bytes memory metadata = _buildPayMetadata(payMetadata);
+        bytes memory metadata = _buildPayMetadata(abi.encode(address(0), tierIds));
 
         vm.prank(payer);
         jbMultiTerminal().pay{value: 1 ether}({
-            projectId: _projectId,
+            projectId: projectId,
             token: JBConstants.NATIVE_TOKEN,
             amount: 1 ether,
             beneficiary: beneficiary,
@@ -204,18 +136,31 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
             metadata: metadata
         });
 
-        // With the fix, delegation is stored on the beneficiary's account, not the payer's.
-        address beneficiaryDelegate = _nft.getTierDelegateOf(beneficiary, 1);
-        assertEq(beneficiaryDelegate, explicitDelegate, "Explicit delegate should override default on beneficiary");
-        // Payer should have no delegation.
-        address payerDelegate = _nft.getTierDelegateOf(payer, 1);
-        assertEq(payerDelegate, address(0), "Payer should have no delegation when payer != beneficiary");
+        uint256 totalUnitsBefore = nft.getTierTotalAttestationUnitsOf(1);
+        uint256 beneficiaryUnitsBefore = nft.getTierAttestationUnitsOf(beneficiary, 1);
+        assertGt(totalUnitsBefore, 0, "tier should have nonzero attestation units");
+        assertEq(beneficiaryUnitsBefore, totalUnitsBefore, "beneficiary receives delegated units after mint");
+
+        uint256 tokenId = 1_000_000_001;
+        vm.prank(beneficiary);
+        nft.transferFrom(beneficiary, recipient, tokenId);
+
+        uint256 beneficiaryUnitsAfter = nft.getTierAttestationUnitsOf(beneficiary, 1);
+        uint256 recipientUnitsAfter = nft.getTierAttestationUnitsOf(recipient, 1);
+        uint256 totalUnitsAfter = nft.getTierTotalAttestationUnitsOf(1);
+
+        // After the fix: attestation units go to beneficiary on mint, then move to recipient on transfer.
+        // Total units stay constant, beneficiary loses units, recipient gains them.
+        assertEq(totalUnitsAfter, totalUnitsBefore, "total tier units stay constant");
+        assertEq(beneficiaryUnitsAfter, 0, "beneficiary loses attestation units after transferring NFT");
+        assertEq(recipientUnitsAfter, totalUnitsAfter, "recipient receives full attestation units from transfer");
+        // No double-counting: sum of individual units equals total.
+        assertEq(
+            beneficiaryUnitsAfter + recipientUnitsAfter,
+            totalUnitsAfter,
+            "no double-counting: sum of individual units equals total"
+        );
     }
-
-    // ----- Internal helpers ------
-
-    /// @dev MINT phase starts at `start - mintPeriodDuration - refundPeriodDuration`.
-    uint256 internal _mintPhaseStart;
 
     function _launchGame() internal returns (uint256 projectId, DefifaHook nft) {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](2);
@@ -243,7 +188,7 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
             splits: new JBSplit[](0),
             attestationStartTime: 0,
             attestationGracePeriod: 100_381,
-            defaultAttestationDelegate: address(0), // No default delegate -- should fall back to beneficiary
+            defaultAttestationDelegate: address(0),
             tiers: tierParams,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),

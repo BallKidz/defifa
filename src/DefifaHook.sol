@@ -966,18 +966,18 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             uint256 _tierId = _tierIds[_i];
 
             // Get a reference to the old delegate.
-            address _oldDelegate = _tierDelegation[context.payer][_tierId];
+            address _oldDelegate = _tierDelegation[context.beneficiary][_tierId];
 
             // If there's either a new delegate or old delegate, set delegation and transfer units.
             if (_attestationDelegate != address(0) || _oldDelegate != address(0)) {
                 // Switch delegates if needed.
                 if (_attestationDelegate != address(0) && _attestationDelegate != _oldDelegate) {
-                    _delegateTier({_account: context.payer, _delegatee: _attestationDelegate, _tierId: _tierId});
+                    _delegateTier({_account: context.beneficiary, _delegatee: _attestationDelegate, _tierId: _tierId});
                 }
 
                 // Transfer the attestation units.
                 _transferTierAttestationUnits({
-                    _from: address(0), _to: context.payer, _tierId: _tierId, _amount: _attestationAmounts[_i]
+                    _from: address(0), _to: context.beneficiary, _tierId: _tierId, _amount: _attestationAmounts[_i]
                 });
             }
 
