@@ -312,10 +312,12 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
         }
     }
 
-    /// @notice Paying for another account mints the NFT to the beneficiary but defaults attestation power to the payer.
-    /// @dev This proves governance power can be separated from NFT ownership when `payer != beneficiary`
-    ///      and the metadata leaves the delegate unset.
-    function test_attestationUnitsFollowPayerInsteadOfBeneficiary() public {
+    /// @notice Paying for another account mints the NFT to the beneficiary and defaults attestation power to the
+    ///         beneficiary (not the payer) when no explicit delegate is provided.
+    /// @dev When the metadata leaves the attestation delegate as address(0) and defaultAttestationDelegate is unset,
+    ///      the source code falls back to context.beneficiary. This proves that NFT ownership and attestation power
+    ///      both land on the beneficiary by default, and the payer retains neither.
+    function test_attestationUnitsFollowBeneficiaryByDefault() public {
         DefifaLaunchProjectData memory defifaData = _getBasicLaunchData(2);
         (uint256 projectId, DefifaHook nft, DefifaGovernor _governor) = _createProject(defifaData);
 
@@ -344,8 +346,8 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
         uint256 payerWeight = _governor.getAttestationWeight(projectId, payer, uint48(block.timestamp));
         uint256 beneficiaryWeight = _governor.getAttestationWeight(projectId, beneficiary, uint48(block.timestamp));
 
-        assertGt(payerWeight, 0, "payer receives the default attestation power");
-        assertEq(beneficiaryWeight, 0, "beneficiary receives no default attestation power");
+        assertEq(payerWeight, 0, "payer receives no attestation power when delegate defaults to beneficiary");
+        assertGt(beneficiaryWeight, 0, "beneficiary receives the default attestation power");
     }
 
     // ----- Internal helpers ------
