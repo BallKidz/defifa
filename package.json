@@ -1,6 +1,6 @@
 {
   "name": "@ballkidz/defifa",
-  "version": "0.0.10",
+  "version": "0.0.11",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"
@@ -13,14 +13,14 @@
     "url": "https://github.com/BallKidz/defifa-collection-deployer"
   },
   "dependencies": {
-    "@bananapus/721-hook-v6": "^0.0.19",
-    "@bananapus/address-registry-v6": "^0.0.11",
-    "@bananapus/core-v6": "^0.0.24",
-    "@bananapus/permission-ids-v6": "^0.0.10",
-    "@croptop/core-v6": "^0.0.20",
+    "@bananapus/721-hook-v6": "^0.0.20",
+    "@bananapus/address-registry-v6": "^0.0.14",
+    "@bananapus/core-v6": "^0.0.26",
+    "@bananapus/permission-ids-v6": "^0.0.12",
+    "@croptop/core-v6": "^0.0.21",
     "@openzeppelin/contracts": "^5.6.1",
     "@prb/math": "^4.1.1",
-    "@rev-net/core-v6": "^0.0.15",
+    "@rev-net/core-v6": "^0.0.16",
     "scripty.sol": "^2.1.1"
   },
   "devDependencies": {
