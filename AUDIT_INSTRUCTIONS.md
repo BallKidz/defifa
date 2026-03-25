@@ -421,7 +421,7 @@ forge test --match-contract DefifaMintCostInvariant -vvv
 | `initialSupply` per tier | 999,999,999 | `DefifaDeployer` |
 | Max tiers per game | 128 | `DefifaHook` (`uint256[128]`) |
 | Min grace period | 1 day | `DefifaGovernor` |
-| Compiler | Solidity ^0.8.26 | All files |
+| Compiler | Solidity 0.8.28 | All files |
 
 ---
 
@@ -489,7 +489,7 @@ No prior formal audit with finding IDs has been conducted for defifa-collection-
 
 | Setting | Value | Source |
 |---------|-------|--------|
-| Solidity version | `^0.8.26` | `foundry.toml` `solc` field; all `src/*.sol` files use `pragma solidity ^0.8.26` (library uses `^0.8.17`) |
+| Solidity version | `0.8.28` | `foundry.toml` `solc` field; all `src/*.sol` files use `pragma solidity ^0.8.26` (library uses `0.8.28`) |
 | EVM target | `cancun` | `foundry.toml` `evm_version` field |
 | Optimizer | Enabled, 200 runs | `foundry.toml` `optimizer_runs = 200` |
 | Via IR | `true` | `foundry.toml` `via_ir = true` -- uses the Yul-based compilation pipeline |
