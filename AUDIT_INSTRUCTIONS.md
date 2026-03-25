@@ -116,7 +116,7 @@ NO_CONTEST (safety mechanism triggered)
 1. Verify caller is a project terminal, currency matches `pricingCurrency`.
 2. Decode metadata: `(address _attestationDelegate, uint16[] _tierIdsToMint)`.
 3. Compute attestation units per unique tier via `DefifaHookLib.computeAttestationUnits()`.
-4. For each unique tier: set delegation if needed, transfer attestation units from address(0) to payer.
+4. For each unique tier: set delegation if needed, transfer attestation units from address(0) to beneficiary.
 5. Call `_mintAll()`: `store.recordMint()`, increment `_totalMintCost += amount`, mint ERC-721s.
 6. Revert if `leftoverAmount != 0` (exact pricing enforced, `DefifaHook_Overspending`).
 

@@ -200,7 +200,7 @@ jbMultiTerminal.pay{value: 0.02 ether}({
 ### State changes
 
 1. `DefifaHook._totalMintCost` -- Incremented by `context.amount.value` (the paid amount).
-2. `DefifaHook._tierDelegation[payer][tierId]` -- Set to `attestationDelegate` for each minted tier (if different from the payer's existing delegate for that tier). When no explicit delegate is provided and no `defaultAttestationDelegate` is configured, defaults to the beneficiary.
+2. `DefifaHook._tierDelegation[beneficiary][tierId]` -- Set to `attestationDelegate` for each minted tier (if different from the beneficiary's existing delegate for that tier). When no explicit delegate is provided and no `defaultAttestationDelegate` is configured, defaults to the beneficiary.
 3. `DefifaHook._delegateTierCheckpoints[delegate][tierId]` -- Checkpointed with new attestation units.
 4. `DefifaHook._totalTierCheckpoints[tierId]` -- Checkpointed with increased total attestation units.
 5. ERC-721 token ownership records updated (one token per tier mint).
