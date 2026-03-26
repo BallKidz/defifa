@@ -125,6 +125,13 @@ library DefifaHookLib {
         uint256 _totalTokensForCashoutInTier =
             _tier.initialSupply - _tier.remainingSupply - (_burnedTokens - tokensRedeemedFrom[_tierId]);
 
+        // Include pending (unminted) reserve NFTs in the denominator. Without this, paid holders
+        // could cash out before reserves are minted and extract value that should be diluted across
+        // both paid and reserved holders. By counting pending reserves, each token's share of the
+        // tier weight is computed against the full eventual supply.
+        uint256 _pendingReserves = hookStore.numberOfPendingReservesFor({hook: hook, tierId: _tierId});
+        _totalTokensForCashoutInTier += _pendingReserves;
+
         // Calculate the percentage of the tier cashOut amount a single token counts for.
         // Integer division rounding in cashOutWeight is unavoidable in Solidity. Rounding direction
         // (down) is consistent and conservative — it slightly favors the project over individual cash-out recipients.

@@ -67,3 +67,11 @@ Cash-out weights set via `ratifyScorecardFrom` cannot be updated or corrected. T
 ### 8.4 ratifyScorecardFrom reentrancy is double-guarded
 
 `ratifyScorecardFrom` executes arbitrary calldata on the hook via low-level call. The hook's `setTierCashOutWeightsTo` has an `onlyOwner` guard and a `cashOutWeightIsSet` check preventing double-set. Both guards prevent reentrancy exploitation.
+
+### 8.5 Attestation snapshot uses block.timestamp - 1 (Codex R2 fix)
+
+`attestToScorecardFrom` snapshots attestation weight at `block.timestamp - 1` instead of `attestationsBegin`. This prevents same-block transfer manipulation where a holder attests, transfers the NFT, and the recipient also attests in the same block. The trade-off is that NFTs minted in the same block as an attestation call have zero weight for that call -- the holder must wait 1 second. This is acceptable because attestation typically happens well after minting, and the 1-second delay is negligible.
+
+### 8.6 Pending reserves dilute cash-out weight (Codex R2 fix)
+
+`computeCashOutWeight` includes pending (unminted) reserve NFTs in the denominator. This means a paid holder's per-token cash-out share is reduced by the number of pending reserves in their tier. The trade-off is that if reserve NFTs are never minted (e.g., the reserve beneficiary is set to address(0) and minting reverts), those shares remain locked in the contract. This is acceptable because: (1) it prevents paid holders from front-running reserve minting to extract the reserves' share, and (2) reserve beneficiaries are set at deployment and should always be valid.
