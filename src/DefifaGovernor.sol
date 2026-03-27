@@ -13,6 +13,7 @@ import {DefifaScorecardState} from "./enums/DefifaScorecardState.sol";
 import {IDefifaDeployer} from "./interfaces/IDefifaDeployer.sol";
 import {IDefifaGovernor} from "./interfaces/IDefifaGovernor.sol";
 import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
+import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 import {IDefifaHook} from "./interfaces/IDefifaHook.sol";
 import {DefifaAttestations} from "./structs/DefifaAttestations.sol";
 import {DefifaScorecard} from "./structs/DefifaScorecard.sol";
@@ -389,8 +390,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
+        // Get a reference to the hook and its store.
+        IDefifaHook hook = IDefifaHook(metadata.dataHook);
+        IJB721TiersHookStore store = hook.store();
+
         // Get a reference to the number of tiers.
-        uint256 numberOfTiers = IDefifaHook(metadata.dataHook).store().maxTierIdOf(metadata.dataHook);
+        uint256 numberOfTiers = store.maxTierIdOf(metadata.dataHook);
 
         // slither-disable-next-line calls-inside-a-loop
         for (uint256 i; i < numberOfTiers; i++) {
@@ -398,8 +403,24 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             uint256 tierId = i + 1;
 
             // Get this account's attestation units within the tier (snapshot at timestamp).
-            uint256 tierAttestationUnitsForAccount = IDefifaHook(metadata.dataHook)
-                .getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
+            uint256 tierAttestationUnitsForAccount =
+                hook.getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
+
+            // Get the total attestation units for this tier (snapshot at timestamp).
+            uint256 tierTotalAttestationUnits =
+                hook.getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp});
+
+            // If this account is the reserve beneficiary for this tier, include unminted pending reserves
+            // in their attestation weight. Pending reserves represent participation that occurred (mints
+            // triggered reserve accrual) even if all paid tokens were later burned during REFUND. The reserve
+            // beneficiary can mint these later, but they should be able to attest before doing so.
+            uint256 pendingReserves = store.numberOfPendingReservesFor(metadata.dataHook, tierId);
+            if (pendingReserves != 0 && store.reserveBeneficiaryOf(metadata.dataHook, tierId) == account) {
+                JB721Tier memory tier = store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
+                uint256 pendingVotingUnits = pendingReserves * tier.votingUnits;
+                tierAttestationUnitsForAccount += pendingVotingUnits;
+                tierTotalAttestationUnits += pendingVotingUnits;
+            }
 
             // Scale the account's share of the tier to MAX_ATTESTATION_POWER_TIER.
             // e.g. holding 3 of 10 tokens → 3/10 * MAX_ATTESTATION_POWER_TIER attestation power from this tier.
@@ -408,8 +429,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                     attestationPower += mulDiv({
                         x: MAX_ATTESTATION_POWER_TIER,
                         y: tierAttestationUnitsForAccount,
-                        denominator: IDefifaHook(metadata.dataHook)
-                            .getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp})
+                        denominator: tierTotalAttestationUnits
                     });
                 }
             }
