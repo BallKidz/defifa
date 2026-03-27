@@ -551,11 +551,11 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Set the delegate as the beneficiary if the beneficiary hasn't already set a delegate.
         if (oldDelegate == address(0)) {
             _delegateTier({
-                _account: reservedTokenBeneficiary,
-                _delegatee: defaultAttestationDelegate != address(0)
+                account: reservedTokenBeneficiary,
+                delegatee: defaultAttestationDelegate != address(0)
                     ? defaultAttestationDelegate
                     : reservedTokenBeneficiary,
-                _tierId: tierId
+                tierId: tierId
             });
         }
 
@@ -590,10 +590,10 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Transfer the attestation units to the delegate.
         _transferTierAttestationUnits({
-            _from: address(0),
-            _to: reservedTokenBeneficiary,
-            _tierId: tierId,
-            _amount: tier.votingUnits * tokenIds.length
+            from: address(0),
+            to: reservedTokenBeneficiary,
+            tierId: tierId,
+            amount: tier.votingUnits * tokenIds.length
         });
     }
 
@@ -675,7 +675,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
             // Claim the $DEFIFA and $NANA tokens for the user.
             beneficiaryReceivedTokens = _claimTokensFor({
-                _beneficiary: context.holder, shareToBeneficiary: cumulativeMintPrice, outOfTotal: _totalMintCost
+                beneficiary: context.holder, shareToBeneficiary: cumulativeMintPrice, outOfTotal: _totalMintCost
             });
         }
 
@@ -745,7 +745,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             revert DefifaHook_DelegateChangesUnavailableInThisPhase();
         }
 
-        _delegateTier({_account: msg.sender, _delegatee: delegatee, _tierId: tierId});
+        _delegateTier({account: msg.sender, delegatee: delegatee, tierId: tierId});
     }
 
     /// @notice Delegate attestations.
@@ -769,7 +769,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             // Make sure a delegate is specified.
             if (data.delegatee == address(0)) revert DefifaHook_DelegateAddressZero();
 
-            _delegateTier({_account: msg.sender, _delegatee: data.delegatee, _tierId: data.tierId});
+            _delegateTier({account: msg.sender, delegatee: data.delegatee, tierId: data.tierId});
 
             unchecked {
                 ++i;
@@ -782,12 +782,12 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     //*********************************************************************//
 
     /// @notice Claims the defifa and base protocol tokens for a beneficiary.
-    /// @param _beneficiary The address to claim tokens for.
+    /// @param beneficiary The address to claim tokens for.
     /// @param shareToBeneficiary The share relative to the `outOfTotal` to send the user.
     /// @param outOfTotal The total share that the `shareToBeneficiary` is relative to.
     /// @return beneficiaryReceivedTokens A flag indicating if the beneficiary received any tokens.
     function _claimTokensFor(
-        address _beneficiary,
+        address beneficiary,
         uint256 shareToBeneficiary,
         uint256 outOfTotal
     )
@@ -795,7 +795,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         returns (bool beneficiaryReceivedTokens)
     {
         return DefifaHookLib.claimTokensFor({
-            beneficiary: _beneficiary,
+            beneficiary: beneficiary,
             shareToBeneficiary: shareToBeneficiary,
             outOfTotal: outOfTotal,
             defifaToken: DEFIFA_TOKEN,
@@ -804,51 +804,51 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     }
 
     /// @notice Delegate all attestation units for the specified tier.
-    /// @param _account The account delegating tier attestation units.
-    /// @param _delegatee The account to delegate tier attestation units to.
-    /// @param _tierId The ID of the tier for which attestation units are being transferred.
-    function _delegateTier(address _account, address _delegatee, uint256 _tierId) internal virtual {
+    /// @param account The account delegating tier attestation units.
+    /// @param delegatee The account to delegate tier attestation units to.
+    /// @param tierId The ID of the tier for which attestation units are being transferred.
+    function _delegateTier(address account, address delegatee, uint256 tierId) internal virtual {
         // Get the current delegatee
-        address oldDelegate = _tierDelegation[_account][_tierId];
+        address oldDelegate = _tierDelegation[account][tierId];
 
         // Store the new delegatee
-        _tierDelegation[_account][_tierId] = _delegatee;
+        _tierDelegation[account][tierId] = delegatee;
 
-        emit DelegateChanged(_account, oldDelegate, _delegatee);
+        emit DelegateChanged(account, oldDelegate, delegatee);
 
         // Move the attestations.
         _moveTierDelegateAttestations({
-            _from: oldDelegate,
-            _to: _delegatee,
-            _tierId: _tierId,
-            _amount: _getTierAttestationUnits({_account: _account, _tierId: _tierId})
+            from: oldDelegate,
+            to: delegatee,
+            tierId: tierId,
+            amount: _getTierAttestationUnits({account: account, tierId: tierId})
         });
     }
 
     /// @notice A function that will run when tokens are burned via cashOut.
-    /// @param _tokenIds The IDs of the tokens that were burned.
-    function _didBurn(uint256[] memory _tokenIds) internal virtual override {
+    /// @param tokenIds The IDs of the tokens that were burned.
+    function _didBurn(uint256[] memory tokenIds) internal virtual override {
         // Add to burned counter.
-        store.recordBurn(_tokenIds);
+        store.recordBurn(tokenIds);
     }
 
     /// @notice Gets the amount of attestation units an address has for a particular tier.
-    /// @param _account The account to get attestation units for.
-    /// @param _tierId The ID of the tier to get attestation units for.
+    /// @param account The account to get attestation units for.
+    /// @param tierId The ID of the tier to get attestation units for.
     /// @return The attestation units.
-    function _getTierAttestationUnits(address _account, uint256 _tierId) internal view virtual returns (uint256) {
-        return store.tierVotingUnitsOf({hook: address(this), account: _account, tierId: _tierId});
+    function _getTierAttestationUnits(address account, uint256 tierId) internal view virtual returns (uint256) {
+        return store.tierVotingUnitsOf({hook: address(this), account: account, tierId: tierId});
     }
 
     /// @notice Mints a token in all provided tiers.
-    /// @param _amount The amount to base the mints on. All mints' price floors must fit in this amount.
-    /// @param _mintTierIds An array of tier IDs that are intended to be minted.
-    /// @param _beneficiary The address to mint for.
+    /// @param amount The amount to base the mints on. All mints' price floors must fit in this amount.
+    /// @param mintTierIds An array of tier IDs that are intended to be minted.
+    /// @param beneficiary The address to mint for.
     /// @return leftoverAmount The amount leftover after the mint.
     function _mintAll(
-        uint256 _amount,
-        uint16[] memory _mintTierIds,
-        address _beneficiary
+        uint256 amount,
+        uint16[] memory mintTierIds,
+        address beneficiary
     )
         internal
         returns (uint256 leftoverAmount)
@@ -859,8 +859,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Record the mint. The returned token IDs correspond to the tiers passed in.
         // slither-disable-next-line reentrancy-benign
         (tokenIds, leftoverAmount) = store.recordMint({
-            amount: _amount,
-            tierIds: _mintTierIds,
+            amount: amount,
+            tierIds: mintTierIds,
             isOwnerMint: false // Not a manual mint
         });
 
@@ -871,7 +871,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         uint256 tokenId;
 
         // Increment the paid mint cost.
-        _totalMintCost += _amount;
+        _totalMintCost += amount;
 
         // Loop through each token ID and mint.
         for (uint256 i; i < mintsLength;) {
@@ -879,9 +879,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             tokenId = tokenIds[i];
 
             // Mint the tokens.
-            _mint({to: _beneficiary, tokenId: tokenId});
+            _mint({to: beneficiary, tokenId: tokenId});
 
-            emit Mint(tokenId, _mintTierIds[i], _beneficiary, _amount, msg.sender);
+            emit Mint(tokenId, mintTierIds[i], beneficiary, amount, msg.sender);
 
             unchecked {
                 ++i;
@@ -890,44 +890,44 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     }
 
     /// @notice Moves delegated tier attestations from one delegate to another.
-    /// @param _from The account to transfer tier attestation units from.
-    /// @param _to The account to transfer tier attestation units to.
-    /// @param _tierId The ID of the tier for which attestation units are being transferred.
-    /// @param _amount The amount of attestation units to delegate.
-    function _moveTierDelegateAttestations(address _from, address _to, uint256 _tierId, uint256 _amount) internal {
+    /// @param from The account to transfer tier attestation units from.
+    /// @param to The account to transfer tier attestation units to.
+    /// @param tierId The ID of the tier for which attestation units are being transferred.
+    /// @param amount The amount of attestation units to delegate.
+    function _moveTierDelegateAttestations(address from, address to, uint256 tierId, uint256 amount) internal {
         // Nothing to do if moving to the same account, or no amount is being moved.
-        if (_from == _to || _amount == 0) return;
+        if (from == to || amount == 0) return;
 
         // If not moving from the zero address, update the checkpoints to subtract the amount.
-        if (_from != address(0)) {
+        if (from != address(0)) {
             // Get the current amount for the sending delegate.
-            uint208 current = _delegateTierCheckpoints[_from][_tierId].latest();
+            uint208 current = _delegateTierCheckpoints[from][tierId].latest();
             // Set the new amount for the sending delegate.
             // uint208 is sufficient for attestation values: each tier's attestation units are bounded by the NFT
             // supply (max ~999_999_999 per tier * 128 tiers), well within uint208's ~4.1e62 range.
             // forge-lint: disable-next-line(unsafe-typecast)
-            (uint256 oldValue, uint256 newValue) = _delegateTierCheckpoints[_from][_tierId].push({
+            (uint256 oldValue, uint256 newValue) = _delegateTierCheckpoints[from][tierId].push({
                 // forge-lint: disable-next-line(unsafe-typecast)
                 key: uint48(block.timestamp),
                 // forge-lint: disable-next-line(unsafe-typecast)
-                value: current - uint208(_amount)
+                value: current - uint208(amount)
             });
-            emit TierDelegateAttestationsChanged(_from, _tierId, oldValue, newValue, msg.sender);
+            emit TierDelegateAttestationsChanged(from, tierId, oldValue, newValue, msg.sender);
         }
 
         // If not moving to the zero address, update the checkpoints to add the amount.
-        if (_to != address(0)) {
+        if (to != address(0)) {
             // Get the current amount for the receiving delegate.
-            uint208 current = _delegateTierCheckpoints[_to][_tierId].latest();
+            uint208 current = _delegateTierCheckpoints[to][tierId].latest();
             // Set the new amount for the receiving delegate.
             // forge-lint: disable-next-line(unsafe-typecast)
-            (uint256 oldValue, uint256 newValue) = _delegateTierCheckpoints[_to][_tierId].push({
+            (uint256 oldValue, uint256 newValue) = _delegateTierCheckpoints[to][tierId].push({
                 // forge-lint: disable-next-line(unsafe-typecast)
                 key: uint48(block.timestamp),
                 // forge-lint: disable-next-line(unsafe-typecast)
-                value: current + uint208(_amount)
+                value: current + uint208(amount)
             });
-            emit TierDelegateAttestationsChanged(_to, _tierId, oldValue, newValue, msg.sender);
+            emit TierDelegateAttestationsChanged(to, tierId, oldValue, newValue, msg.sender);
         }
     }
 
@@ -972,12 +972,12 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             if (attestationDelegate != address(0) || oldDelegate != address(0)) {
                 // Switch delegates if needed.
                 if (attestationDelegate != address(0) && attestationDelegate != oldDelegate) {
-                    _delegateTier({_account: context.beneficiary, _delegatee: attestationDelegate, _tierId: tierId});
+                    _delegateTier({account: context.beneficiary, delegatee: attestationDelegate, tierId: tierId});
                 }
 
                 // Transfer the attestation units.
                 _transferTierAttestationUnits({
-                    _from: address(0), _to: context.beneficiary, _tierId: tierId, _amount: attestationAmounts[i]
+                    from: address(0), to: context.beneficiary, tierId: tierId, amount: attestationAmounts[i]
                 });
             }
 
@@ -988,49 +988,49 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Mint tiers if they were specified.
         uint256 leftoverAmount =
-            _mintAll({_amount: context.amount.value, _mintTierIds: tierIdsToMint, _beneficiary: context.beneficiary});
+            _mintAll({amount: context.amount.value, mintTierIds: tierIdsToMint, beneficiary: context.beneficiary});
 
         // Make sure the buyer isn't overspending.
         if (leftoverAmount != 0) revert DefifaHook_Overspending();
     }
 
-    /// @notice Transfers, mints, or burns tier attestation units. To register a mint, `_from` should be zero. To
-    /// register a burn, `_to` should be zero. Total supply of attestation units will be adjusted with mints and burns.
-    /// @param _from The account to transfer tier attestation units from.
-    /// @param _to The account to transfer tier attestation units to.
-    /// @param _tierId The ID of the tier for which attestation units are being transferred.
-    /// @param _amount The amount of attestation units to delegate.
+    /// @notice Transfers, mints, or burns tier attestation units. To register a mint, `from` should be zero. To
+    /// register a burn, `to` should be zero. Total supply of attestation units will be adjusted with mints and burns.
+    /// @param from The account to transfer tier attestation units from.
+    /// @param to The account to transfer tier attestation units to.
+    /// @param tierId The ID of the tier for which attestation units are being transferred.
+    /// @param amount The amount of attestation units to delegate.
     function _transferTierAttestationUnits(
-        address _from,
-        address _to,
-        uint256 _tierId,
-        uint256 _amount
+        address from,
+        address to,
+        uint256 tierId,
+        uint256 amount
     )
         internal
         virtual
     {
-        if (_from == address(0) || _to == address(0)) {
+        if (from == address(0) || to == address(0)) {
             // Get the current total for the tier.
-            uint208 current = _totalTierCheckpoints[_tierId].latest();
+            uint208 current = _totalTierCheckpoints[tierId].latest();
 
             // If minting, add to the total tier checkpoints.
-            if (_from == address(0)) {
+            if (from == address(0)) {
                 // Casting to uint208/uint48 is safe because attestation unit amounts are bounded by NFT supply counts.
                 // forge-lint: disable-next-line(unsafe-typecast)
-                uint208 newValue = current + uint208(_amount);
+                uint208 newValue = current + uint208(amount);
                 // forge-lint: disable-next-line(unsafe-typecast)
                 // slither-disable-next-line unused-return
-                _totalTierCheckpoints[_tierId].push({key: uint48(block.timestamp), value: newValue});
+                _totalTierCheckpoints[tierId].push({key: uint48(block.timestamp), value: newValue});
             }
 
             // If burning, subtract from the total tier checkpoints.
-            if (_to == address(0)) {
+            if (to == address(0)) {
                 // Casting to uint208/uint48 is safe because attestation unit amounts are bounded by NFT supply counts.
                 // forge-lint: disable-next-line(unsafe-typecast)
-                uint208 newValue = current - uint208(_amount);
+                uint208 newValue = current - uint208(amount);
                 // forge-lint: disable-next-line(unsafe-typecast)
                 // slither-disable-next-line unused-return
-                _totalTierCheckpoints[_tierId].push({key: uint48(block.timestamp), value: newValue});
+                _totalTierCheckpoints[tierId].push({key: uint48(block.timestamp), value: newValue});
             }
         }
 
@@ -1040,16 +1040,16 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // to Carol, Carol's attestation units auto-delegate to Carol (not Bob). However, Alice's delegation
         // to Bob persists — if Alice later receives another token, her units still go to Bob. This matches
         // ERC5805Votes behavior where delegation is an account-level setting, not a token-level one.
-        address toDelegate = _tierDelegation[_to][_tierId];
-        if (toDelegate == address(0) && _to != address(0)) {
-            toDelegate = _to;
-            _tierDelegation[_to][_tierId] = _to;
-            emit DelegateChanged(_to, address(0), _to);
+        address toDelegate = _tierDelegation[to][tierId];
+        if (toDelegate == address(0) && to != address(0)) {
+            toDelegate = to;
+            _tierDelegation[to][tierId] = to;
+            emit DelegateChanged(to, address(0), to);
         }
 
         // Move delegated attestations.
         _moveTierDelegateAttestations({
-            _from: _tierDelegation[_from][_tierId], _to: toDelegate, _tierId: _tierId, _amount: _amount
+            from: _tierDelegation[from][tierId], to: toDelegate, tierId: tierId, amount: amount
         });
     }
 
@@ -1093,6 +1093,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         if (from == address(0)) return from;
 
         // Transfer the attestation units.
-        _transferTierAttestationUnits({_from: from, _to: to, _tierId: tier.id, _amount: tier.votingUnits});
+        _transferTierAttestationUnits({from: from, to: to, tierId: tier.id, amount: tier.votingUnits});
     }
 }

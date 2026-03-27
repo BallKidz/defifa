@@ -527,7 +527,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         // Launch the Juicebox project.
         uint256 actualGameId =
-            _launchGame({launchProjectData: launchProjectData, _gameId: gameId, _dataHook: address(hook)});
+            _launchGame({launchProjectData: launchProjectData, gameId: gameId, dataHook: address(hook)});
 
         // Revert if the game ID does not match (e.g. front-run by another project creation).
         if (gameId != actualGameId) revert DefifaDeployer_InvalidGameConfiguration();
@@ -631,15 +631,15 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     //*********************************************************************//
 
     function _buildSplits(
-        uint256 _gameId,
-        address _dataHook,
-        address _token,
-        JBSplit[] memory _initialSplits
+        uint256 gameId,
+        address dataHook,
+        address token,
+        JBSplit[] memory initialSplits
     )
         internal
         returns (JBSplitGroup[] memory)
     {
-        uint256 numberOfUserSplits = _initialSplits.length;
+        uint256 numberOfUserSplits = initialSplits.length;
 
         // Compute absolute percents for protocol fees.
         uint256 nanaAbsolutePercent = JBConstants.SPLITS_TOTAL_PERCENT / BASE_PROTOCOL_FEE_DIVISOR;
@@ -648,14 +648,14 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Sum all absolute percents.
         uint256 totalAbsolutePercent = nanaAbsolutePercent + defifaAbsolutePercent;
         for (uint256 i; i < numberOfUserSplits; i++) {
-            totalAbsolutePercent += _initialSplits[i].percent;
+            totalAbsolutePercent += initialSplits[i].percent;
         }
 
         // Validate that total fee splits don't exceed 100%.
         if (totalAbsolutePercent > JBConstants.SPLITS_TOTAL_PERCENT) revert DefifaDeployer_SplitsDontAddUp();
 
         // Store the total absolute percent for use in fulfillCommitmentsOf.
-        _commitmentPercentOf[_gameId] = totalAbsolutePercent;
+        _commitmentPercentOf[gameId] = totalAbsolutePercent;
 
         // Build the splits array: user splits + Defifa + NANA (NANA last to absorb rounding).
         uint256 splitCount = numberOfUserSplits + 2;
@@ -664,10 +664,10 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Normalize user splits and copy them over.
         uint256 normalizedTotal;
         for (uint256 i; i < numberOfUserSplits; i++) {
-            splits[i] = _initialSplits[i];
+            splits[i] = initialSplits[i];
             splits[i].percent = uint32(
                 mulDiv({
-                    x: _initialSplits[i].percent,
+                    x: initialSplits[i].percent,
                     y: JBConstants.SPLITS_TOTAL_PERCENT,
                     denominator: totalAbsolutePercent
                 })
@@ -685,7 +685,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             percent: uint32(defifaNormalized),
             // forge-lint: disable-next-line(unsafe-typecast)
             projectId: uint64(DEFIFA_PROJECT_ID),
-            beneficiary: payable(address(_dataHook)),
+            beneficiary: payable(address(dataHook)),
             lockedUntil: 0,
             hook: IJBSplitHook(address(0))
         });
@@ -702,22 +702,22 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             percent: uint32(JBConstants.SPLITS_TOTAL_PERCENT - normalizedTotal),
             // forge-lint: disable-next-line(unsafe-typecast)
             projectId: uint64(BASE_PROTOCOL_PROJECT_ID),
-            beneficiary: payable(address(_dataHook)),
+            beneficiary: payable(address(dataHook)),
             lockedUntil: 0,
             hook: IJBSplitHook(address(0))
         });
 
         // Build the grouped split for the payment of the game token.
         JBSplitGroup[] memory groupedSplits = new JBSplitGroup[](1);
-        groupedSplits[0] = JBSplitGroup({groupId: uint256(uint160(_token)), splits: splits});
+        groupedSplits[0] = JBSplitGroup({groupId: uint256(uint160(token)), splits: splits});
 
         return groupedSplits;
     }
 
     function _launchGame(
         DefifaLaunchProjectData memory launchProjectData,
-        uint256 _gameId,
-        address _dataHook
+        uint256 gameId,
+        address dataHook
     )
         internal
         returns (uint256 projectId)
@@ -761,7 +761,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 useTotalSurplusForCashOuts: false,
                 useDataHookForPay: true,
                 useDataHookForCashOut: true,
-                dataHook: _dataHook,
+                dataHook: dataHook,
                 metadata: uint16(
                     JB721TiersRulesetMetadataResolver.pack721TiersRulesetMetadata(
                         JB721TiersRulesetMetadata({
@@ -804,7 +804,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                     useTotalSurplusForCashOuts: false,
                     useDataHookForPay: true,
                     useDataHookForCashOut: true,
-                    dataHook: _dataHook,
+                    dataHook: dataHook,
                     metadata: uint16(
                         JB721TiersRulesetMetadataResolver.pack721TiersRulesetMetadata(
                             JB721TiersRulesetMetadata({
@@ -862,7 +862,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 useTotalSurplusForCashOuts: false,
                 useDataHookForPay: true,
                 useDataHookForCashOut: true,
-                dataHook: _dataHook,
+                dataHook: dataHook,
                 metadata: uint16(
                     JB721TiersRulesetMetadataResolver.pack721TiersRulesetMetadata(
                         JB721TiersRulesetMetadata({pauseTransfers: false, pauseMintPendingReserves: false})
@@ -870,10 +870,10 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 )
             }),
             splitGroups: _buildSplits({
-                _gameId: _gameId,
-                _dataHook: _dataHook,
-                _token: launchProjectData.token.token,
-                _initialSplits: launchProjectData.splits
+                gameId: gameId,
+                dataHook: dataHook,
+                token: launchProjectData.token.token,
+                initialSplits: launchProjectData.splits
             }),
             fundAccessLimitGroups: fundAccessConstraints
         });
