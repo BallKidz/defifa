@@ -97,37 +97,40 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     function attestToScorecardFrom(uint256 gameId, uint256 scorecardId) external override returns (uint256 weight) {
         // Get the game's current funding cycle along with its metadata.
         // slither-disable-next-line unused-return
-        (, JBRulesetMetadata memory _metadata) = CONTROLLER.currentRulesetOf(gameId);
+        (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Make sure the game is in its scoring phase.
-        if (IDefifaHook(_metadata.dataHook).gamePhaseReporter().currentGamePhaseOf(gameId) != DefifaGamePhase.SCORING) {
+        if (IDefifaHook(metadata.dataHook).gamePhaseReporter().currentGamePhaseOf(gameId) != DefifaGamePhase.SCORING) {
             revert DefifaGovernor_NotAllowed();
         }
 
         // Keep a reference to the scorecard being attested to.
-        DefifaScorecard storage _scorecard = _scorecardOf[gameId][scorecardId];
+        DefifaScorecard storage scorecard = _scorecardOf[gameId][scorecardId];
 
         // Keep a reference to the scorecard state.
-        DefifaScorecardState _state = stateOf({gameId: gameId, scorecardId: scorecardId});
+        DefifaScorecardState state = stateOf({gameId: gameId, scorecardId: scorecardId});
 
-        if (_state != DefifaScorecardState.ACTIVE && _state != DefifaScorecardState.SUCCEEDED) {
+        if (state != DefifaScorecardState.ACTIVE && state != DefifaScorecardState.SUCCEEDED) {
             revert DefifaGovernor_NotAllowed();
         }
 
         // Keep a reference to the attestations for the scorecard.
-        DefifaAttestations storage _attestations = _scorecardAttestationsOf[gameId][scorecardId];
+        DefifaAttestations storage attestations = _scorecardAttestationsOf[gameId][scorecardId];
 
         // Make sure the account isn't attesting to the same scorecard again.
-        if (_attestations.hasAttested[msg.sender]) revert DefifaGovernor_AlreadyAttested();
+        if (attestations.hasAttested[msg.sender]) revert DefifaGovernor_AlreadyAttested();
 
-        // Get a reference to the attestation weight.
-        weight = getAttestationWeight({gameId: gameId, account: msg.sender, timestamp: _scorecard.attestationsBegin});
+        // Get a reference to the attestation weight, snapshotted at `attestationsBegin`.
+        // Using `attestationsBegin` is intentional — it is always a past timestamp set during `submitScorecardFor`,
+        // so same-block transfer manipulation cannot inflate attestation power. A fixed snapshot also ensures every
+        // attestor's weight is measured at the same point in time, which is fairer for gameplay.
+        weight = getAttestationWeight({gameId: gameId, account: msg.sender, timestamp: scorecard.attestationsBegin});
 
         // Increase the attestation count.
-        _attestations.count += weight;
+        attestations.count += weight;
 
         // Store the fact that the account has attested to the scorecard.
-        _attestations.hasAttested[msg.sender] = true;
+        attestations.hasAttested[msg.sender] = true;
 
         emit ScorecardAttested(gameId, scorecardId, weight, msg.sender);
     }
@@ -149,13 +152,13 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Get the game's current funding cycle along with its metadata.
         // slither-disable-next-line unused-return
-        (, JBRulesetMetadata memory _metadata) = CONTROLLER.currentRulesetOf(gameId);
+        (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Build the calldata to the target
-        bytes memory _calldata = _buildScorecardCalldataFor(tierWeights);
+        bytes memory scorecardCalldata = _buildScorecardCalldataFor(tierWeights);
 
         // Attempt to execute the proposal.
-        scorecardId = _hashScorecardOf({gameHook: _metadata.dataHook, calldataBytes: _calldata});
+        scorecardId = _hashScorecardOf({gameHook: metadata.dataHook, calldataBytes: scorecardCalldata});
 
         // Make sure the proposal being ratified has succeeded.
         if (stateOf({gameId: gameId, scorecardId: scorecardId}) != DefifaScorecardState.SUCCEEDED) {
@@ -166,7 +169,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         ratifiedScorecardIdOf[gameId] = scorecardId;
 
         // Execute the scorecard via low-level call since the governor is the delegate's owner.
-        (bool success, bytes memory returndata) = _metadata.dataHook.call(_calldata);
+        (bool success, bytes memory returndata) = metadata.dataHook.call(scorecardCalldata);
         // slither-disable-next-line unused-return
         Address.verifyCallResult({success: success, returndata: returndata});
 
@@ -198,22 +201,22 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         if (_packedScorecardInfoOf[gameId] == 0) revert DefifaGovernor_GameNotFound();
 
         // Make sure no weight is assigned to an unowned tier.
-        uint256 _numberOfTierWeights = tierWeights.length;
+        uint256 numberOfTierWeights = tierWeights.length;
 
         // Get the game's current funding cycle along with its metadata.
         // slither-disable-next-line unused-return
-        (, JBRulesetMetadata memory _metadata) = CONTROLLER.currentRulesetOf(gameId);
+        (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Make sure the game is in its scoring phase.
-        if (IDefifaHook(_metadata.dataHook).gamePhaseReporter().currentGamePhaseOf(gameId) != DefifaGamePhase.SCORING) {
+        if (IDefifaHook(metadata.dataHook).gamePhaseReporter().currentGamePhaseOf(gameId) != DefifaGamePhase.SCORING) {
             revert DefifaGovernor_NotAllowed();
         }
 
         // If there's a weight assigned to the tier, make sure there is a token backed by it.
-        for (uint256 _i; _i < _numberOfTierWeights; _i++) {
+        for (uint256 i; i < numberOfTierWeights; i++) {
             if (
-                tierWeights[_i].cashOutWeight > 0
-                    && IDefifaHook(_metadata.dataHook).currentSupplyOfTier(tierWeights[_i].id) == 0
+                tierWeights[i].cashOutWeight > 0
+                    && IDefifaHook(metadata.dataHook).currentSupplyOfTier(tierWeights[i].id) == 0
             ) {
                 revert DefifaGovernor_UnownedProposedCashoutValue();
             }
@@ -221,34 +224,34 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Hash the scorecard.
         scorecardId =
-            _hashScorecardOf({gameHook: _metadata.dataHook, calldataBytes: _buildScorecardCalldataFor(tierWeights)});
+            _hashScorecardOf({gameHook: metadata.dataHook, calldataBytes: _buildScorecardCalldataFor(tierWeights)});
 
         // Store the scorecard
-        DefifaScorecard storage _scorecard = _scorecardOf[gameId][scorecardId];
-        if (_scorecard.attestationsBegin != 0) revert DefifaGovernor_DuplicateScorecard();
+        DefifaScorecard storage scorecard = _scorecardOf[gameId][scorecardId];
+        if (scorecard.attestationsBegin != 0) revert DefifaGovernor_DuplicateScorecard();
 
-        uint256 _attestationStartTime = attestationStartTimeOf(gameId);
-        uint256 _timeUntilAttestationsBegin =
-            block.timestamp > _attestationStartTime ? 0 : _attestationStartTime - block.timestamp;
+        uint256 attestationStartTime = attestationStartTimeOf(gameId);
+        uint256 timeUntilAttestationsBegin =
+            block.timestamp > attestationStartTime ? 0 : attestationStartTime - block.timestamp;
 
         // Casting to uint48 is safe because block.timestamp fits in uint48 until year 8921556.
         // forge-lint: disable-next-line(unsafe-typecast)
-        uint48 _attestationsBegin = uint48(block.timestamp + _timeUntilAttestationsBegin);
-        _scorecard.attestationsBegin = _attestationsBegin;
+        uint48 attestationsBegin = uint48(block.timestamp + timeUntilAttestationsBegin);
+        scorecard.attestationsBegin = attestationsBegin;
         // Grace period extends from when attestations begin, not from submission time.
         // This prevents the grace period from expiring before attestations even start
         // when a scorecard is submitted early.
-        _scorecard.gracePeriodEnds = uint48(_attestationsBegin + attestationGracePeriodOf(gameId));
+        scorecard.gracePeriodEnds = uint48(attestationsBegin + attestationGracePeriodOf(gameId));
 
         // Keep a reference to the default attestation delegate.
-        address _defaultAttestationDelegate = IDefifaHook(_metadata.dataHook).defaultAttestationDelegate();
+        address defaultAttestationDelegate = IDefifaHook(metadata.dataHook).defaultAttestationDelegate();
 
         // If the scorecard is being sent from the default attestation delegate, store it.
-        if (msg.sender == _defaultAttestationDelegate) {
+        if (msg.sender == defaultAttestationDelegate) {
             defaultAttestationDelegateProposalOf[gameId] = scorecardId;
         }
 
-        emit ScorecardSubmitted(gameId, scorecardId, tierWeights, msg.sender == _defaultAttestationDelegate, msg.sender);
+        emit ScorecardSubmitted(gameId, scorecardId, tierWeights, msg.sender == defaultAttestationDelegate, msg.sender);
     }
 
     //*********************************************************************//
@@ -321,14 +324,14 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         if (attestationGracePeriod > type(uint48).max) revert DefifaGovernor_Uint48Overflow();
 
         // Pack the values.
-        uint256 _packed;
+        uint256 packed;
         // attestation start time in bits 0-47 (48 bits).
-        _packed |= attestationStartTime;
+        packed |= attestationStartTime;
         // attestation grace period in bits 48-95 (48 bits).
-        _packed |= attestationGracePeriod << 48;
+        packed |= attestationGracePeriod << 48;
 
         // Store the packed value.
-        _packedScorecardInfoOf[gameId] = _packed;
+        _packedScorecardInfoOf[gameId] = packed;
 
         emit GameInitialized(gameId, attestationStartTime, attestationGracePeriod, msg.sender);
     }
@@ -379,29 +382,29 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     {
         // Get the game's current funding cycle along with its metadata.
         // slither-disable-next-line unused-return
-        (, JBRulesetMetadata memory _metadata) = CONTROLLER.currentRulesetOf(gameId);
+        (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Get a reference to the number of tiers.
-        uint256 _numberOfTiers = IDefifaHook(_metadata.dataHook).store().maxTierIdOf(_metadata.dataHook);
+        uint256 numberOfTiers = IDefifaHook(metadata.dataHook).store().maxTierIdOf(metadata.dataHook);
 
         // slither-disable-next-line calls-inside-a-loop
-        for (uint256 _i; _i < _numberOfTiers; _i++) {
+        for (uint256 i; i < numberOfTiers; i++) {
             // Tiers are 1-indexed.
-            uint256 _tierId = _i + 1;
+            uint256 tierId = i + 1;
 
             // Get this account's attestation units within the tier (snapshot at timestamp).
-            uint256 _tierAttestationUnitsForAccount = IDefifaHook(_metadata.dataHook)
-                .getPastTierAttestationUnitsOf({account: account, tier: _tierId, timestamp: timestamp});
+            uint256 tierAttestationUnitsForAccount = IDefifaHook(metadata.dataHook)
+                .getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
 
             // Scale the account's share of the tier to MAX_ATTESTATION_POWER_TIER.
             // e.g. holding 3 of 10 tokens → 3/10 * MAX_ATTESTATION_POWER_TIER attestation power from this tier.
             unchecked {
-                if (_tierAttestationUnitsForAccount != 0) {
+                if (tierAttestationUnitsForAccount != 0) {
                     attestationPower += mulDiv({
                         x: MAX_ATTESTATION_POWER_TIER,
-                        y: _tierAttestationUnitsForAccount,
-                        denominator: IDefifaHook(_metadata.dataHook)
-                            .getPastTierTotalAttestationUnitsOf({tier: _tierId, timestamp: timestamp})
+                        y: tierAttestationUnitsForAccount,
+                        denominator: IDefifaHook(metadata.dataHook)
+                            .getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp})
                     });
                 }
             }
@@ -423,24 +426,24 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     function quorum(uint256 gameId) public view override returns (uint256) {
         // Get the game's current funding cycle along with its metadata.
         // slither-disable-next-line unused-return
-        (, JBRulesetMetadata memory _metadata) = CONTROLLER.currentRulesetOf(gameId);
+        (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Get a reference to the number of tiers.
-        uint256 _numberOfTiers = IDefifaHook(_metadata.dataHook).store().maxTierIdOf(_metadata.dataHook);
+        uint256 numberOfTiers = IDefifaHook(metadata.dataHook).store().maxTierIdOf(metadata.dataHook);
 
         // Keep a reference to the total eligible tier weight.
-        uint256 _eligibleTierWeights;
+        uint256 eligibleTierWeights;
 
         // slither-disable-next-line calls-inside-a-loop
-        for (uint256 _i; _i < _numberOfTiers; _i++) {
+        for (uint256 i; i < numberOfTiers; i++) {
             // Each minted tier contributes MAX_ATTESTATION_POWER_TIER to the quorum denominator.
-            if (IDefifaHook(_metadata.dataHook).currentSupplyOfTier(_i + 1) != 0) {
-                _eligibleTierWeights += MAX_ATTESTATION_POWER_TIER;
+            if (IDefifaHook(metadata.dataHook).currentSupplyOfTier(i + 1) != 0) {
+                eligibleTierWeights += MAX_ATTESTATION_POWER_TIER;
             }
         }
 
         // Quorum = 50% of all minted tiers' attestation power.
-        return _eligibleTierWeights / 2;
+        return eligibleTierWeights / 2;
     }
 
     /// @notice The state of a proposal.
@@ -453,32 +456,32 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     ///     SUCCEEDED (if quorum is met) or remains ACTIVE (if not).
     function stateOf(uint256 gameId, uint256 scorecardId) public view virtual override returns (DefifaScorecardState) {
         // Keep a reference to the ratified scorecard ID.
-        uint256 _ratifiedScorecardId = ratifiedScorecardIdOf[gameId];
+        uint256 ratifiedScorecardId = ratifiedScorecardIdOf[gameId];
 
         // If the game has already ratified a scorecard, return succeeded if the ratified proposal is being checked.
         // Else return defeated.
-        if (_ratifiedScorecardId != 0) {
-            return _ratifiedScorecardId == scorecardId ? DefifaScorecardState.RATIFIED : DefifaScorecardState.DEFEATED;
+        if (ratifiedScorecardId != 0) {
+            return ratifiedScorecardId == scorecardId ? DefifaScorecardState.RATIFIED : DefifaScorecardState.DEFEATED;
         }
 
         // Get a reference to the scorecard.
-        DefifaScorecard memory _scorecard = _scorecardOf[gameId][scorecardId];
+        DefifaScorecard memory scorecard = _scorecardOf[gameId][scorecardId];
 
         // Make sure the proposal is known.
         // slither-disable-next-line incorrect-equality
-        if (_scorecard.attestationsBegin == 0) {
+        if (scorecard.attestationsBegin == 0) {
             revert DefifaGovernor_UnknownProposal();
         }
 
         // If the scorecard has attestations beginning in the future, the state is PENDING.
         // At exactly `attestationsBegin`, attestations are open so the state is ACTIVE.
-        if (_scorecard.attestationsBegin > block.timestamp) {
+        if (scorecard.attestationsBegin > block.timestamp) {
             return DefifaScorecardState.PENDING;
         }
 
         // If the scorecard's grace period has not yet ended, the state is ACTIVE.
         // At exactly `gracePeriodEnds`, the grace period has elapsed so we fall through to the quorum check.
-        if (_scorecard.gracePeriodEnds > block.timestamp) {
+        if (scorecard.gracePeriodEnds > block.timestamp) {
             return DefifaScorecardState.ACTIVE;
         }
 
