@@ -12,6 +12,8 @@ import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 import {DefifaScorecardState} from "./enums/DefifaScorecardState.sol";
 import {IDefifaDeployer} from "./interfaces/IDefifaDeployer.sol";
 import {IDefifaGovernor} from "./interfaces/IDefifaGovernor.sol";
+import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
+import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 import {IDefifaHook} from "./interfaces/IDefifaHook.sol";
 import {DefifaAttestations} from "./structs/DefifaAttestations.sol";
 import {DefifaScorecard} from "./structs/DefifaScorecard.sol";
@@ -384,8 +386,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
+        // Get a reference to the hook and its store.
+        IDefifaHook hook = IDefifaHook(metadata.dataHook);
+        IJB721TiersHookStore store = hook.store();
+
         // Get a reference to the number of tiers.
-        uint256 numberOfTiers = IDefifaHook(metadata.dataHook).store().maxTierIdOf(metadata.dataHook);
+        uint256 numberOfTiers = store.maxTierIdOf(metadata.dataHook);
 
         // slither-disable-next-line calls-inside-a-loop
         for (uint256 i; i < numberOfTiers; i++) {
@@ -393,8 +399,25 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             uint256 tierId = i + 1;
 
             // Get this account's attestation units within the tier (snapshot at timestamp).
-            uint256 tierAttestationUnitsForAccount = IDefifaHook(metadata.dataHook)
-                .getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
+            uint256 tierAttestationUnitsForAccount =
+                hook.getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
+
+            // Get the total attestation units for this tier (snapshot at timestamp).
+            uint256 tierTotalAttestationUnits =
+                hook.getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp});
+
+            // Include unminted pending reserves in the total (denominator only). This ensures every
+            // token holder's voting power already accounts for reserves that will eventually be minted.
+            // When the reserve beneficiary later mints, their new NFTs add to the numerator while
+            // pending reserves decrease by the same amount — so no one's voting power shifts.
+            {
+                uint256 pendingReserves = store.numberOfPendingReservesFor(metadata.dataHook, tierId);
+                if (pendingReserves != 0) {
+                    JB721Tier memory tier =
+                        store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
+                    tierTotalAttestationUnits += pendingReserves * tier.votingUnits;
+                }
+            }
 
             // Scale the account's share of the tier to MAX_ATTESTATION_POWER_TIER.
             // e.g. holding 3 of 10 tokens → 3/10 * MAX_ATTESTATION_POWER_TIER attestation power from this tier.
@@ -403,8 +426,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                     attestationPower += mulDiv({
                         x: MAX_ATTESTATION_POWER_TIER,
                         y: tierAttestationUnitsForAccount,
-                        denominator: IDefifaHook(metadata.dataHook)
-                            .getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp})
+                        denominator: tierTotalAttestationUnits
                     });
                 }
             }
@@ -412,37 +434,46 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     }
 
     /// @notice The number of attestation units that must have participated in a proposal for it to be ratified.
-    /// @dev Each tier with at least one minted token contributes MAX_ATTESTATION_POWER_TIER to the total
-    /// eligible weight. Quorum is 50% of this total. Because every tier has equal max attestation power
-    /// regardless of supply, each tier's community has equal influence — a tier with 1 token and a tier
-    /// with 100 tokens both cap at MAX_ATTESTATION_POWER_TIER when fully attested. This prevents
-    /// high-supply tiers from dominating governance, keeping the game fair across all outcomes.
-    /// @dev Note: quorum is computed from the live supply (currentSupplyOfTier) rather than a snapshot. This means
-    /// the quorum threshold can shift between when a scorecard is submitted and when it is evaluated, e.g. if
-    /// tokens are burned after attestation. In practice this is acceptable because attestation weights are
-    /// snapshotted and quorum only increases (new mints) or decreases (burns) — the latter makes ratification
-    /// easier, not harder.
+    /// @dev Each tier with participation contributes MAX_ATTESTATION_POWER_TIER to the total eligible weight.
+    /// A tier counts as "participated" if it has circulating tokens OR unminted pending reserves — the latter
+    /// means mints occurred (triggering reserve accrual) even if all paid tokens were later burned during REFUND.
+    /// Quorum is 50% of this total. Because every tier has equal max attestation power regardless of supply,
+    /// each tier's community has equal influence. This prevents high-supply tiers from dominating governance.
+    /// @dev No snapshot needed: during SCORING, supply is frozen (no new paid mints, no burns). Reserve minting
+    /// doesn't change which tiers are counted because tiers with pending reserves are already included.
     /// @return The quorum number of attestations.
     function quorum(uint256 gameId) public view override returns (uint256) {
         // Get the game's current funding cycle along with its metadata.
         // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
+        // Get a reference to the hook and its store.
+        IDefifaHook hook = IDefifaHook(metadata.dataHook);
+        IJB721TiersHookStore store = hook.store();
+
         // Get a reference to the number of tiers.
-        uint256 numberOfTiers = IDefifaHook(metadata.dataHook).store().maxTierIdOf(metadata.dataHook);
+        uint256 numberOfTiers = store.maxTierIdOf(metadata.dataHook);
 
         // Keep a reference to the total eligible tier weight.
         uint256 eligibleTierWeights;
 
         // slither-disable-next-line calls-inside-a-loop
         for (uint256 i; i < numberOfTiers; i++) {
-            // Each minted tier contributes MAX_ATTESTATION_POWER_TIER to the quorum denominator.
-            if (IDefifaHook(metadata.dataHook).currentSupplyOfTier(i + 1) != 0) {
+            uint256 tierId = i + 1;
+
+            // A tier contributes to quorum if it has circulating tokens OR unminted pending reserves.
+            // Pending reserves exist when participation occurred (mints triggered reserve accrual),
+            // even if all paid tokens were later burned during REFUND. The reserve beneficiary still
+            // has a stake in that tier's outcome, so the tier should count toward governance quorum.
+            if (
+                hook.currentSupplyOfTier(tierId) != 0
+                    || store.numberOfPendingReservesFor(metadata.dataHook, tierId) != 0
+            ) {
                 eligibleTierWeights += MAX_ATTESTATION_POWER_TIER;
             }
         }
 
-        // Quorum = 50% of all minted tiers' attestation power.
+        // Quorum = 50% of all participated tiers' attestation power.
         return eligibleTierWeights / 2;
     }
 

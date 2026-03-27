@@ -99,7 +99,7 @@ On-chain prediction game framework built on Juicebox V6. Players mint NFT game p
 | `DefifaOpsData` | `token` (address), `start` (uint48), `mintPeriodDuration` (uint24), `refundPeriodDuration` (uint24), `minParticipation` (uint256), `scorecardTimeout` (uint32) | Internal game state in `DefifaDeployer` |
 | `DefifaDelegation` | `delegatee` (address), `tierId` (uint256) | `DefifaHook.setTierDelegatesTo` |
 | `DefifaGamePhase` | `COUNTDOWN`, `MINT`, `REFUND`, `SCORING`, `COMPLETE`, `NO_CONTEST` | Phase reporting throughout |
-| `DefifaScorecard` | `attestationsBegin` (uint48), `gracePeriodEnds` (uint48) | `DefifaGovernor._scorecardOf` |
+| `DefifaScorecard` | `attestationsBegin` (uint48), `gracePeriodEnds` (uint48) — set at submission time | `DefifaGovernor._scorecardOf` |
 | `DefifaAttestations` | `count` (uint256), `hasAttested` (mapping(address => bool)) | `DefifaGovernor._scorecardAttestationsOf` |
 | `DefifaScorecardState` | `PENDING`, `ACTIVE`, `DEFEATED`, `SUCCEEDED`, `RATIFIED` | `DefifaGovernor.stateOf` |
 
@@ -222,7 +222,8 @@ During COMPLETE phase cash outs, players also receive proportional $DEFIFA and $
 - All tiers share the same price (`tierPrice` on `DefifaLaunchProjectData`).
 - **Delegation only during MINT phase**. Other phases revert with `DefifaHook_DelegateChangesUnavailableInThisPhase`.
 - If `totalTierUnits` is 0 for a tier (no delegations), that tier contributes no attestation power.
-- **Dynamic quorum**: only counts tiers with minted supply. Minting new tiers changes quorum retroactively for active proposals.
+- **Quorum stability via pending reserves**: `quorum()` counts tiers with either minted supply (`currentSupplyOfTier > 0`) OR pending reserves (`numberOfPendingReservesFor > 0`). No snapshot is needed because during SCORING, supply is frozen (no new paid mints, no burns) and reserve minting doesn't change which tiers are counted — tiers with pending reserves are already included. The pending reserves check matters when all paid tokens in a tier were burned during REFUND: `currentSupplyOfTier` drops to 0 but pending reserves persist.
+- **Pending reserves dilute attestation power**: `getAttestationWeight` includes pending reserves in the denominator (total attestation units) but NOT the numerator (individual account units). Every token holder's voting power already accounts for reserves that will eventually be minted. When the reserve beneficiary later mints, their new NFTs add to the numerator while pending reserves decrease — no voting power shift for anyone. Consistent with the cash-out path (`computeCashOutWeight`) which also includes pending reserves in `totalTokensForCashoutInTier`.
 - `ratifyScorecardFrom` uses **low-level `.call`** to execute the scorecard on the hook (necessary because `setTierCashOutWeightsTo` is `onlyOwner`).
 - `fulfillCommitmentsOf` uses `max(amount, 1)` as a reentrancy sentinel. `sendPayoutsOf` is wrapped in try-catch: on failure, resets to sentinel (1) and emits `CommitmentPayoutFailed`.
 - `_buildSplits` normalizes split percentages. Rounding remainder absorbed by the protocol fee split (last in array).
