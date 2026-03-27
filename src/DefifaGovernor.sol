@@ -410,16 +410,17 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             uint256 tierTotalAttestationUnits =
                 hook.getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp});
 
-            // If this account is the reserve beneficiary for this tier, include unminted pending reserves
-            // in their attestation weight. Pending reserves represent participation that occurred (mints
-            // triggered reserve accrual) even if all paid tokens were later burned during REFUND. The reserve
-            // beneficiary can mint these later, but they should be able to attest before doing so.
-            uint256 pendingReserves = store.numberOfPendingReservesFor(metadata.dataHook, tierId);
-            if (pendingReserves != 0 && store.reserveBeneficiaryOf(metadata.dataHook, tierId) == account) {
-                JB721Tier memory tier = store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
-                uint256 pendingVotingUnits = pendingReserves * tier.votingUnits;
-                tierAttestationUnitsForAccount += pendingVotingUnits;
-                tierTotalAttestationUnits += pendingVotingUnits;
+            // Include unminted pending reserves in the total (denominator only). This ensures every
+            // token holder's voting power already accounts for reserves that will eventually be minted.
+            // When the reserve beneficiary later mints, their new NFTs add to the numerator while
+            // pending reserves decrease by the same amount — so no one's voting power shifts.
+            {
+                uint256 pendingReserves = store.numberOfPendingReservesFor(metadata.dataHook, tierId);
+                if (pendingReserves != 0) {
+                    JB721Tier memory tier =
+                        store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
+                    tierTotalAttestationUnits += pendingReserves * tier.votingUnits;
+                }
             }
 
             // Scale the account's share of the tier to MAX_ATTESTATION_POWER_TIER.
