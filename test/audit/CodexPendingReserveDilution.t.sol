@@ -234,15 +234,16 @@ contract CodexPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
     function _cashOut(address user, uint256 tid, uint256 tnum) internal {
         bytes memory meta = _cashOutMeta(tid, tnum);
         vm.prank(user);
-        jbMultiTerminal().cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: meta
-        });
+        jbMultiTerminal()
+            .cashOutTokensOf({
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: meta
+            });
     }
 
     function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {

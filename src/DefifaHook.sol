@@ -284,9 +284,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Use this contract as the only cash out hook.
         hookSpecifications = new JBCashOutHookSpecification[](1);
-        hookSpecifications[0] = JBCashOutHookSpecification({
-            hook: this, noop: false, amount: 0, metadata: abi.encode(cumulativeMintPrice)
-        });
+        hookSpecifications[0] =
+            JBCashOutHookSpecification({hook: this, noop: false, amount: 0, metadata: abi.encode(cumulativeMintPrice)});
 
         // Compute the cash out count based on the game phase.
         cashOutCount = DefifaHookLib.computeCashOutCount({
@@ -590,10 +589,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Transfer the attestation units to the delegate.
         _transferTierAttestationUnits({
-            from: address(0),
-            to: reservedTokenBeneficiary,
-            tierId: tierId,
-            amount: tier.votingUnits * tokenIds.length
+            from: address(0), to: reservedTokenBeneficiary, tierId: tierId, amount: tier.votingUnits * tokenIds.length
         });
     }
 
@@ -957,9 +953,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         if (tierIdsToMint.length == 0) revert DefifaHook_NothingToMint();
 
         // Compute attestation units per unique tier (validates ascending order, reverts on bad order).
-        (uint256[] memory tierIds, uint256[] memory attestationAmounts, uint256 uniqueTierCount) = DefifaHookLib.computeAttestationUnits({
-            tierIdsToMint: tierIdsToMint, hookStore: store, hook: address(this)
-        });
+        (uint256[] memory tierIds, uint256[] memory attestationAmounts, uint256 uniqueTierCount) =
+            DefifaHookLib.computeAttestationUnits({tierIdsToMint: tierIdsToMint, hookStore: store, hook: address(this)});
 
         // Apply attestation units for each unique tier.
         for (uint256 i; i < uniqueTierCount;) {
@@ -1000,15 +995,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @param to The account to transfer tier attestation units to.
     /// @param tierId The ID of the tier for which attestation units are being transferred.
     /// @param amount The amount of attestation units to delegate.
-    function _transferTierAttestationUnits(
-        address from,
-        address to,
-        uint256 tierId,
-        uint256 amount
-    )
-        internal
-        virtual
-    {
+    function _transferTierAttestationUnits(address from, address to, uint256 tierId, uint256 amount) internal virtual {
         if (from == address(0) || to == address(0)) {
             // Get the current total for the tier.
             uint208 current = _totalTierCheckpoints[tierId].latest();

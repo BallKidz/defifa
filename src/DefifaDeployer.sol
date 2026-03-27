@@ -667,18 +667,15 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             splits[i] = initialSplits[i];
             splits[i].percent = uint32(
                 mulDiv({
-                    x: initialSplits[i].percent,
-                    y: JBConstants.SPLITS_TOTAL_PERCENT,
-                    denominator: totalAbsolutePercent
+                    x: initialSplits[i].percent, y: JBConstants.SPLITS_TOTAL_PERCENT, denominator: totalAbsolutePercent
                 })
             );
             normalizedTotal += splits[i].percent;
         }
 
         // Add Defifa fee split (normalized).
-        uint256 defifaNormalized = mulDiv({
-            x: defifaAbsolutePercent, y: JBConstants.SPLITS_TOTAL_PERCENT, denominator: totalAbsolutePercent
-        });
+        uint256 defifaNormalized =
+            mulDiv({x: defifaAbsolutePercent, y: JBConstants.SPLITS_TOTAL_PERCENT, denominator: totalAbsolutePercent});
         splits[numberOfUserSplits] = JBSplit({
             preferAddToBalance: false,
             // forge-lint: disable-next-line(unsafe-typecast)
