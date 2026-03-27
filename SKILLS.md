@@ -99,7 +99,7 @@ On-chain prediction game framework built on Juicebox V6. Players mint NFT game p
 | `DefifaOpsData` | `token` (address), `start` (uint48), `mintPeriodDuration` (uint24), `refundPeriodDuration` (uint24), `minParticipation` (uint256), `scorecardTimeout` (uint32) | Internal game state in `DefifaDeployer` |
 | `DefifaDelegation` | `delegatee` (address), `tierId` (uint256) | `DefifaHook.setTierDelegatesTo` |
 | `DefifaGamePhase` | `COUNTDOWN`, `MINT`, `REFUND`, `SCORING`, `COMPLETE`, `NO_CONTEST` | Phase reporting throughout |
-| `DefifaScorecard` | `attestationsBegin` (uint48), `gracePeriodEnds` (uint48) | `DefifaGovernor._scorecardOf` |
+| `DefifaScorecard` | `attestationsBegin` (uint48), `gracePeriodEnds` (uint48), `quorumSnapshot` (uint256) — set at submission time, used by `stateOf()` for ratification check | `DefifaGovernor._scorecardOf` |
 | `DefifaAttestations` | `count` (uint256), `hasAttested` (mapping(address => bool)) | `DefifaGovernor._scorecardAttestationsOf` |
 | `DefifaScorecardState` | `PENDING`, `ACTIVE`, `DEFEATED`, `SUCCEEDED`, `RATIFIED` | `DefifaGovernor.stateOf` |
 
@@ -222,7 +222,7 @@ During COMPLETE phase cash outs, players also receive proportional $DEFIFA and $
 - All tiers share the same price (`tierPrice` on `DefifaLaunchProjectData`).
 - **Delegation only during MINT phase**. Other phases revert with `DefifaHook_DelegateChangesUnavailableInThisPhase`.
 - If `totalTierUnits` is 0 for a tier (no delegations), that tier contributes no attestation power.
-- **Dynamic quorum**: only counts tiers with minted supply. Minting new tiers changes quorum retroactively for active proposals.
+- **Quorum snapshot**: Quorum is snapshotted at scorecard submission time (`submitScorecardFor`). `stateOf` uses `scorecard.quorumSnapshot` instead of calling `quorum()` live. The `quorum()` function still computes from live supply for informational/UI purposes.
 - `ratifyScorecardFrom` uses **low-level `.call`** to execute the scorecard on the hook (necessary because `setTierCashOutWeightsTo` is `onlyOwner`).
 - `fulfillCommitmentsOf` uses `max(amount, 1)` as a reentrancy sentinel. `sendPayoutsOf` is wrapped in try-catch: on failure, resets to sentinel (1) and emits `CommitmentPayoutFailed`.
 - `_buildSplits` normalizes split percentages. Rounding remainder absorbed by the protocol fee split (last in array).
