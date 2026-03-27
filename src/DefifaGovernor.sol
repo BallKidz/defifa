@@ -12,6 +12,7 @@ import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 import {DefifaScorecardState} from "./enums/DefifaScorecardState.sol";
 import {IDefifaDeployer} from "./interfaces/IDefifaDeployer.sol";
 import {IDefifaGovernor} from "./interfaces/IDefifaGovernor.sol";
+import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
 import {IDefifaHook} from "./interfaces/IDefifaHook.sol";
 import {DefifaAttestations} from "./structs/DefifaAttestations.sol";
 import {DefifaScorecard} from "./structs/DefifaScorecard.sol";
@@ -431,8 +432,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
+        // Get a reference to the hook and its store.
+        IDefifaHook hook = IDefifaHook(metadata.dataHook);
+        IJB721TiersHookStore store = hook.store();
+
         // Get a reference to the number of tiers.
-        uint256 numberOfTiers = IDefifaHook(metadata.dataHook).store().maxTierIdOf(metadata.dataHook);
+        uint256 numberOfTiers = store.maxTierIdOf(metadata.dataHook);
 
         // Keep a reference to the total eligible tier weight.
         uint256 eligibleTierWeights;
@@ -446,8 +451,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             // even if all paid tokens were later burned during REFUND. The reserve beneficiary still
             // has a stake in that tier's outcome, so the tier should count toward governance quorum.
             if (
-                IDefifaHook(metadata.dataHook).currentSupplyOfTier(tierId) != 0
-                    || IDefifaHook(metadata.dataHook).store().numberOfPendingReservesFor(metadata.dataHook, tierId) != 0
+                hook.currentSupplyOfTier(tierId) != 0
+                    || store.numberOfPendingReservesFor(metadata.dataHook, tierId) != 0
             ) {
                 eligibleTierWeights += MAX_ATTESTATION_POWER_TIER;
             }
