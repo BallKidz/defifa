@@ -104,6 +104,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             revert DefifaGovernor_NotAllowed();
         }
 
+        // Keep a reference to the scorecard being attested to.
+        DefifaScorecard storage _scorecard = _scorecardOf[gameId][scorecardId];
+
         // Keep a reference to the scorecard state.
         DefifaScorecardState _state = stateOf({gameId: gameId, scorecardId: scorecardId});
 
@@ -118,13 +121,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         if (_attestations.hasAttested[msg.sender]) revert DefifaGovernor_AlreadyAttested();
 
         // Get a reference to the attestation weight.
-        // Use block.timestamp - 1 as the snapshot to prevent same-block transfer manipulation:
-        // without this, a holder could attest, transfer in the same block, and the recipient could
-        // also attest — both would count because checkpoints pushed at block.timestamp would be
-        // visible to upperLookup(block.timestamp). By snapshotting at block.timestamp - 1, only
-        // state from before the current block is visible, preventing double attestation via transfer.
-        // forge-lint: disable-next-line(unsafe-typecast)
-        weight = getAttestationWeight({gameId: gameId, account: msg.sender, timestamp: uint48(block.timestamp - 1)});
+        weight = getAttestationWeight({gameId: gameId, account: msg.sender, timestamp: _scorecard.attestationsBegin});
 
         // Increase the attestation count.
         _attestations.count += weight;
