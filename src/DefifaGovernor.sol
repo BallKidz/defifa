@@ -245,10 +245,6 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // when a scorecard is submitted early.
         scorecard.gracePeriodEnds = uint48(attestationsBegin + attestationGracePeriodOf(gameId));
 
-        // Snapshot the quorum at submission time so that later reserve mints cannot retroactively
-        // raise the quorum threshold and invalidate a scorecard that already reached SUCCEEDED.
-        scorecard.quorumSnapshot = quorum(gameId);
-
         // Keep a reference to the default attestation delegate.
         address defaultAttestationDelegate = IDefifaHook(metadata.dataHook).defaultAttestationDelegate();
 
@@ -443,10 +439,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// means mints occurred (triggering reserve accrual) even if all paid tokens were later burned during REFUND.
     /// Quorum is 50% of this total. Because every tier has equal max attestation power regardless of supply,
     /// each tier's community has equal influence. This prevents high-supply tiers from dominating governance.
-    /// @dev Note: this function computes quorum from live supply and pending reserves. The result is
-    /// snapshotted into each scorecard at submission time (`submitScorecardFor`) so that later changes
-    /// cannot retroactively shift the quorum threshold. The snapshotted value is used by `stateOf()` for
-    /// scorecard evaluation. This function remains public for UI/informational purposes.
+    /// @dev No snapshot needed: during SCORING, supply is frozen (no new paid mints, no burns). Reserve minting
+    /// doesn't change which tiers are counted because tiers with pending reserves are already included.
     /// @return The quorum number of attestations.
     function quorum(uint256 gameId) public view override returns (uint256) {
         // Get the game's current funding cycle along with its metadata.
@@ -526,9 +520,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Note: scorecards that fail to reach quorum remain ACTIVE indefinitely — there is no DEFEATED
         // state transition for unratified scorecards. This is by design: new scorecards can always be
         // submitted and the game's no-contest timeout (scorecardTimeout) provides the ultimate backstop.
-        // Uses the quorum snapshotted at submission time so that reserve mints cannot retroactively raise
-        // the threshold and invalidate a scorecard that already reached SUCCEEDED.
-        return scorecard.quorumSnapshot <= _scorecardAttestationsOf[gameId][scorecardId].count
+        return quorum(gameId) <= _scorecardAttestationsOf[gameId][scorecardId].count
             ? DefifaScorecardState.SUCCEEDED
             : DefifaScorecardState.ACTIVE;
     }

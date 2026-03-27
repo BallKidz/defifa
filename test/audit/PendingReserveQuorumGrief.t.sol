@@ -124,13 +124,13 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         _governorImpl.transferOwnership(address(_deployer));
     }
 
-    /// @notice RPT-H-2 FIX VERIFICATION: Quorum snapshot prevents reserve mints from reopening a succeeded scorecard.
+    /// @notice RPT-H-2 FIX VERIFICATION: Pending reserves in quorum + attestation denominator prevent manipulation.
     ///
     /// 1. Four players mint into tiers 1-4 (each creates 1 pending reserve due to reserveRate=1)
     /// 2. Pending reserves dilute each player's attestation power to 50% of MAX_POWER per tier
-    /// 3. All 4 players attest → total = 4 * 0.5 * MAX_POWER = 2 * MAX_POWER, meeting quorum
-    /// 4. Minting reserves after submission doesn't change the snapshotted quorum
-    function test_quorumSnapshotPreventsReserveMintFromReopeningSucceededScorecard() external {
+    /// 3. All 4 players attest, total = 4 * 0.5 * MAX_POWER = 2 * MAX_POWER, meeting quorum
+    /// 4. Minting reserves doesn't change quorum (tier was already counted via pending reserves)
+    function test_reserveMintDoesNotChangeQuorumWhenPendingReservesAlreadyCounted() external {
         (_pid, _nft, _gov) = _launch(_launchData());
 
         // --- MINT phase --- players mint 1 NFT each into tiers 1-4
@@ -180,16 +180,16 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 3, count: 1});
         _nft.mintReservesFor(reserveConfigs);
 
-        // Scorecard STILL SUCCEEDED — snapshotted quorum is immutable
+        // Scorecard STILL SUCCEEDED — reserve mint doesn't change which tiers are counted
         assertEq(
             uint256(_gov.stateOf(_gameId, proposalId)),
             uint256(DefifaScorecardState.SUCCEEDED),
-            "snapshot holds after reserve mint"
+            "quorum unchanged after reserve mint"
         );
     }
 
-    /// @notice RPT-H-2 FIX VERIFICATION: Ratification succeeds after reserve mint because snapshot holds.
-    function test_ratificationSucceedsAfterReserveMintWithQuorumSnapshot() external {
+    /// @notice RPT-H-2 FIX VERIFICATION: Ratification succeeds after reserve mint because quorum is stable.
+    function test_ratificationSucceedsAfterReserveMint() external {
         (_pid, _nft, _gov) = _launch(_launchData());
 
         // MINT phase
@@ -231,9 +231,9 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 3, count: 1});
         _nft.mintReservesFor(reserveConfigs);
 
-        // Ratification succeeds because stateOf uses snapshotted quorum
+        // Ratification succeeds because quorum is unchanged (tier already counted via pending reserves)
         uint256 ratifiedId = _gov.ratifyScorecardFrom(_gameId, scorecard);
-        assertEq(ratifiedId, proposalId, "ratification succeeds with snapshotted quorum");
+        assertEq(ratifiedId, proposalId, "ratification succeeds after reserve mint");
     }
 
     function _buildScorecard() internal view returns (DefifaTierCashOutWeight[] memory scorecard) {
