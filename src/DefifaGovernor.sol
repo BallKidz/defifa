@@ -120,7 +120,11 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Make sure the account isn't attesting to the same scorecard again.
         if (_attestations.hasAttested[msg.sender]) revert DefifaGovernor_AlreadyAttested();
 
-        // Get a reference to the attestation weight.
+        // Get a reference to the attestation weight, snapshotted at `attestationsBegin`.
+        // Note: using `attestationsBegin` (not `block.timestamp - 1`) is intentional. It is always a past timestamp
+        // set during `submitScorecardFor`, so same-block transfer manipulation cannot inflate attestation power.
+        // A fixed snapshot also ensures every attestor's weight is measured at the same point in time, which is
+        // fairer for gameplay than a per-attestor rolling snapshot.
         weight = getAttestationWeight({gameId: gameId, account: msg.sender, timestamp: _scorecard.attestationsBegin});
 
         // Increase the attestation count.
