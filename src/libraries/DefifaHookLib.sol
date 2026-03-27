@@ -42,47 +42,47 @@ library DefifaHookLib {
         returns (uint256[128] memory weights)
     {
         // Keep a reference to the max tier ID.
-        uint256 _maxTierId = hookStore.maxTierIdOf(hook);
+        uint256 maxTierId = hookStore.maxTierIdOf(hook);
 
         // Keep a reference to the cumulative amounts.
-        uint256 _cumulativeCashOutWeight;
+        uint256 cumulativeCashOutWeight;
 
         // Keep a reference to the number of tier weights.
-        uint256 _numberOfTierWeights = tierWeights.length;
+        uint256 numberOfTierWeights = tierWeights.length;
 
         // Keep a reference to the tier being iterated on.
-        JB721Tier memory _tier;
+        JB721Tier memory tier;
 
         // Keep a reference to the last tier ID to enforce ascending order (no duplicates).
-        uint256 _lastTierId;
+        uint256 lastTierId;
 
-        for (uint256 _i; _i < _numberOfTierWeights;) {
+        for (uint256 i; i < numberOfTierWeights;) {
             // Enforce strict ascending order to prevent duplicate tier IDs.
-            if (tierWeights[_i].id <= _lastTierId && _i != 0) revert DefifaHook_BadTierOrder();
-            _lastTierId = tierWeights[_i].id;
+            if (tierWeights[i].id <= lastTierId && i != 0) revert DefifaHook_BadTierOrder();
+            lastTierId = tierWeights[i].id;
 
             // Get the tier.
-            _tier = hookStore.tierOf({hook: hook, id: tierWeights[_i].id, includeResolvedUri: false});
+            tier = hookStore.tierOf({hook: hook, id: tierWeights[i].id, includeResolvedUri: false});
 
             // Can't set a cashOut weight for tiers not in category 0.
-            if (_tier.category != 0) revert DefifaHook_InvalidTierId();
+            if (tier.category != 0) revert DefifaHook_InvalidTierId();
 
             // Attempting to set the cashOut weight for a tier that does not exist (yet) reverts.
-            if (_tier.id > _maxTierId) revert DefifaHook_InvalidTierId();
+            if (tier.id > maxTierId) revert DefifaHook_InvalidTierId();
 
             // Save the tier weight. Tiers are 1 indexed and should be stored 0 indexed.
-            weights[_tier.id - 1] = tierWeights[_i].cashOutWeight;
+            weights[tier.id - 1] = tierWeights[i].cashOutWeight;
 
             // Increment the cumulative amount.
-            _cumulativeCashOutWeight += tierWeights[_i].cashOutWeight;
+            cumulativeCashOutWeight += tierWeights[i].cashOutWeight;
 
             unchecked {
-                ++_i;
+                ++i;
             }
         }
 
         // Make sure the cumulative amount is exactly the total cashOut weight.
-        if (_cumulativeCashOutWeight != TOTAL_CASHOUT_WEIGHT) revert DefifaHook_InvalidCashoutWeights();
+        if (cumulativeCashOutWeight != TOTAL_CASHOUT_WEIGHT) revert DefifaHook_InvalidCashoutWeights();
     }
 
     /// @notice Compute the cash out weight for a single token.
@@ -104,39 +104,39 @@ library DefifaHookLib {
         returns (uint256)
     {
         // Keep a reference to the token's tier ID.
-        uint256 _tierId = hookStore.tierIdOfToken(tokenId);
+        uint256 tierId = hookStore.tierIdOfToken(tokenId);
 
         // Keep a reference to the tier.
-        JB721Tier memory _tier = hookStore.tierOf({hook: hook, id: _tierId, includeResolvedUri: false});
+        JB721Tier memory tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
 
         // Get the tier's weight.
-        uint256 _weight = tierCashOutWeights[_tierId - 1];
+        uint256 weight = tierCashOutWeights[tierId - 1];
 
         // If there's no weight there's nothing to redeem.
-        if (_weight == 0) return 0;
+        if (weight == 0) return 0;
 
         // Get the amount of tokens that have already been burned.
-        uint256 _burnedTokens = hookStore.numberOfBurnedFor({hook: hook, tierId: _tierId});
+        uint256 burnedTokens = hookStore.numberOfBurnedFor({hook: hook, tierId: tierId});
 
         // If no tiers were minted, nothing to redeem.
-        if (_tier.initialSupply - (_tier.remainingSupply + _burnedTokens) == 0) return 0;
+        if (tier.initialSupply - (tier.remainingSupply + burnedTokens) == 0) return 0;
 
         // Calculate the amount of tokens that existed at the start of the last phase.
-        uint256 _totalTokensForCashoutInTier =
-            _tier.initialSupply - _tier.remainingSupply - (_burnedTokens - tokensRedeemedFrom[_tierId]);
+        uint256 totalTokensForCashoutInTier =
+            tier.initialSupply - tier.remainingSupply - (burnedTokens - tokensRedeemedFrom[tierId]);
 
         // Include pending (unminted) reserve NFTs in the denominator. Without this, paid holders
         // could cash out before reserves are minted and extract value that should be diluted across
         // both paid and reserved holders. By counting pending reserves, each token's share of the
         // tier weight is computed against the full eventual supply.
-        uint256 _pendingReserves = hookStore.numberOfPendingReservesFor({hook: hook, tierId: _tierId});
-        _totalTokensForCashoutInTier += _pendingReserves;
+        uint256 pendingReserves = hookStore.numberOfPendingReservesFor({hook: hook, tierId: tierId});
+        totalTokensForCashoutInTier += pendingReserves;
 
         // Calculate the percentage of the tier cashOut amount a single token counts for.
         // Integer division rounding in cashOutWeight is unavoidable in Solidity. Rounding direction
         // (down) is consistent and conservative — it slightly favors the project over individual cash-out recipients.
         // The maximum error per operation is 1 wei per division.
-        return _weight / _totalTokensForCashoutInTier;
+        return weight / totalTokensForCashoutInTier;
     }
 
     /// @notice Compute the cumulative cash out weight for multiple tokens.
@@ -157,17 +157,17 @@ library DefifaHookLib {
         view
         returns (uint256 cumulativeWeight)
     {
-        uint256 _tokenCount = tokenIds.length;
-        for (uint256 _i; _i < _tokenCount;) {
+        uint256 tokenCount = tokenIds.length;
+        for (uint256 i; i < tokenCount;) {
             cumulativeWeight += computeCashOutWeight({
-                tokenId: tokenIds[_i],
+                tokenId: tokenIds[i],
                 hookStore: hookStore,
                 hook: hook,
                 tierCashOutWeights: tierCashOutWeights,
                 tokensRedeemedFrom: tokensRedeemedFrom
             });
             unchecked {
-                ++_i;
+                ++i;
             }
         }
     }
@@ -197,20 +197,20 @@ library DefifaHookLib {
         if (totalMintCost == 0) return (0, 0);
 
         // Keep a reference to the number of tokens being used for claims.
-        uint256 _numberOfTokens = tokenIds.length;
+        uint256 numberOfTokens = tokenIds.length;
 
         // Calculate the amount paid to mint the tokens that are being burned.
-        uint256 _cumulativeMintPrice;
-        for (uint256 _i; _i < _numberOfTokens; _i++) {
-            _cumulativeMintPrice += hookStore.tierOfTokenId({
-                hook: hook, tokenId: tokenIds[_i], includeResolvedUri: false
+        uint256 cumulativeMintPrice;
+        for (uint256 i; i < numberOfTokens; i++) {
+            cumulativeMintPrice += hookStore.tierOfTokenId({
+                hook: hook, tokenId: tokenIds[i], includeResolvedUri: false
             })
             .price;
         }
 
         // Calculate the user's claimable amount proportional to what they paid.
-        defifaTokenAmount = mulDiv({x: defifaBalance, y: _cumulativeMintPrice, denominator: totalMintCost});
-        baseProtocolTokenAmount = mulDiv({x: baseProtocolBalance, y: _cumulativeMintPrice, denominator: totalMintCost});
+        defifaTokenAmount = mulDiv({x: defifaBalance, y: cumulativeMintPrice, denominator: totalMintCost});
+        baseProtocolTokenAmount = mulDiv({x: baseProtocolBalance, y: cumulativeMintPrice, denominator: totalMintCost});
     }
 
     /// @notice Compute the cumulative mint price for a set of token IDs.
@@ -227,10 +227,10 @@ library DefifaHookLib {
         view
         returns (uint256 cumulativeMintPrice)
     {
-        uint256 _numberOfTokenIds = tokenIds.length;
-        for (uint256 _i; _i < _numberOfTokenIds; _i++) {
+        uint256 numberOfTokenIds = tokenIds.length;
+        for (uint256 i; i < numberOfTokenIds; i++) {
             cumulativeMintPrice += hookStore.tierOfTokenId({
-                hook: hook, tokenId: tokenIds[_i], includeResolvedUri: false
+                hook: hook, tokenId: tokenIds[i], includeResolvedUri: false
             })
             .price;
         }
@@ -282,8 +282,8 @@ library DefifaHookLib {
         view
         returns (uint256)
     {
-        JB721Tier memory _tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
-        return _tier.initialSupply - (_tier.remainingSupply + hookStore.numberOfBurnedFor({hook: hook, tierId: tierId}));
+        JB721Tier memory tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
+        return tier.initialSupply - (tier.remainingSupply + hookStore.numberOfBurnedFor({hook: hook, tierId: tierId}));
     }
 
     /// @notice Computes the attestation units for tiers during payment processing.
@@ -303,40 +303,40 @@ library DefifaHookLib {
         view
         returns (uint256[] memory tierIds, uint256[] memory attestationAmounts, uint256 count)
     {
-        uint256 _numberOfTiers = tierIdsToMint.length;
-        tierIds = new uint256[](_numberOfTiers);
-        attestationAmounts = new uint256[](_numberOfTiers);
+        uint256 numberOfTiers = tierIdsToMint.length;
+        tierIds = new uint256[](numberOfTiers);
+        attestationAmounts = new uint256[](numberOfTiers);
 
-        if (_numberOfTiers == 0) return (tierIds, attestationAmounts, 0);
+        if (numberOfTiers == 0) return (tierIds, attestationAmounts, 0);
 
-        uint256 _currentTierId;
-        uint256 _attestationUnits;
-        uint256 _accumulated;
+        uint256 currentTierId;
+        uint256 attestationUnits;
+        uint256 accumulated;
 
-        for (uint256 _i; _i < _numberOfTiers;) {
-            if (_currentTierId != tierIdsToMint[_i]) {
+        for (uint256 i; i < numberOfTiers;) {
+            if (currentTierId != tierIdsToMint[i]) {
                 // Flush accumulated units for previous tier.
-                if (_currentTierId != 0) {
-                    tierIds[count] = _currentTierId;
-                    attestationAmounts[count] = _accumulated;
+                if (currentTierId != 0) {
+                    tierIds[count] = currentTierId;
+                    attestationAmounts[count] = accumulated;
                     count++;
                 }
-                if (tierIdsToMint[_i] < _currentTierId) revert DefifaHook_BadTierOrder();
-                _currentTierId = tierIdsToMint[_i];
-                _attestationUnits =
-                hookStore.tierOf({hook: hook, id: _currentTierId, includeResolvedUri: false}).votingUnits;
-                _accumulated = _attestationUnits;
+                if (tierIdsToMint[i] < currentTierId) revert DefifaHook_BadTierOrder();
+                currentTierId = tierIdsToMint[i];
+                attestationUnits =
+                hookStore.tierOf({hook: hook, id: currentTierId, includeResolvedUri: false}).votingUnits;
+                accumulated = attestationUnits;
             } else {
-                _accumulated += _attestationUnits;
+                accumulated += attestationUnits;
             }
             unchecked {
-                ++_i;
+                ++i;
             }
         }
         // Flush the last tier.
-        if (_currentTierId != 0) {
-            tierIds[count] = _currentTierId;
-            attestationAmounts[count] = _accumulated;
+        if (currentTierId != 0) {
+            tierIds[count] = currentTierId;
+            attestationAmounts[count] = accumulated;
             count++;
         }
     }
