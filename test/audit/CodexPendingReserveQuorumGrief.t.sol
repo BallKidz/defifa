@@ -124,16 +124,13 @@ contract CodexPendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         _governorImpl.transferOwnership(address(_deployer));
     }
 
-    /// @notice RPT-H-2 FIX VERIFICATION: Quorum snapshot prevents reserve mints from reopening a succeeded scorecard.
+    /// @notice RPT-H-2 FIX VERIFICATION: Quorum includes pending reserves and snapshot prevents manipulation.
     ///
-    /// Attack flow (now mitigated by snapshotted quorum):
-    /// 1. Four players mint into tiers 1-4 during MINT phase (each mint creates 1 pending reserve due to reserveRate=1)
-    /// 2. Players 2 and 3 cash out tiers 3 and 4 during REFUND phase, bringing those tiers to currentSupply=0
-    /// 3. Game enters SCORING phase. Scorecard is submitted — quorum is snapshotted at this point (2 live tiers)
-    /// 4. Player 0 attests, exceeding the snapshotted quorum. Scorecard reaches SUCCEEDED.
-    /// 5. Anyone calls mintReservesFor(tier 3), reviving a dead tier — live quorum() changes but stateOf uses
-    /// snapshot
-    /// 6. Scorecard remains SUCCEEDED because stateOf uses the snapshotted quorum, not the live one
+    /// 1. Four players mint into tiers 1-4 (each creates 1 pending reserve due to reserveRate=1)
+    /// 2. Players 2 and 3 cash out tiers 3 and 4 — currentSupply=0 but pending reserves remain
+    /// 3. Quorum counts all 4 tiers (pending reserves count), so quorum = 2 * MAX_POWER
+    /// 4. Players 0 and 1 attest (2 * MAX_POWER), meeting quorum. Scorecard reaches SUCCEEDED.
+    /// 5. Minting reserves doesn't change the snapshotted quorum — scorecard stays SUCCEEDED.
     function test_quorumSnapshotPreventsReserveMintFromReopeningSucceededScorecard() external {
         (_pid, _nft, _gov) = _launch(_launchData());
 
@@ -166,29 +163,30 @@ contract CodexPendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         DefifaTierCashOutWeight[] memory scorecard = _buildScorecard();
         uint256 proposalId = _gov.submitScorecardFor(_gameId, scorecard);
 
+        // Quorum includes all 4 tiers (pending reserves count as participation).
+        // 4 tiers * MAX_POWER / 2 = 2 * MAX_POWER. Need 2 full-tier attestations.
+        uint256 snapshotQuorum = _gov.quorum(_gameId);
+        assertEq(snapshotQuorum, _gov.MAX_ATTESTATION_POWER_TIER() * 2, "all 4 tiers count (pending reserves included)");
+
         vm.prank(_player0);
+        _gov.attestToScorecardFrom(_gameId, proposalId);
+        vm.prank(_player1);
         _gov.attestToScorecardFrom(_gameId, proposalId);
 
         vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
 
-        uint256 beforeAttackQuorum = _gov.quorum(_gameId);
-        assertEq(beforeAttackQuorum, _gov.MAX_ATTESTATION_POWER_TIER(), "two live tiers require one full-tier vote");
         assertEq(
             uint256(_gov.stateOf(_gameId, proposalId)),
             uint256(DefifaScorecardState.SUCCEEDED),
-            "proposal succeeds before reserve mint"
+            "proposal succeeds with 2 attestors meeting 4-tier quorum"
         );
 
-        // --- Step 4: ATTEMPTED ATTACK --- anyone mints pending reserves, reviving a dead tier
+        // --- Step 4: ATTEMPTED ATTACK --- anyone mints pending reserves
         JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
         reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 3, count: 1});
         _nft.mintReservesFor(reserveConfigs);
 
-        // --- Step 5: Verify the scorecard STILL SUCCEEDED (fix works) ---
-        uint256 afterAttackQuorum = _gov.quorum(_gameId);
-        assertEq(
-            afterAttackQuorum, (_gov.MAX_ATTESTATION_POWER_TIER() * 3) / 2, "live quorum rises but stateOf ignores it"
-        );
+        // --- Step 5: Verify the scorecard STILL SUCCEEDED (snapshot holds) ---
         assertEq(_nft.currentSupplyOfTier(3), 1, "reserve mint revives tier 3 supply");
         assertEq(
             uint256(_gov.stateOf(_gameId, proposalId)),
@@ -225,6 +223,8 @@ contract CodexPendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         DefifaTierCashOutWeight[] memory scorecard = _buildScorecard();
         uint256 proposalId = _gov.submitScorecardFor(_gameId, scorecard);
         vm.prank(_player0);
+        _gov.attestToScorecardFrom(_gameId, proposalId);
+        vm.prank(_player1);
         _gov.attestToScorecardFrom(_gameId, proposalId);
         vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
 

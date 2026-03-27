@@ -416,14 +416,14 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     }
 
     /// @notice The number of attestation units that must have participated in a proposal for it to be ratified.
-    /// @dev Each tier with at least one minted token contributes MAX_ATTESTATION_POWER_TIER to the total
-    /// eligible weight. Quorum is 50% of this total. Because every tier has equal max attestation power
-    /// regardless of supply, each tier's community has equal influence — a tier with 1 token and a tier
-    /// with 100 tokens both cap at MAX_ATTESTATION_POWER_TIER when fully attested. This prevents
-    /// high-supply tiers from dominating governance, keeping the game fair across all outcomes.
-    /// @dev Note: this function computes quorum from the live supply (currentSupplyOfTier). The result is
-    /// snapshotted into each scorecard at submission time (`submitScorecardFor`) so that later reserve mints
-    /// cannot retroactively raise the quorum threshold. The snapshotted value is used by `stateOf()` for
+    /// @dev Each tier with participation contributes MAX_ATTESTATION_POWER_TIER to the total eligible weight.
+    /// A tier counts as "participated" if it has circulating tokens OR unminted pending reserves — the latter
+    /// means mints occurred (triggering reserve accrual) even if all paid tokens were later burned during REFUND.
+    /// Quorum is 50% of this total. Because every tier has equal max attestation power regardless of supply,
+    /// each tier's community has equal influence. This prevents high-supply tiers from dominating governance.
+    /// @dev Note: this function computes quorum from live supply and pending reserves. The result is
+    /// snapshotted into each scorecard at submission time (`submitScorecardFor`) so that later changes
+    /// cannot retroactively shift the quorum threshold. The snapshotted value is used by `stateOf()` for
     /// scorecard evaluation. This function remains public for UI/informational purposes.
     /// @return The quorum number of attestations.
     function quorum(uint256 gameId) public view override returns (uint256) {
@@ -439,13 +439,21 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // slither-disable-next-line calls-inside-a-loop
         for (uint256 i; i < numberOfTiers; i++) {
-            // Each minted tier contributes MAX_ATTESTATION_POWER_TIER to the quorum denominator.
-            if (IDefifaHook(metadata.dataHook).currentSupplyOfTier(i + 1) != 0) {
+            uint256 tierId = i + 1;
+
+            // A tier contributes to quorum if it has circulating tokens OR unminted pending reserves.
+            // Pending reserves exist when participation occurred (mints triggered reserve accrual),
+            // even if all paid tokens were later burned during REFUND. The reserve beneficiary still
+            // has a stake in that tier's outcome, so the tier should count toward governance quorum.
+            if (
+                IDefifaHook(metadata.dataHook).currentSupplyOfTier(tierId) != 0
+                    || IDefifaHook(metadata.dataHook).store().numberOfPendingReservesFor(metadata.dataHook, tierId) != 0
+            ) {
                 eligibleTierWeights += MAX_ATTESTATION_POWER_TIER;
             }
         }
 
-        // Quorum = 50% of all minted tiers' attestation power.
+        // Quorum = 50% of all participated tiers' attestation power.
         return eligibleTierWeights / 2;
     }
 
