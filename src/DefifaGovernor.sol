@@ -1,6 +1,8 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
+import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
+import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {Address} from "@openzeppelin/contracts/utils/Address.sol";
@@ -12,8 +14,6 @@ import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 import {DefifaScorecardState} from "./enums/DefifaScorecardState.sol";
 import {IDefifaDeployer} from "./interfaces/IDefifaDeployer.sol";
 import {IDefifaGovernor} from "./interfaces/IDefifaGovernor.sol";
-import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
-import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 import {IDefifaHook} from "./interfaces/IDefifaHook.sol";
 import {DefifaAttestations} from "./structs/DefifaAttestations.sol";
 import {DefifaScorecard} from "./structs/DefifaScorecard.sol";
@@ -44,11 +44,16 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @notice The max attestation power each tier has if every token within the tier attestations.
     uint256 public constant override MAX_ATTESTATION_POWER_TIER = 1_000_000_000;
 
-    /// @notice The concentration penalty factor for HHI-adjusted quorum (k=0.5 in 1e18 scale).
-    uint256 internal constant CONCENTRATION_PENALTY_FACTOR = 5e17;
+    //*********************************************************************//
+    // ----------------------- internal constants ------------------------ //
+    //*********************************************************************//
 
-    /// @notice The total scorecard weight (1e18 scale, matches cashOutWeight denominator).
-    uint256 internal constant TOTAL_SCORECARD_WEIGHT = 1_000_000_000_000_000_000;
+    /// @notice The HHI sensitivity coefficient (k) for graduated quorum, in 1e18 scale.
+    /// @dev At k=0.5 (5e17): a winner-take-all scorecard (HHI=1) needs 50% more quorum,
+    /// while an equally-distributed scorecard (HHI~0) gets only ~1-2% increase.
+    /// Chosen to deter concentrated scorecards without overly penalizing moderate distributions.
+    /// See CRYPTO_ECON Section 9.4.2 for the full derivation.
+    uint256 internal constant _CONCENTRATION_PENALTY_FACTOR = 5e17;
 
     //*********************************************************************//
     // --------------- public immutable stored properties ---------------- //
@@ -121,9 +126,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Keep a reference to the scorecard being attested to.
         DefifaScorecard storage scorecard = _scorecardOf[gameId][scorecardId];
 
-        // Keep a reference to the scorecard state.
+        // Keep a reference to the scorecard state. Attestation is allowed during ACTIVE, QUEUED, and SUCCEEDED.
+        // New attestations can still accumulate after quorum is met — they don't change the outcome
+        // but allow participants to signal support for competing scorecards.
         DefifaScorecardState state = stateOf({gameId: gameId, scorecardId: scorecardId});
 
+        // Make sure the scorecard is in an attestable state.
         if (
             state != DefifaScorecardState.ACTIVE && state != DefifaScorecardState.SUCCEEDED
                 && state != DefifaScorecardState.QUEUED
@@ -137,18 +145,18 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Make sure the account isn't attesting to the same scorecard again.
         if (attestations.attestedWeightOf[msg.sender] != 0) revert DefifaGovernor_AlreadyAttested();
 
-        // Get a reference to the BWA-adjusted attestation weight, snapshotted at `attestationsBegin`.
+        // Compute the BWA-adjusted attestation weight for this account relative to this scorecard.
+        // The weight is snapshotted at `attestationsBegin` to prevent post-submission token transfers
+        // from changing attestation power. BWA reduces power proportional to the tier's benefit from
+        // the scorecard, preventing beneficiaries from self-attesting.
         weight = getBWAAttestationWeight({
-            gameId: gameId,
-            scorecardId: scorecardId,
-            account: msg.sender,
-            timestamp: scorecard.attestationsBegin
+            gameId: gameId, scorecardId: scorecardId, account: msg.sender, timestamp: scorecard.attestationsBegin
         });
 
-        // Increase the attestation count.
+        // Add the BWA-weighted attestation to the running total.
         attestations.count += weight;
 
-        // Store the BWA weight that was added (used for accurate subtraction on revoke).
+        // Store the exact BWA weight that was added so it can be accurately subtracted on revoke.
         attestations.attestedWeightOf[msg.sender] = weight;
 
         emit ScorecardAttested(gameId, scorecardId, weight, msg.sender);
@@ -206,17 +214,25 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @param gameId The ID of the game.
     /// @param scorecardId The ID of the scorecard to revoke attestation from.
     function revokeAttestationFrom(uint256 gameId, uint256 scorecardId) external virtual override {
-        // Only allow revocation during ACTIVE phase.
-        if (stateOf(gameId, scorecardId) != DefifaScorecardState.ACTIVE) revert DefifaGovernor_NotAllowed();
+        // Only allow revocation during ACTIVE phase — once QUEUED or SUCCEEDED, attestations are locked.
+        // This prevents the griefing loop where an attacker repeatedly attests and revokes to manipulate state.
+        if (stateOf({gameId: gameId, scorecardId: scorecardId}) != DefifaScorecardState.ACTIVE) {
+            revert DefifaGovernor_NotAllowed();
+        }
 
+        // Keep a reference to the attestations for this scorecard.
         DefifaAttestations storage attestations = _scorecardAttestationsOf[gameId][scorecardId];
+
+        // Get the BWA weight that was stored when this account attested.
         uint256 weight = attestations.attestedWeightOf[msg.sender];
 
-        // Must have previously attested.
+        // Make sure the account has previously attested to this scorecard.
         if (weight == 0) revert DefifaGovernor_NotAttested();
 
-        // Subtract the weight and clear the attestation.
+        // Subtract the exact BWA weight that was added during attestation.
         attestations.count -= weight;
+
+        // Clear the attestation so the account can attest to a different scorecard.
         attestations.attestedWeightOf[msg.sender] = 0;
 
         emit AttestationRevoked(gameId, scorecardId, msg.sender, weight);
@@ -284,22 +300,31 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // when a scorecard is submitted early.
         scorecard.gracePeriodEnds = uint48(attestationsBegin + attestationGracePeriodOf(gameId));
 
-        // Store tier weights for BWA computation.
+        // Get the total cashout weight denominator from the hook (1e18).
+        uint256 totalCashOutWeight = IDefifaHook(metadata.dataHook).TOTAL_CASHOUT_WEIGHT();
+
+        // Store each tier's weight so BWA can look it up later when computing attestation power.
         for (uint256 i; i < numberOfTierWeights; i++) {
             _scorecardTierWeightsOf[gameId][scorecardId][tierWeights[i].id - 1] = tierWeights[i].cashOutWeight;
         }
 
-        // Compute HHI (Herfindahl-Hirschman Index) for concentration-adjusted quorum.
+        // Compute the Herfindahl-Hirschman Index (HHI) to measure how concentrated this scorecard is.
+        // HHI = sum of squared weight shares. Range: ~0 (equal) to 1e18 (winner-take-all).
         uint256 hhi;
         for (uint256 i; i < numberOfTierWeights; i++) {
+            // Each tier's squared share contributes to concentration.
             uint256 w = tierWeights[i].cashOutWeight;
-            hhi += mulDiv(w, w, TOTAL_SCORECARD_WEIGHT);
+            hhi += mulDiv({x: w, y: w, denominator: totalCashOutWeight});
         }
 
-        // Compute HHI-adjusted quorum: more concentrated scorecards need higher quorum.
+        // Compute HHI-adjusted quorum: more concentrated scorecards need higher quorum to ratify.
+        // adjustedQuorum = baseQuorum * (1 + k * HHI), where k is _CONCENTRATION_PENALTY_FACTOR.
         uint256 baseQuorum = quorum(gameId);
-        uint256 adjustmentFactor = mulDiv(CONCENTRATION_PENALTY_FACTOR, hhi, 1e18);
-        uint256 adjustedQuorum = baseQuorum + mulDiv(baseQuorum, adjustmentFactor, 1e18);
+        // Scale the penalty factor by the scorecard's concentration.
+        uint256 adjustmentFactor = mulDiv({x: _CONCENTRATION_PENALTY_FACTOR, y: hhi, denominator: 1e18});
+        // Apply the adjustment to the base quorum.
+        uint256 adjustedQuorum = baseQuorum + mulDiv({x: baseQuorum, y: adjustmentFactor, denominator: 1e18});
+        // Snapshot the adjusted quorum so stateOf can check against it without recomputing.
         scorecard.quorumSnapshot = adjustedQuorum;
 
         // Keep a reference to the default attestation delegate.
@@ -473,7 +498,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             // When the reserve beneficiary later mints, their new NFTs add to the numerator while
             // pending reserves decrease by the same amount — so no one's voting power shifts.
             {
-                uint256 pendingReserves = store.numberOfPendingReservesFor(metadata.dataHook, tierId);
+                uint256 pendingReserves = store.numberOfPendingReservesFor({hook: metadata.dataHook, tierId: tierId});
                 if (pendingReserves != 0) {
                     JB721Tier memory tier =
                         store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
@@ -497,7 +522,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
     /// @notice Gets an account's BWA-adjusted attestation power relative to a specific scorecard.
     /// @dev BWA (Benefit-Weighted Attestation) reduces a tier's attestation power by how much
-    /// that tier benefits from the scorecard. Power is reduced by `(tierWeight / TOTAL_SCORECARD_WEIGHT)`.
+    /// that tier benefits from the scorecard. Power is reduced by `(tierWeight / totalCashOutWeight)`.
     /// This means a tier with 100% of the scorecard weight gets 0 attestation power for that scorecard,
     /// while a tier with 0% weight retains full power. This prevents beneficiaries from self-attesting.
     /// @param gameId The ID of the game.
@@ -528,6 +553,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Get a reference to the number of tiers.
         uint256 numberOfTiers = store.maxTierIdOf(metadata.dataHook);
 
+        // Cache the total cashout weight denominator from the hook (1e18).
+        uint256 totalCashOutWeight = hook.TOTAL_CASHOUT_WEIGHT();
+
         // slither-disable-next-line calls-inside-a-loop
         for (uint256 i; i < numberOfTiers; i++) {
             // Tiers are 1-indexed.
@@ -537,14 +565,17 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             uint256 tierAttestationUnitsForAccount =
                 hook.getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
 
+            // Only process tiers where the account has attestation units.
             if (tierAttestationUnitsForAccount != 0) {
                 // Get the total attestation units for this tier (snapshot at timestamp).
                 uint256 tierTotalAttestationUnits =
                     hook.getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp});
 
                 // Include unminted pending reserves in the total (denominator only).
+                // This prevents reserve beneficiaries from having inflated voting power before minting.
                 {
-                    uint256 pendingReserves = store.numberOfPendingReservesFor(metadata.dataHook, tierId);
+                    uint256 pendingReserves =
+                        store.numberOfPendingReservesFor({hook: metadata.dataHook, tierId: tierId});
                     if (pendingReserves != 0) {
                         JB721Tier memory tier =
                             store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
@@ -552,14 +583,23 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                     }
                 }
 
-                // Raw power for this tier.
-                uint256 rawPower = mulDiv(MAX_ATTESTATION_POWER_TIER, tierAttestationUnitsForAccount, tierTotalAttestationUnits);
+                // Compute the raw attestation power for this tier (before BWA reduction).
+                uint256 rawPower = mulDiv({
+                    x: MAX_ATTESTATION_POWER_TIER,
+                    y: tierAttestationUnitsForAccount,
+                    denominator: tierTotalAttestationUnits
+                });
 
-                // BWA reduction: power * (1 - tierWeight / TOTAL_SCORECARD_WEIGHT).
+                // Look up how much this tier benefits from the scorecard.
                 uint256 tierWeight = _scorecardTierWeightsOf[gameId][scorecardId][i];
-                uint256 bwaMultiplier = 1e18 - mulDiv(tierWeight, 1e18, TOTAL_SCORECARD_WEIGHT);
 
-                bwaAttestationPower += mulDiv(rawPower, bwaMultiplier, 1e18);
+                // BWA multiplier = (1 - tierWeight / totalCashOutWeight).
+                // A tier receiving 100% of the weight gets multiplier 0 (no attestation power).
+                // A tier receiving 0% of the weight gets multiplier 1 (full attestation power).
+                uint256 bwaMultiplier = 1e18 - mulDiv({x: tierWeight, y: 1e18, denominator: totalCashOutWeight});
+
+                // Apply the BWA multiplier to the raw power.
+                bwaAttestationPower += mulDiv({x: rawPower, y: bwaMultiplier, denominator: 1e18});
             }
         }
     }
@@ -598,7 +638,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             // has a stake in that tier's outcome, so the tier should count toward governance quorum.
             if (
                 hook.currentSupplyOfTier(tierId) != 0
-                    || store.numberOfPendingReservesFor(metadata.dataHook, tierId) != 0
+                    || store.numberOfPendingReservesFor({hook: metadata.dataHook, tierId: tierId}) != 0
             ) {
                 eligibleTierWeights += MAX_ATTESTATION_POWER_TIER;
             }
@@ -647,12 +687,19 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             return DefifaScorecardState.ACTIVE;
         }
 
-        // If quorum has been reached (using the HHI-adjusted snapshot), check timelock.
+        // Check if quorum has been reached using the HHI-adjusted snapshot stored at submission time.
         if (scorecard.quorumSnapshot <= _scorecardAttestationsOf[gameId][scorecardId].count) {
+            // Get the timelock duration for this game.
             uint256 _timelockDuration = timelockDurationOf(gameId);
+
+            // If a timelock is configured and hasn't expired yet, the scorecard is QUEUED.
+            // The timelock starts after the grace period ends, giving a cooling period before ratification.
+            // During QUEUED, competing scorecards can also reach quorum — first to be ratified wins.
             if (_timelockDuration > 0 && block.timestamp < uint256(scorecard.gracePeriodEnds) + _timelockDuration) {
                 return DefifaScorecardState.QUEUED;
             }
+
+            // Timelock has expired (or none was set) — scorecard is ready to be ratified.
             return DefifaScorecardState.SUCCEEDED;
         }
 

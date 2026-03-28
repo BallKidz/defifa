@@ -8,6 +8,19 @@ import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
 
 /// @notice Manages the ratification of Defifa scorecards through attestation-based governance.
 interface IDefifaGovernor {
+    /// @notice Emitted when a previously submitted attestation is revoked during the ACTIVE phase.
+    /// @param gameId The ID of the game.
+    /// @param scorecardId The ID of the scorecard.
+    /// @param account The account that revoked their attestation.
+    /// @param weight The BWA-adjusted weight that was subtracted.
+    event AttestationRevoked(uint256 indexed gameId, uint256 indexed scorecardId, address account, uint256 weight);
+
+    /// @notice Emitted when a game's governance parameters are initialized.
+    /// @param gameId The ID of the game.
+    /// @param attestationStartTime The timestamp when attestation begins.
+    /// @param attestationGracePeriod The grace period duration in seconds.
+    /// @param timelockDuration The timelock duration after quorum is met, in seconds.
+    /// @param caller The address that initialized the game.
     event GameInitialized(
         uint256 indexed gameId,
         uint256 attestationStartTime,
@@ -16,10 +29,25 @@ interface IDefifaGovernor {
         address caller
     );
 
+    /// @notice Emitted when an account attests to a scorecard.
+    /// @param gameId The ID of the game.
+    /// @param scorecardId The ID of the scorecard.
+    /// @param weight The BWA-adjusted attestation weight applied.
+    /// @param caller The account that attested.
     event ScorecardAttested(uint256 indexed gameId, uint256 indexed scorecardId, uint256 weight, address caller);
 
+    /// @notice Emitted when a scorecard is ratified and executed on-chain.
+    /// @param gameId The ID of the game.
+    /// @param scorecardId The ID of the ratified scorecard.
+    /// @param caller The account that triggered ratification.
     event ScorecardRatified(uint256 indexed gameId, uint256 indexed scorecardId, address caller);
 
+    /// @notice Emitted when a new scorecard is submitted for attestation.
+    /// @param gameId The ID of the game.
+    /// @param scorecardId The ID of the submitted scorecard.
+    /// @param tierWeights The tier cash out weights in the scorecard.
+    /// @param isDefaultAttestationDelegate Whether the submitter is the default attestation delegate.
+    /// @param caller The account that submitted the scorecard.
     event ScorecardSubmitted(
         uint256 indexed gameId,
         uint256 indexed scorecardId,
@@ -27,8 +55,6 @@ interface IDefifaGovernor {
         bool isDefaultAttestationDelegate,
         address caller
     );
-
-    event AttestationRevoked(uint256 indexed gameId, uint256 indexed scorecardId, address account, uint256 weight);
 
     /// @notice The number of attestations for a scorecard.
     /// @param gameId The ID of the game.
