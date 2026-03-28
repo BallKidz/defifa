@@ -219,9 +219,9 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
 
     // =========================================================================
     // ROUNDING: extreme weights at 1000 ETH per tier
-    // With BWA + HHI, highly concentrated scorecards on fewer than 4 tiers
-    // cannot reach quorum (total BWA = MAX*(n-1) < adjusted quorum for HHI~1).
-    // Using 5 tiers ensures total BWA (4*MAX) exceeds the adjusted quorum.
+    // With BWA, highly concentrated scorecards on fewer than 3 tiers
+    // cannot reach quorum (total BWA = MAX*(n-1) < quorum).
+    // Using 5 tiers ensures total BWA (4*MAX) exceeds the quorum.
     // =========================================================================
     function testRounding_extremeWeights() external {
         _setupGame(5, 1000 ether);
@@ -292,8 +292,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
     // FUZZ: fund conservation across varying tier/player counts
     // =========================================================================
     function testFuzz_fundConservation(uint8 rawTiers, uint8 rawPlayers) external {
-        // Minimum 3 tiers: with BWA + HHI-adjusted quorum, 2-tier games with equal scorecards
-        // can never reach quorum (total BWA = MAX*(n-1) < adjusted quorum when n < 3).
+        // Minimum 3 tiers: with BWA, 2-tier games with equal scorecards
+        // can never reach quorum (total BWA = MAX*(n-1) < quorum when n < 3).
         uint8 nTiers = uint8(bound(rawTiers, 3, 12));
         uint8 nPpt = uint8(bound(rawPlayers, 1, 3));
 
@@ -349,10 +349,10 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
 
     // =========================================================================
     // C-D3: reserved minters get proportional fee tokens ($DEFIFA/$NANA)
-    // With BWA + HHI, 2-tier games cannot reach quorum (total BWA power for
-    // n tiers = MAX*(n-1) which is always less than HHI-adjusted quorum for n=2).
+    // With BWA, 2-tier games cannot reach quorum (total BWA power for
+    // n tiers = MAX*(n-1) which is always less than quorum for n=2).
     // We use 4 tiers with equal weight, all having reserveRate=1. This ensures
-    // enough attestation power from all participants to meet the adjusted quorum.
+    // enough attestation power from all participants to meet the quorum.
     // =========================================================================
     function testC_D3_reservedMintersGetFeeTokens() external {
         // Setup: 4 tiers, reservedRate=1, reserveBeneficiary = _reserveAddr

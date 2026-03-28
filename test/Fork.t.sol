@@ -1632,7 +1632,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         assertEq(q, expectedQuorum, "quorum = floor(3 * 1e9 / 2)");
 
         // Under BWA with even distribution (33% each), each user's attestation power is reduced
-        // to ~67% of MAX. Combined with HHI-adjusted quorum, all 3 users must attest.
+        // to ~67% of MAX. Combined with the quorum threshold, all 3 users must attest.
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(3);
         uint256 pid = _gov.submitScorecardFor(_gameId, sc);
 

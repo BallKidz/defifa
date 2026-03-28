@@ -129,7 +129,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
     /// 1. Four players mint into tiers 1-4 (tiers 1-2 have reserveRate=1, creating pending reserves;
     ///    tiers 3-4 have no reserves)
     /// 2. Pending reserves dilute tiers 1-2 players' attestation power to 50% of MAX_POWER per tier
-    /// 3. With BWA + HHI-adjusted quorum, disinterested tiers 3-4 (0 weight) provide full power
+    /// 3. With BWA, disinterested tiers 3-4 (0 weight) provide full power
     /// 4. Minting reserves doesn't change quorum (tier was already counted via pending reserves)
     function test_reserveMintDoesNotChangeQuorumWhenPendingReservesAlreadyCounted() external {
         (_pid, _nft, _gov) = _launch(_launchData());

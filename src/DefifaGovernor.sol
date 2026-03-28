@@ -48,14 +48,6 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     // ----------------------- internal constants ------------------------ //
     //*********************************************************************//
 
-    /// @notice The HHI sensitivity coefficient (k) for graduated quorum, in 1e18 scale.
-    /// @dev At k=0.5: a winner-take-all scorecard (HHI=1) requests 50% more quorum,
-    /// while an equally-distributed scorecard (HHI~0) gets only ~1-2% increase.
-    /// The effective increase is capped so that honest full-participation always reaches quorum
-    /// (see `submitScorecardFor`). For small games (few tiers), the cap binds before 50%.
-    /// This is a tuning parameter — it can be adjusted by deploying a new governor.
-    uint256 internal constant _CONCENTRATION_PENALTY_FACTOR = 5e17;
-
     /// @notice The minimum grace period enforced on game initialization.
     uint256 internal constant _MIN_GRACE_PERIOD = 1 days;
 
@@ -309,49 +301,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // when a scorecard is submitted early.
         scorecard.gracePeriodEnds = uint48(attestationsBegin + attestationGracePeriodOf(gameId));
 
-        // Get the total cashout weight denominator from the hook (1e18).
-        uint256 totalCashOutWeight = IDefifaHook(metadata.dataHook).TOTAL_CASHOUT_WEIGHT();
-
         // Store each tier's weight so BWA can look it up later when computing attestation power.
         for (uint256 i; i < numberOfTierWeights; i++) {
             _scorecardTierWeightsOf[gameId][scorecardId][tierWeights[i].id - 1] = tierWeights[i].cashOutWeight;
         }
-
-        // Compute the Herfindahl-Hirschman Index (HHI) to measure how concentrated this scorecard is.
-        // HHI = sum of squared weight shares. Range: ~0 (equal) to 1e18 (winner-take-all).
-        uint256 hhi;
-        for (uint256 i; i < numberOfTierWeights; i++) {
-            // Each tier's squared share contributes to concentration.
-            uint256 w = tierWeights[i].cashOutWeight;
-            hhi += mulDiv({x: w, y: w, denominator: totalCashOutWeight});
-        }
-
-        // Compute HHI-adjusted quorum: more concentrated scorecards need higher quorum to ratify.
-        // adjustedQuorum = baseQuorum * (1 + k * HHI), where k is _CONCENTRATION_PENALTY_FACTOR.
-        uint256 baseQuorum = quorum(gameId);
-        // Scale the penalty factor by the scorecard's concentration.
-        uint256 adjustmentFactor = mulDiv({x: _CONCENTRATION_PENALTY_FACTOR, y: hhi, denominator: 1e18});
-        // Apply the adjustment to the base quorum.
-        uint256 adjustedQuorum = baseQuorum + mulDiv({x: baseQuorum, y: adjustmentFactor, denominator: 1e18});
-
-        // Cap: ensure honest full-participation can always reach quorum.
-        // Under BWA, the theoretical max attestation power is (N-1) * MAX_ATTESTATION_POWER_TIER,
-        // because sum(1 - w_i/W) = N - 1 for any weight distribution.
-        // Since baseQuorum = N * MAX_ATTESTATION_POWER_TIER / 2, we derive: maxBWA = 2 * baseQuorum - MAX.
-        // BWA uses ceiling division so rounding always favors attestors — no haircut needed.
-        // For single-tier games (baseQuorum < MAX), quorum caps at 0 (only one outcome possible).
-        if (baseQuorum >= MAX_ATTESTATION_POWER_TIER) {
-            uint256 theoreticalMax = 2 * baseQuorum - MAX_ATTESTATION_POWER_TIER;
-            if (adjustedQuorum > theoreticalMax) {
-                adjustedQuorum = theoreticalMax;
-            }
-        } else {
-            // Single tier or no tiers: only one possible outcome, governance is trivial.
-            adjustedQuorum = 0;
-        }
-
-        // Snapshot the adjusted quorum so stateOf can check against it without recomputing.
-        scorecard.quorumSnapshot = adjustedQuorum;
 
         // Keep a reference to the default attestation delegate.
         address defaultAttestationDelegate = IDefifaHook(metadata.dataHook).defaultAttestationDelegate();
@@ -685,14 +638,6 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         return eligibleTierWeights / 2;
     }
 
-    /// @notice The HHI-adjusted quorum snapshot stored at scorecard submission time.
-    /// @param gameId The ID of the game.
-    /// @param scorecardId The ID of the scorecard.
-    /// @return The adjusted quorum threshold for this specific scorecard.
-    function quorumSnapshotOf(uint256 gameId, uint256 scorecardId) public view override returns (uint256) {
-        return _scorecardOf[gameId][scorecardId].quorumSnapshot;
-    }
-
     /// @notice The state of a proposal.
     /// @param gameId The ID of the game to get a proposal state of.
     /// @param scorecardId The ID of the proposal to get the state of.
@@ -732,8 +677,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             return DefifaScorecardState.ACTIVE;
         }
 
-        // Check if quorum has been reached using the HHI-adjusted snapshot stored at submission time.
-        if (scorecard.quorumSnapshot <= _scorecardAttestationsOf[gameId][scorecardId].count) {
+        // Check if quorum has been reached.
+        if (quorum(gameId) <= _scorecardAttestationsOf[gameId][scorecardId].count) {
             // Get the timelock duration for this game.
             uint256 _timelockDuration = timelockDurationOf(gameId);
 

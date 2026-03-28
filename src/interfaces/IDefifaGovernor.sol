@@ -127,12 +127,6 @@ interface IDefifaGovernor {
     /// @return The quorum threshold.
     function quorum(uint256 gameId) external view returns (uint256);
 
-    /// @notice The HHI-adjusted quorum snapshot stored at scorecard submission time.
-    /// @param gameId The ID of the game.
-    /// @param scorecardId The ID of the scorecard.
-    /// @return The adjusted quorum threshold for this specific scorecard.
-    function quorumSnapshotOf(uint256 gameId, uint256 scorecardId) external view returns (uint256);
-
     /// @notice The ID of the ratified scorecard for a game.
     /// @param gameId The ID of the game.
     /// @return The ratified scorecard ID, or 0 if none.

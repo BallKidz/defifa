@@ -43,11 +43,10 @@ contract GovHardenTSReader {
 }
 
 /// @title DefifaGovernanceHardeningTest
-/// @notice Tests for the four governance hardening features:
+/// @notice Tests for the three governance hardening features:
 ///         1. BWA (Benefit-Weighted Attestation) -- tier power reduced by benefit from scorecard.
-///         2. HHI graduated quorum -- concentrated scorecards need higher quorum.
-///         3. Post-quorum timelock -- QUEUED state between quorum met + grace period done and SUCCEEDED.
-///         4. Attestation withdrawal -- revokeAttestationFrom during ACTIVE phase.
+///         2. Post-quorum timelock -- QUEUED state between quorum met + grace period done and SUCCEEDED.
+///         3. Attestation withdrawal -- revokeAttestationFrom during ACTIVE phase.
 contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
@@ -215,158 +214,6 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         uint256 bwaPowerTier2 = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[1], snapshotTime);
         uint256 expectedTier2 = mulDiv(maxPower, 4e17, 1e18); // 40% of max
         assertEq(bwaPowerTier2, expectedTier2, "tier 2 holder should have 40% of MAX power (1 - 0.6)");
-    }
-
-    // =========================================================================
-    // HHI GRADUATED QUORUM TESTS
-    // =========================================================================
-
-    /// @notice Test 4: Equal 4-tier distribution yields minimal HHI penalty.
-    ///         HHI = 4 * (0.25^2) = 0.25 = 25e16.
-    ///         adjustmentFactor = 0.5 * 0.25 = 0.125 = 125e15.
-    ///         adjustedQuorum = baseQuorum + baseQuorum * 125e15 / 1e18 = baseQuorum * 1.125.
-    function test_hhi_equalDistribution_minimalPenalty() external {
-        _setupGame(4, 1 ether);
-        _toScoring();
-
-        uint256 baseQuorum = _gov.quorum(_gameId);
-
-        // Submit equal-weight scorecard.
-        DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
-
-        // Compute expected HHI-adjusted quorum.
-        // HHI = 4 * mulDiv(25e16, 25e16, 1e18) = 4 * 62_500_000_000_000_000 = 250_000_000_000_000_000 = 25e16
-        uint256 hhi = 4 * mulDiv(25e16, 25e16, 1e18);
-        assertEq(hhi, 25e16, "HHI for equal 4-tier should be 0.25 * 1e18");
-
-        // adjustmentFactor = mulDiv(5e17, 25e16, 1e18) = 125e15
-        uint256 adjustmentFactor = mulDiv(5e17, hhi, 1e18);
-        assertEq(adjustmentFactor, 125e15, "adjustment factor should be 0.125 * 1e18");
-
-        // adjustedQuorum = baseQuorum + mulDiv(baseQuorum, 125e15, 1e18)
-        uint256 expectedAdjustedQuorum = baseQuorum + mulDiv(baseQuorum, adjustmentFactor, 1e18);
-
-        // Read the quorumSnapshot stored in the scorecard (via attestationCountOf side-effect or state check).
-        // We verify by checking that the right number of attestors is needed.
-        // With BWA for equal scorecard, each tier holder gets 75% of MAX_ATTESTATION_POWER_TIER.
-        // So 4 attestors provide: 4 * 0.75 * MAX = 3 * MAX = 3e9.
-        // Base quorum = 4 * MAX / 2 = 2e9.
-        // Expected adjusted quorum = 2e9 + 2e9 * 125e15 / 1e18 = 2e9 + 250_000_000 = 2_250_000_000.
-        uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
-        assertEq(expectedAdjustedQuorum, (4 * maxPower) / 2 + mulDiv((4 * maxPower) / 2, 125e15, 1e18));
-
-        // Verify quorum is 12.5% higher than base quorum.
-        // expectedAdjustedQuorum / baseQuorum = 1.125, which means 12.5% increase.
-        assertGt(expectedAdjustedQuorum, baseQuorum, "adjusted quorum must be greater than base quorum");
-        // Verify approximately 12.5% increase.
-        assertEq(
-            expectedAdjustedQuorum - baseQuorum,
-            mulDiv(baseQuorum, 125e15, 1e18),
-            "penalty should be exactly 12.5% of base quorum"
-        );
-
-        // With 2 out of 4 users attesting (each contributing 75% of MAX via BWA):
-        // totalWeight = 2 * 0.75 * MAX = 1.5 * MAX = 1_500_000_000
-        // Since expectedAdjustedQuorum = 2_250_000_000, 2 attestors should NOT be enough.
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
-
-        vm.prank(_users[0]);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
-        vm.prank(_users[1]);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
-
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
-
-        DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
-        assertEq(
-            uint256(state),
-            uint256(DefifaScorecardState.ACTIVE),
-            "2 attestors should NOT meet HHI-adjusted quorum for equal scorecard"
-        );
-
-        // With 3 out of 4 users attesting: totalWeight = 3 * 0.75 * MAX = 2.25 * MAX = 2_250_000_000.
-        // This exactly meets the adjusted quorum.
-        vm.prank(_users[2]);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
-
-        state = _gov.stateOf(_gameId, scorecardId);
-        assertEq(
-            uint256(state),
-            uint256(DefifaScorecardState.SUCCEEDED),
-            "3 attestors should meet HHI-adjusted quorum for equal scorecard"
-        );
-    }
-
-    /// @notice Test 5: Winner-take-all scorecard has maximum HHI penalty.
-    ///         HHI = 1 * (1.0^2) = 1.0 = 1e18.
-    ///         adjustmentFactor = 0.5 * 1.0 = 0.5 = 5e17.
-    ///         adjustedQuorum = baseQuorum + baseQuorum * 0.5 = baseQuorum * 1.5.
-    function test_hhi_winnerTakeAll_maxPenalty() external {
-        _setupGame(4, 1 ether);
-        _toScoring();
-
-        uint256 baseQuorum = _gov.quorum(_gameId);
-        uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
-
-        // Submit winner-take-all scorecard: tier 1 gets 100%.
-        uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
-        DefifaTierCashOutWeight[] memory sc = _buildScorecard(4);
-        sc[0].cashOutWeight = tw; // tier 1 = 100%
-
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
-
-        // HHI = mulDiv(1e18, 1e18, 1e18) = 1e18.
-        uint256 hhi = 1e18;
-        uint256 adjustmentFactor = mulDiv(5e17, hhi, 1e18); // = 5e17
-        uint256 expectedAdjustedQuorum = baseQuorum + mulDiv(baseQuorum, adjustmentFactor, 1e18);
-
-        // baseQuorum = 2e9, adjustment = 2e9 * 0.5 = 1e9, adjusted = 3e9.
-        assertEq(expectedAdjustedQuorum, (4 * maxPower) / 2 + (4 * maxPower) / 2 / 2);
-
-        // Verify it is 50% higher than base quorum.
-        assertEq(
-            expectedAdjustedQuorum - baseQuorum,
-            mulDiv(baseQuorum, 5e17, 1e18),
-            "penalty should be exactly 50% of base quorum"
-        );
-
-        // With BWA for this scorecard:
-        // - User 0 (tier 1, 100% weight): BWA power = 0.
-        // - Users 1-3 (tiers 2-4, 0% weight): BWA power = MAX_ATTESTATION_POWER_TIER each.
-        // So max possible attestation = 3 * MAX = 3e9 = exactly the adjusted quorum.
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
-
-        // User 0 (100% beneficiary) has 0 BWA power — attestation should revert.
-        vm.prank(_users[0]);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
-
-        // Users 1 and 2 attest (2 * MAX = 2e9 < 3e9).
-        vm.prank(_users[1]);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
-        vm.prank(_users[2]);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
-
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
-
-        DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
-        assertEq(
-            uint256(state),
-            uint256(DefifaScorecardState.ACTIVE),
-            "2 non-beneficiary attestors should not meet 50%-penalized quorum"
-        );
-
-        // User 3 attests (3 * MAX = 3e9 = exactly adjusted quorum).
-        vm.prank(_users[3]);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
-
-        state = _gov.stateOf(_gameId, scorecardId);
-        assertEq(
-            uint256(state),
-            uint256(DefifaScorecardState.SUCCEEDED),
-            "3 non-beneficiary attestors should meet 50%-penalized quorum"
-        );
     }
 
     // =========================================================================
@@ -685,8 +532,8 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
     // INTEGRATION TEST
     // =========================================================================
 
-    /// @notice Test 16: Full flow exercising all four hardening features.
-    ///         Submit scorecard -> BWA attestation -> HHI quorum adjustment -> timelock QUEUED -> ratification.
+    /// @notice Test 16: Full flow exercising all three hardening features.
+    ///         Submit scorecard -> BWA attestation -> timelock QUEUED -> ratification.
     function test_fullFlow_allFeatures() external {
         uint256 timelockDuration = 2 hours;
         _setupGameWithTimelock(4, 1 ether, timelockDuration);
@@ -705,15 +552,6 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         sc[3].cashOutWeight = (tw * 5) / 100;
 
         uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
-
-        // --- Verify HHI adjusted quorum is higher than base ---
-        // HHI = mulDiv(5e17,5e17,1e18) + mulDiv(3e17,3e17,1e18) + mulDiv(15e16,15e16,1e18) + mulDiv(5e16,5e16,1e18)
-        //      = 25e16 + 9e16 + 225e14 + 25e14 = 25e16 + 9e16 + 2.25e16 + 0.25e16 = 365e15
-        uint256 hhi =
-            mulDiv(5e17, 5e17, 1e18) + mulDiv(3e17, 3e17, 1e18) + mulDiv(15e16, 15e16, 1e18) + mulDiv(5e16, 5e16, 1e18);
-        uint256 adjustmentFactor = mulDiv(5e17, hhi, 1e18);
-        uint256 expectedQuorum = baseQuorum + mulDiv(baseQuorum, adjustmentFactor, 1e18);
-        assertGt(expectedQuorum, baseQuorum, "HHI-adjusted quorum should be higher than base");
 
         // --- Verify BWA reduces beneficiary power ---
         vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
@@ -810,7 +648,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
 
-        // 3 users attest (enough for quorum with BWA + HHI).
+        // 3 users attest (enough for quorum with BWA).
         for (uint256 i; i < 3; i++) {
             vm.prank(_users[i]);
             _gov.attestToScorecardFrom(_gameId, scorecardId);
@@ -875,7 +713,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _gov.revokeAttestationFrom(_gameId, proposalB);
     }
 
-    /// @notice Concern 4: Scorecard with all tiers at weight 0 has HHI = 0, unchanged quorum,
+    /// @notice Concern 4: Scorecard with all tiers at weight 0 has unchanged quorum
     ///         and all tiers get full BWA power.
     function test_allZeroWeightScorecard() external {
         _setupGame(4, 1 ether);
@@ -899,7 +737,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             assertEq(bwaPower, rawPower, "all-zero scorecard should give full BWA power");
         }
 
-        // HHI = 0 → adjusted quorum = baseQuorum + 0 = baseQuorum.
+        // With all weights = 0, quorum = baseQuorum (no concentration effect).
         // With 4 equal tiers, baseQuorum = 2 * MAX. BWA gives full power, so 2 users should suffice.
         vm.prank(_users[0]);
         _gov.attestToScorecardFrom(_gameId, scorecardId);
@@ -912,7 +750,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         assertEq(
             uint256(state),
             uint256(DefifaScorecardState.SUCCEEDED),
-            "all-zero scorecard should reach quorum with 2 attestors (no HHI penalty, full BWA power)"
+            "all-zero scorecard should reach quorum with 2 attestors (full BWA power)"
         );
     }
 
@@ -1052,7 +890,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
     /// @notice Simulation 1: World Cup-style 32-team tournament.
     /// Distribution: 1st=40%, 2nd=20%, 3rd=10%, 4th=5%, rest share 25% evenly.
-    /// Validates that BWA + HHI creates a meaningful defense at realistic scale.
+    /// Validates that BWA creates a meaningful defense at realistic scale.
     function test_sim_worldCup32Teams() external {
         _setupGame(32, 0.1 ether);
         _toScoring();
@@ -1091,25 +929,18 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         // Last place (~0.9% weight): BWA multiplier ~ 0.991 → ~99% power.
         assertGt(powerLast, (maxPower * 98) / 100, "bottom tier retains >98% power");
 
-        // HHI-adjusted quorum should be meaningfully higher than base quorum.
-        uint256 baseQuorum = _gov.quorum(_gameId);
-        uint256 adjustedQuorum = _gov.quorumSnapshotOf(_gameId, scorecardId);
-        uint256 quorumIncrease = ((adjustedQuorum - baseQuorum) * 10_000) / baseQuorum;
-        // With k=0.5 and this distribution, HHI ≈ 0.235 → ~11.7% increase.
-        assertGt(quorumIncrease, 500, "quorum increase >5% for World Cup distribution");
-        assertLt(quorumIncrease, 2500, "quorum increase <25% (not unreasonable)");
-
         // Total BWA power across all 32 users should be significantly less than 32 * MAX.
         uint256 totalBWA;
         for (uint256 i; i < 32; i++) {
             totalBWA += _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
         }
-        // Honest resolution should still be achievable: total BWA > adjustedQuorum.
-        assertGt(totalBWA, adjustedQuorum, "honest participants can still reach quorum");
+        // Honest resolution should still be achievable: total BWA > quorum.
+        uint256 quorum = _gov.quorum(_gameId);
+        assertGt(totalBWA, quorum, "honest participants can still reach quorum");
     }
 
     /// @notice Simulation 2: Attacker controls 1 of 4 tiers, tries 100%-to-self scorecard.
-    /// Under BWA + HHI, the attacker cannot reach quorum even with 100% of their tier.
+    /// Under BWA, the attacker cannot reach quorum even with 100% of their tier.
     function test_sim_attackerOneOfFour() external {
         _setupGame(4, 1 ether);
         _toScoring();
@@ -1134,18 +965,6 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         vm.prank(_users[0]);
         vm.expectRevert(abi.encodeWithSignature("DefifaGovernor_NotAllowed()"));
         _gov.attestToScorecardFrom(_gameId, fraudId);
-
-        // Even if the attacker could somehow get other beneficiary tiers to collude,
-        // the HHI-adjusted quorum for the fraud scorecard is much higher.
-        uint256 honestQuorum = _gov.quorumSnapshotOf(_gameId, honestId);
-        uint256 fraudQuorum = _gov.quorumSnapshotOf(_gameId, fraudId);
-        assertGt(fraudQuorum, honestQuorum, "fraud scorecard has higher quorum");
-
-        // The fraud scorecard's quorum is capped at (N-1)*MAX = 3*MAX (the max achievable BWA power).
-        // The honest scorecard's quorum is lower due to lower HHI. Increase ≈ 33%.
-        uint256 increase = ((fraudQuorum - honestQuorum) * 100) / honestQuorum;
-        assertGt(increase, 20, "fraud quorum meaningfully higher than honest");
-        assertLt(increase, 60, "fraud quorum increase bounded by BWA cap");
 
         // Honest users can still ratify the honest scorecard.
         for (uint256 i; i < 4; i++) {
@@ -1200,8 +1019,8 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             totalBWA += w;
         }
 
-        uint256 adjustedQuorum = _gov.quorumSnapshotOf(_gameId, scorecardId);
-        assertGt(totalBWA, adjustedQuorum, "all 8 users together exceed quorum");
+        uint256 quorum = _gov.quorum(_gameId);
+        assertGt(totalBWA, quorum, "all 8 users together exceed quorum");
 
         // Verify the scorecard reaches quorum.
         vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
@@ -1213,7 +1032,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
     }
 
     /// @notice Simulation 4: Fuzz k=0.5 across many scorecard distributions.
-    /// For ANY honest scorecard (all N tiers attest), total BWA power > HHI-adjusted quorum.
+    /// For ANY honest scorecard (all N tiers attest), total BWA power > quorum.
     /// This proves k=0.5 never blocks legitimate consensus.
     function test_sim_fuzz_honestAlwaysPasses(uint8 nTiers) external {
         nTiers = uint8(bound(nTiers, 2, 32));
@@ -1251,10 +1070,9 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             }
         }
 
-        uint256 adjustedQuorum = _gov.quorumSnapshotOf(_gameId, scorecardId);
-        // The quorum cap guarantees totalBWA >= adjustedQuorum (with equality at the boundary).
-        // The on-chain check is `quorumSnapshot <= attestations.count`, so equality suffices.
-        assertGe(totalBWA, adjustedQuorum, "honest full-participation always meets quorum");
+        uint256 quorum = _gov.quorum(_gameId);
+        // The on-chain check is `quorum <= attestations.count`, so equality suffices.
+        assertGe(totalBWA, quorum, "honest full-participation always meets quorum");
     }
 
     /// @notice Helper: sum of i^2 for i in 1..n.
@@ -1332,7 +1150,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         assertLt(gasUsed, 5_000_000, "64-tier attestation under 5M gas");
     }
 
-    /// @notice Gas benchmark: scorecard submission with 32 tiers (includes HHI computation).
+    /// @notice Gas benchmark: scorecard submission with 32 tiers.
     function test_gas_submitScorecardWith32Tiers() external {
         _setupGame(32, 0.1 ether);
         _toScoring();

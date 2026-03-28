@@ -124,8 +124,8 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
     /// @notice After the H-2 fix, pending reserves dilute the paid holder's cash-out share.
     /// The paid holder can no longer drain the full surplus; reserve holders retain their share.
     ///
-    /// With BWA + HHI, a single-tier winner-take-all scorecard gives the beneficiary 0 attestation
-    /// power. We add 3 disinterested tiers (0 weight) so their attestors can meet the adjusted quorum.
+    /// With BWA, a single-tier winner-take-all scorecard gives the beneficiary 0 attestation
+    /// power. We add 3 disinterested tiers (0 weight) so their attestors can meet the quorum.
     function test_pendingReserveDilutesPaidHolderCashOut_afterFix() external {
         (_pid, _nft, _gov) = _launch(_launchData());
 

@@ -37,9 +37,9 @@ import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRules
 /// denominator. Before the fix, paid holders could cash out before reserves were minted and extract
 /// more than their fair share.
 ///
-/// With BWA + HHI-adjusted quorum, a single-tier winner-take-all scorecard gives the sole beneficiary
+/// With BWA, a single-tier winner-take-all scorecard gives the sole beneficiary
 /// 0 attestation power (BWA multiplier = 1 - 1 = 0). To allow ratification, we add 3 disinterested
-/// tiers (weight = 0) whose attestors provide governance power to meet the adjusted quorum.
+/// tiers (weight = 0) whose attestors provide governance power to meet the quorum.
 contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 

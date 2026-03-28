@@ -295,12 +295,12 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // TEST 7: Three out of four attestors can reach the HHI-adjusted quorum.
+    // TEST 7: Three out of four attestors can reach quorum.
     // With BWA (Benefit-Weighted Attestation), each attestor's power is reduced
     // by their tier's share of the scorecard. For an equal 4-tier scorecard:
     //   BWA power per user = MAX_ATTESTATION_POWER_TIER * 0.75 = 750_000_000
-    //   HHI-adjusted quorum = baseQuorum * 1.125 = 2_250_000_000
-    // So 3 users (2_250_000_000) just meets quorum, but 2 users (1_500_000_000) does not.
+    //   quorum = baseQuorum = 2_000_000_000
+    // So 3 users (2_250_000_000) exceeds quorum, but 2 users (1_500_000_000) does not.
     // =========================================================================
     function test_halfAttestorsCanReachQuorum() external {
         _setupGame(4, 1 ether);
@@ -412,9 +412,9 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
     // than a snapshot, so when tokens are burned the quorum threshold
     // decreases. This is documented and accepted behavior.
     //
-    // With BWA + HHI-adjusted quorum, a minimum of 4 remaining tiers is needed
-    // for a balanced scorecard to reach quorum (since total BWA power for n tiers
-    // is MAX*(n-1) and the adjusted quorum for n=2 always exceeds that).
+    // With BWA, a minimum of 3 remaining tiers is needed for a balanced scorecard
+    // to reach quorum (since total BWA power for n tiers is MAX*(n-1) and the
+    // quorum for n=2 always exceeds that).
     // We use 6 tiers, burn 2, leaving 4 tiers where 3/4 attestors suffice.
     // =========================================================================
     function test_burnTiersLowersQuorumAllowsRatification() external {
@@ -459,8 +459,8 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
 
         // --- Step 5: Users 0, 1, and 2 attest (3 of 4 remaining tiers) ---
         // BWA power per user (25% tier weight): 1e9 * 0.75 = 750_000_000.
-        // HHI-adjusted quorum for equal 4-tier scorecard = 2e9 * 1.125 = 2_250_000_000.
-        // 3 users * 750M = 2_250_000_000, meeting the adjusted quorum exactly.
+        // quorum for 4 remaining tiers = 2e9.
+        // 3 users * 750M = 2_250_000_000, exceeding the quorum.
         vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
 
         vm.prank(_users[0]);
