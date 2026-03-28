@@ -617,7 +617,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                     y: tierAttestationUnitsForAccount,
                     denominator: tierTotalAttestationUnits
                 });
-                if (rawPower * tierTotalAttestationUnits < MAX_ATTESTATION_POWER_TIER * tierAttestationUnitsForAccount) {
+                if (rawPower * tierTotalAttestationUnits < MAX_ATTESTATION_POWER_TIER * tierAttestationUnitsForAccount)
+                {
                     rawPower += 1;
                 }
 

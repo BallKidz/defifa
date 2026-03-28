@@ -819,9 +819,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         // After grace period, should be SUCCEEDED.
         vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
         assertEq(
-            uint256(_gov.stateOf(_gameId, scorecardId)),
-            uint256(DefifaScorecardState.SUCCEEDED),
-            "should be SUCCEEDED"
+            uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.SUCCEEDED), "should be SUCCEEDED"
         );
 
         // User 3 can still attest during SUCCEEDED.
@@ -868,9 +866,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         // Scorecard B is now DEFEATED.
         assertEq(
-            uint256(_gov.stateOf(_gameId, proposalB)),
-            uint256(DefifaScorecardState.DEFEATED),
-            "B should be DEFEATED"
+            uint256(_gov.stateOf(_gameId, proposalB)), uint256(DefifaScorecardState.DEFEATED), "B should be DEFEATED"
         );
 
         // User 0 tries to revoke from scorecard B — should revert (not ACTIVE).
@@ -1065,10 +1061,10 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         DefifaTierCashOutWeight[] memory sc = _buildScorecard(32);
 
         // World Cup-style distribution.
-        sc[0].cashOutWeight = (tw * 40) / 100;  // 1st: 40%
-        sc[1].cashOutWeight = (tw * 20) / 100;  // 2nd: 20%
-        sc[2].cashOutWeight = (tw * 10) / 100;  // 3rd: 10%
-        sc[3].cashOutWeight = (tw * 5) / 100;   // 4th: 5%
+        sc[0].cashOutWeight = (tw * 40) / 100; // 1st: 40%
+        sc[1].cashOutWeight = (tw * 20) / 100; // 2nd: 20%
+        sc[2].cashOutWeight = (tw * 10) / 100; // 3rd: 10%
+        sc[3].cashOutWeight = (tw * 5) / 100; // 4th: 5%
 
         // Remaining 28 teams share 25%.
         uint256 assigned = sc[0].cashOutWeight + sc[1].cashOutWeight + sc[2].cashOutWeight + sc[3].cashOutWeight;
@@ -1098,7 +1094,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         // HHI-adjusted quorum should be meaningfully higher than base quorum.
         uint256 baseQuorum = _gov.quorum(_gameId);
         uint256 adjustedQuorum = _gov.quorumSnapshotOf(_gameId, scorecardId);
-        uint256 quorumIncrease = ((adjustedQuorum - baseQuorum) * 10000) / baseQuorum;
+        uint256 quorumIncrease = ((adjustedQuorum - baseQuorum) * 10_000) / baseQuorum;
         // With k=0.5 and this distribution, HHI ≈ 0.235 → ~11.7% increase.
         assertGt(quorumIncrease, 500, "quorum increase >5% for World Cup distribution");
         assertLt(quorumIncrease, 2500, "quorum increase <25% (not unreasonable)");
@@ -1122,7 +1118,9 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         // Honest scorecard: even distribution.
         DefifaTierCashOutWeight[] memory honest = _buildScorecard(4);
-        for (uint256 i; i < 4; i++) honest[i].cashOutWeight = tw / 4;
+        for (uint256 i; i < 4; i++) {
+            honest[i].cashOutWeight = tw / 4;
+        }
 
         // Fraudulent scorecard: tier 1 gets everything.
         DefifaTierCashOutWeight[] memory fraud = _buildScorecard(4);
@@ -1261,7 +1259,9 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
     /// @notice Helper: sum of i^2 for i in 1..n.
     function _sumOfSquares(uint256 n) internal pure returns (uint256 s) {
-        for (uint256 i = 1; i <= n; i++) s += i * i;
+        for (uint256 i = 1; i <= n; i++) {
+            s += i * i;
+        }
     }
 
     // =========================================================================
