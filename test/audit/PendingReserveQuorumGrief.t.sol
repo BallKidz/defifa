@@ -126,9 +126,10 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
 
     /// @notice RPT-H-2 FIX VERIFICATION: Pending reserves in quorum + attestation denominator prevent manipulation.
     ///
-    /// 1. Four players mint into tiers 1-4 (each creates 1 pending reserve due to reserveRate=1)
-    /// 2. Pending reserves dilute each player's attestation power to 50% of MAX_POWER per tier
-    /// 3. All 4 players attest, total = 4 * 0.5 * MAX_POWER = 2 * MAX_POWER, meeting quorum
+    /// 1. Four players mint into tiers 1-4 (tiers 1-2 have reserveRate=1, creating pending reserves;
+    ///    tiers 3-4 have no reserves)
+    /// 2. Pending reserves dilute tiers 1-2 players' attestation power to 50% of MAX_POWER per tier
+    /// 3. With BWA + HHI-adjusted quorum, disinterested tiers 3-4 (0 weight) provide full power
     /// 4. Minting reserves doesn't change quorum (tier was already counted via pending reserves)
     function test_reserveMintDoesNotChangeQuorumWhenPendingReservesAlreadyCounted() external {
         (_pid, _nft, _gov) = _launch(_launchData());
@@ -156,8 +157,9 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         uint256 snapshotQuorum = _gov.quorum(_gameId);
         assertEq(snapshotQuorum, _gov.MAX_ATTESTATION_POWER_TIER() * 2, "4 tiers, quorum = 2 * MAX_POWER");
 
-        // Each player's attestation power is diluted by pending reserves (1 pending per tier).
-        // Per-tier power: 1/(1+1) * MAX_POWER = 0.5 * MAX_POWER. All 4 players needed.
+        // Tiers 1-2 (with pending reserves): raw power = 500M per player, BWA * 0.5 = 250M.
+        // Tiers 3-4 (no reserves, 0 weight): raw power = 1e9 per player, BWA * 1.0 = 1e9.
+        // Total BWA = 250M + 250M + 1e9 + 1e9 = 2.5e9, meeting adjusted quorum of 2.5e9.
         vm.prank(_player0);
         _gov.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(_player1);
@@ -172,12 +174,12 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         assertEq(
             uint256(_gov.stateOf(_gameId, proposalId)),
             uint256(DefifaScorecardState.SUCCEEDED),
-            "scorecard succeeds with all 4 diluted attestors"
+            "scorecard succeeds with disinterested attestors providing quorum"
         );
 
-        // --- ATTEMPTED ATTACK --- anyone mints pending reserves
+        // --- ATTEMPTED ATTACK --- anyone mints pending reserves for tier 1
         JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
-        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 3, count: 1});
+        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
         _nft.mintReservesFor(reserveConfigs);
 
         // Scorecard STILL SUCCEEDED — reserve mint doesn't change which tiers are counted
@@ -206,7 +208,8 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         // Skip REFUND phase
         vm.warp(172_802);
 
-        // SCORING phase — submit, all 4 attest (each diluted to 50% by pending reserves)
+        // SCORING phase — submit, all 4 attest.
+        // Tiers 3-4 (no reserves, 0 weight) provide disinterested attestation power.
         vm.warp(259_202);
         DefifaTierCashOutWeight[] memory scorecard = _buildScorecard();
         uint256 proposalId = _gov.submitScorecardFor(_gameId, scorecard);
@@ -226,9 +229,9 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
             "scorecard should be succeeded"
         );
 
-        // Mint reserves — shouldn't affect ratification
+        // Mint reserves for tier 1 — shouldn't affect ratification
         JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
-        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 3, count: 1});
+        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
         _nft.mintReservesFor(reserveConfigs);
 
         // Ratification succeeds because quorum is unchanged (tier already counted via pending reserves)
@@ -247,10 +250,21 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
 
     function _launchData() internal returns (DefifaLaunchProjectData memory data) {
         DefifaTierParams[] memory tiers = new DefifaTierParams[](4);
-        for (uint256 i; i < 4; i++) {
+        // Tiers 1-2: have reserves (reserveRate=1, 1 reserve per mint)
+        for (uint256 i; i < 2; i++) {
             tiers[i] = DefifaTierParams({
                 reservedRate: 1,
                 reservedTokenBeneficiary: _reserveBeneficiary,
+                encodedIPFSUri: bytes32(0),
+                shouldUseReservedTokenBeneficiaryAsDefault: false,
+                name: "TEAM"
+            });
+        }
+        // Tiers 3-4: no reserves (disinterested attestors for BWA governance)
+        for (uint256 i = 2; i < 4; i++) {
+            tiers[i] = DefifaTierParams({
+                reservedRate: 1001,
+                reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
                 name: "TEAM"
@@ -276,7 +290,8 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             store: new JB721TiersHookStore(),
             minParticipation: 0,
-            scorecardTimeout: 0
+            scorecardTimeout: 0,
+            timelockDuration: 0
         });
     }
 
@@ -294,6 +309,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
     function _mint(address user, uint256 tierId) internal {
         vm.deal(user, 1 ether);
         uint16[] memory tiers = new uint16[](1);
+        // forge-lint: disable-next-line(unsafe-typecast)
         tiers[0] = uint16(tierId);
         bytes[] memory data = new bytes[](1);
         data[0] = abi.encode(user, tiers);

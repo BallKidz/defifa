@@ -847,71 +847,80 @@ The 32-team FIFA World Cup game exemplifies resilient design:
 
 \textbf{Is there a proven ideal game design?} Yes, with qualification. The Uniform Participation Theorem proves that a game with perfectly uniform tier supply is impervious to profitable governance attacks regardless of attacker capital. The ``ideal'' is therefore any event structure that naturally produces uniform minting---and the World Cup is the canonical real-world example. The qualification: no mechanism can prevent a 51\% attacker, just as no proof-of-stake protocol can. The defense is making 51\% ownership prohibitively expensive through high, uniform participation.
 
-\subsection{Proposed Governance Hardening}\label{sec:hardening}
+\subsection{Governance Hardening}\label{sec:hardening}
 
-The defense stack in Section~9.2---BWA, dead token economics, and resilient game design---provides strong structural guarantees. This section proposes four additional mechanisms that provide defense-in-depth against residual attack vectors. These are additive: each one independently strengthens the system, and they compose without interference.
+The defense stack in Section~9.2---BWA, dead token economics, and resilient game design---provides strong structural guarantees. This section describes four implemented mechanisms that provide defense-in-depth against residual attack vectors. These are additive: each one independently strengthens the system, and they compose without interference.
 
 \subsubsection{Post-Ratification Timelock}
 
-\textbf{Problem.} Currently, \texttt{ratifyScorecardFrom} executes the scorecard instantly---the moment quorum is met and the grace period expires. There is zero time for the community to react to fraud that slips through BWA.
+\textbf{Problem.} Without a timelock, \texttt{ratifyScorecardFrom} executes the scorecard instantly---the moment quorum is met and the grace period expires. There is zero time for the community to react to fraud that slips through BWA.
 
-\textbf{Mechanism.} Introduce a mandatory delay $\tau_{\text{lock}}$ between a scorecard reaching \textsc{succeeded} and its execution. During this window:
+\textbf{Mechanism.} A mandatory delay $\tau_{\text{lock}}$ exists between a scorecard reaching quorum (after grace period) and its execution. During this window:
 \begin{enumerate}[nosep]
-\item The scorecard is visible but not yet executable.
-\item If an alternative scorecard also reaches \textsc{succeeded} during the timelock, both are invalidated and the game enters \textsc{no\_contest}.
-\item If no competing scorecard reaches \textsc{succeeded}, the original becomes executable after $\tau_{\text{lock}}$.
+\item The scorecard enters the \textsc{queued} state---visible but not yet executable.
+\item Multiple scorecards can reach \textsc{queued} or \textsc{succeeded} simultaneously. The first to be ratified wins; others become \textsc{defeated}.
+\item After $\tau_{\text{lock}}$ expires, the scorecard transitions to \textsc{succeeded} and can be ratified.
 \end{enumerate}
 
-This avoids the griefing vector of the removed competing-scorecard mechanism: \textsc{no\_contest} only triggers when \emph{two independent scorecards both achieve quorum}---the attacker must marshal enough attestation power to pass a second scorecard, not merely submit one. Under BWA + graduated quorum, this is extremely expensive.
+Multiple scorecards can coexist in \textsc{queued}/\textsc{succeeded} simultaneously. The first \texttt{ratifyScorecardFrom} call wins. Under BWA + graduated quorum, marshaling enough attestation power for a fraudulent competing scorecard is extremely expensive.
 
 \textbf{Recommended:} $\tau_{\text{lock}} = 3$--$7$ days. Same pattern as Compound Governor, OpenZeppelin TimelockController, and Gnosis Safe.
 
-\textbf{Implementation.} Add a new state \textsc{queued} between \textsc{succeeded} and \textsc{ratified}. \texttt{ratifyScorecardFrom} only executes when the timelock has expired.
+\textbf{Implementation.} A \textsc{queued} state exists between \textsc{active} and \textsc{succeeded}. \texttt{ratifyScorecardFrom} only executes when the state is \textsc{succeeded} (timelock expired). The \texttt{timelockDuration} is configurable per game (set to 0 to disable).
 
 \subsubsection{Graduated Quorum by Scorecard Concentration}
 
-\textbf{Problem.} Quorum is currently flat: $Q = (N_{\text{minted}} / 2) \times V_{\text{max}}$ regardless of the scorecard's weight distribution. A ``steal everything'' scorecard faces the same quorum as a distributed one.
+\textbf{Problem.} Base quorum is flat: $Q_{\text{base}} = N_{\text{eligible}} \times V_{\text{max}} / 2$ regardless of the scorecard's weight distribution. A ``steal everything'' scorecard faces the same quorum as a distributed one.
 
-\textbf{Mechanism.} Scale quorum by the scorecard's Herfindahl-Hirschman Index (HHI):
+\textbf{Mechanism.} Apply a concentration penalty based on the largest tier weight's squared share, scaled by the \emph{headroom}---the gap between maximum achievable BWA attestation and the base quorum:
 \begin{equation}
-\text{HHI}(S) = \sum_{i=1}^{N} \left(\frac{w_i}{W_{\text{total}}}\right)^2
+\text{headroom} = Q_{\text{base}} - V_{\text{max}} - N = \frac{(N-2) \times V_{\text{max}}}{2} - N
 \end{equation}
 \begin{equation}
-Q(S) = Q_{\text{base}} \times (1 + k \cdot \text{HHI}(S))
+Q(S) = Q_{\text{base}} + \text{headroom} \times \left(\frac{\max_i(w_i)}{W_{\text{total}}}\right)^2
 \end{equation}
+
+The $-N$ term accounts for per-tier integer rounding loss in the BWA computation (\texttt{mulDiv} truncation).
+
+\textbf{Properties:}
+\begin{itemize}[nosep]
+\item \textbf{Self-capping.} The penalty can never exceed headroom, so the adjusted quorum is always reachable by non-beneficiary attestors.
+\item \textbf{Nonlinear.} $\text{maxShare}^2$ is quadratic: gentle for moderate concentration (25\% max $\to$ 6.25\% of headroom), steep for extreme (100\% max $\to$ 100\% of headroom).
+\item \textbf{No magic constants.} The formula derives entirely from game parameters.
+\end{itemize}
 
 \begin{table}[H]
 \centering
 \begin{tabular}{lll}
 \toprule
-\textbf{Distribution} & \textbf{HHI} & \textbf{Quorum ($k=0.5$)} \\
+\textbf{Distribution} & \textbf{maxShare} & \textbf{Penalty (fraction of headroom)} \\
 \midrule
-Equal across 32 tiers & 0.031 & $\times 1.016$ (unchanged) \\
-World Cup (40/20/10/10/\ldots) & $\sim$0.25 & $\times 1.125$ (+12.5\%) \\
-Winner-take-all (100/0/\ldots) & 1.0 & $\times 1.500$ (+50\%) \\
+Equal across 32 tiers & 3.1\% & 0.1\% (essentially unchanged) \\
+World Cup (40/20/10/10/\ldots) & 40\% & 16\% \\
+Winner-take-all (100/0/\ldots) & 100\% & 100\% (quorum = max achievable BWA) \\
 \bottomrule
 \end{tabular}
 \caption{Graduated quorum impact by scorecard concentration.}
 \end{table}
 
-Truthful distributed scorecards are barely affected. Concentrated fraudulent scorecards require up to 50\% more attestation power---directly increasing the dead token cost of the attack.
+Distributed scorecards are barely affected. Concentrated fraudulent scorecards face quadratically increasing quorum, up to the theoretical BWA maximum for winner-take-all.
 
 \subsubsection{Attestation Withdrawal}
 
-\textbf{Problem.} Attestation is currently irreversible---\texttt{hasAttested[msg.sender]} is a one-way boolean. Holders tricked into attesting to a fraudulent scorecard (phishing, social engineering) cannot correct their mistake.
+\textbf{Problem.} Without withdrawal, attestation would be irreversible. Holders tricked into attesting to a fraudulent scorecard (phishing, social engineering) cannot correct their mistake.
 
-\textbf{Mechanism.} Allow holders to revoke attestation before ratification:
+\textbf{Mechanism.} Holders can revoke attestation during the \textsc{active} phase:
 \begin{enumerate}[nosep]
-\item Store each attestor's weight alongside their boolean flag.
-\item Add \texttt{revokeAttestationFrom(gameId, scorecardId)}---subtracts the stored weight from the scorecard's count.
-\item Revocation is only available while the scorecard is \textsc{active} or \textsc{succeeded} (not after \textsc{ratified}).
+\item Each attestor's BWA weight is stored: \texttt{attestedWeightOf[msg.sender]}.
+\item \texttt{revokeAttestationFrom(gameId, scorecardId)} subtracts the stored weight from the scorecard's count.
+\item Revocation is only available while the scorecard state is \textsc{active}. Once \textsc{queued} (grace period ended + quorum met), revocations are disabled to prevent attest/revoke griefing.
 \end{enumerate}
 
-Combined with the timelock, there is a multi-day window for community self-correction. A fraudulent scorecard that accumulates attestation through deception can have its support withdrawn, dropping it below quorum.
+During \textsc{active}, the grace period is still running, giving honest holders time to correct mistakes. Combined with the timelock, the overall correction window spans the grace period plus timelock duration.
 
 \subsubsection{Scorecard-Aware Attestation Power (BWA Implementation)}
 
-\textbf{Problem.} The current \texttt{getAttestationWeight} computes raw attestation power---the same value regardless of which scorecard is being attested to. For BWA to function, attestation power must be \emph{scorecard-dependent}: each tier's contribution reduced by $(1 - w_i / W_{\text{total}})$.
+\textbf{Problem.} The raw \texttt{getAttestationWeight} computes attestation power without regard to which scorecard is being attested to. For BWA to function, attestation power must be \emph{scorecard-dependent}: each tier's contribution reduced by $(1 - w_i / W_{\text{total}})$.
 
 \textbf{Mechanism.} Modify the attestation flow to be scorecard-aware:
 \begin{enumerate}[nosep]
@@ -925,11 +934,7 @@ Combined with the timelock, there is a multi-day window for community self-corre
 
 \textbf{Storage approach.} The tier weights must be accessible during attestation. Storing weights in the scorecard struct is recommended: written once at submission ($O(N)$ storage, $\sim$400k gas for 128 tiers), read many times during attestation (zero additional calldata per attestation).
 
-\textbf{Quorum adjustment.} Under BWA, maximum possible attestation for any scorecard is $(N-1) \times V_{\text{max}}$ (the constant-total invariant). Quorum should be:
-\[
-Q_{\text{BWA}} = \frac{(N-1) \times V_{\text{max}}}{2}
-\]
-rather than the current $N_{\text{minted}} / 2 \times V_{\text{max}}$, ensuring quorum represents a meaningful fraction of \emph{available} BWA-reduced power.
+\textbf{Quorum adjustment.} Under BWA, maximum possible attestation for any scorecard is $(N-1) \times V_{\text{max}}$ (the constant-total invariant). Base quorum is $N_{\text{eligible}} \times V_{\text{max}} / 2$, representing 50\% of raw power. The graduated quorum mechanism (Section 9.4.2) further adjusts this per-scorecard based on concentration, storing the result in \texttt{quorumSnapshot}.
 
 \subsection{Governance Deadlock Analysis}
 

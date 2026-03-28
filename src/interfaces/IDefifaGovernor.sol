@@ -9,7 +9,11 @@ import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
 /// @notice Manages the ratification of Defifa scorecards through attestation-based governance.
 interface IDefifaGovernor {
     event GameInitialized(
-        uint256 indexed gameId, uint256 attestationStartTime, uint256 attestationGracePeriod, address caller
+        uint256 indexed gameId,
+        uint256 attestationStartTime,
+        uint256 attestationGracePeriod,
+        uint256 timelockDuration,
+        address caller
     );
 
     event ScorecardAttested(uint256 indexed gameId, uint256 indexed scorecardId, uint256 weight, address caller);
@@ -23,6 +27,8 @@ interface IDefifaGovernor {
         bool isDefaultAttestationDelegate,
         address caller
     );
+
+    event AttestationRevoked(uint256 indexed gameId, uint256 indexed scorecardId, address account, uint256 weight);
 
     /// @notice The number of attestations for a scorecard.
     /// @param gameId The ID of the game.
@@ -63,6 +69,22 @@ interface IDefifaGovernor {
         view
         returns (uint256 attestationPower);
 
+    /// @notice Get the BWA-adjusted attestation weight for an account relative to a specific scorecard.
+    /// @param gameId The ID of the game.
+    /// @param scorecardId The ID of the scorecard (for tier weight lookup).
+    /// @param account The account to check.
+    /// @param timestamp The timestamp to check.
+    /// @return bwaAttestationPower The BWA-adjusted attestation power.
+    function getBWAAttestationWeight(
+        uint256 gameId,
+        uint256 scorecardId,
+        address account,
+        uint48 timestamp
+    )
+        external
+        view
+        returns (uint256 bwaAttestationPower);
+
     /// @notice Whether an account has attested to a specific scorecard.
     /// @param gameId The ID of the game.
     /// @param scorecardId The ID of the scorecard.
@@ -96,6 +118,11 @@ interface IDefifaGovernor {
     /// @return The scorecard state.
     function stateOf(uint256 gameId, uint256 scorecardId) external view returns (DefifaScorecardState);
 
+    /// @notice The timelock duration for a game.
+    /// @param gameId The ID of the game.
+    /// @return The timelock duration in seconds.
+    function timelockDurationOf(uint256 gameId) external view returns (uint256);
+
     /// @notice Attest to a submitted scorecard.
     /// @param gameId The ID of the game.
     /// @param scorecardId The ID of the scorecard to attest to.
@@ -106,7 +133,14 @@ interface IDefifaGovernor {
     /// @param gameId The ID of the game.
     /// @param attestationStartTime The timestamp when attestation begins.
     /// @param attestationGracePeriod The grace period duration in seconds.
-    function initializeGame(uint256 gameId, uint256 attestationStartTime, uint256 attestationGracePeriod) external;
+    /// @param timelockDuration The timelock duration after quorum is met, in seconds.
+    function initializeGame(
+        uint256 gameId,
+        uint256 attestationStartTime,
+        uint256 attestationGracePeriod,
+        uint256 timelockDuration
+    )
+        external;
 
     /// @notice Ratify a scorecard that has reached quorum.
     /// @param gameId The ID of the game.
@@ -118,6 +152,11 @@ interface IDefifaGovernor {
     )
         external
         returns (uint256);
+
+    /// @notice Revoke a previously submitted attestation during the ACTIVE phase.
+    /// @param gameId The ID of the game.
+    /// @param scorecardId The ID of the scorecard to revoke attestation from.
+    function revokeAttestationFrom(uint256 gameId, uint256 scorecardId) external;
 
     /// @notice Submit a scorecard for attestation.
     /// @param gameId The ID of the game.

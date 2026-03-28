@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.28;
 
-import "forge-std/Test.sol";
+import {Test} from "forge-std/Test.sol";
 import {UD60x18, ud} from "@prb/math/src/UD60x18.sol";
 import {pow} from "@prb/math/src/ud60x18/Math.sol";
 import {mulDiv} from "@prb/math/src/Common.sol";
@@ -508,8 +508,6 @@ contract BWAFunctionComparisonTest is Test {
         assertTrue(quadRatioA != quadRatioB, "Quadratic: power/quorum ratio varies with scorecard");
 
         // Compare linear ratios - they ALSO differ in raw power, but quorum is same
-        uint256 linRatioA = (rA.attackerPowerLin * 1e18) / (totalsA.linearTotal / 2);
-        uint256 linRatioB = (rB.attackerPowerLin * 1e18) / (totalsB.linearTotal / 2);
         // Linear: raw power differs but quorum is fixed -> one-dimensional optimization only
         // With linear, the game designer KNOWS the quorum and can set parameters around it.
         // With quadratic, quorum itself is a variable the attacker controls.
@@ -683,8 +681,6 @@ contract BWAFunctionComparisonTest is Test {
             assertApproxEqAbs(linRatioConc, expectedRatio, N, "Linear: ratio = 2*alpha");
 
             // QUADRATIC: ratio differs between scorecards
-            uint256 quadRatioConc = (rConc.attackerPowerQuad * 1000) / (totalsConc.quadraticTotal / 2);
-            uint256 quadRatioEq = (rEq.attackerPowerQuad * 1000) / (totalsEq.quadraticTotal / 2);
             // For concentrated vs equal, quadratic ratios may differ
             // (They're equal at the boundary cases but differ for realistic scorecards)
         }
@@ -1014,12 +1010,10 @@ contract BWAFunctionComparisonTest is Test {
         }
 
         SybilAttackResult memory result = computeSybilAttack(weights, attackerTokens, totalTokens);
-        TotalResult memory totals = computeTotals(weights);
-        uint256 quorum = totals.linearTotal / 2; // 1.5 x V_MAX
 
         // Attacker power: 0 + 0.8 + 0.8 + 0 = 1.6 x V_MAX
         assertEq(result.attackerPowerLin, mulDiv(V_MAX, 80, 100) * 2, "Attacker: 1.6 x V_MAX");
-        // Exceeds quorum of 1.5 x V_MAX
+        // Exceeds quorum of 1.5 x V_MAX (linearTotal / 2)
 
         // But delegate ALSO submits a different scorecard (the truthful one).
         // Delegate controls tier 4 (V_MAX) + honest 20% of tiers 2-3 (0.4 x V_MAX)
@@ -1161,7 +1155,6 @@ contract BWAFunctionComparisonTest is Test {
         // Attacker: 70% of tier 1, 51% of tiers 2-4
         uint256 alphaW = 70;
         uint256 alphaV = 51;
-        uint256 cost = (alphaW + alphaV * (N - 1)) * p; // $22,300
 
         // TRUTHFUL scenario: tier 3 actually won. Scorecard [0%, 0%, 100%, 0%].
         // Attacker recovers: 51% x 100% x pot from tier 3 = $18,870
@@ -1246,34 +1239,28 @@ contract BWAFunctionComparisonTest is Test {
         // Very tight margins — even a few percent makes the difference
 
         // At break-even: alpha_w=55%, alpha_v=51%
-        {
-            uint256 alphaW = 55;
-            uint256 alphaV = 51;
-            uint256 cost = (alphaW * T + alphaV * (N - 1) * T) * p;
-            uint256 recovery = alphaW * T * pot / (N * T * T);
-            // Should be close to break-even
-            // cost = (55000 + 1581000) x 10 = $16,360,000?? That can't be right
+        // Should be close to break-even
+        // cost = (55000 + 1581000) x 10 = $16,360,000?? That can't be right
 
-            // Let me recalculate properly
-            // cost = (alphaW + alphaV x (N-1)) x T x p
-            //      = (55 + 51 x 31) x 1000 x 10
-            //      = (55 + 1581) x $10,000 = 1636 x $10,000
-            // Hmm that's getting big. Let me simplify.
+        // Let me recalculate properly
+        // cost = (alphaW + alphaV x (N-1)) x T x p
+        //      = (55 + 51 x 31) x 1000 x 10
+        //      = (55 + 1581) x $10,000 = 1636 x $10,000
+        // Hmm that's getting big. Let me simplify.
 
-            // Pot = 32 x 1000 x $10 x 0.925 = $296,000
-            // Attacker recovery from winning tier: alpha_w x pot / (N x T) x T
-            //   Wait: per-token cashout = pot x 100% / T = $296,000 / 1000 = $296
-            //   Attacker tokens in winning tier: 55% x 1000 = 550
-            //   Recovery: 550 x $296 = $162,800
-            //   But wait, the "pot" is actually distributed to the scoring tier
-            //   pot x (tier_weight / W_TOTAL) / tokens_in_tier x attacker_tokens
-            //   For [100%, 0,...]: pot x 1 / 1000 x 550 = $296 x 550 = $162,800
+        // Pot = 32 x 1000 x $10 x 0.925 = $296,000
+        // Attacker recovery from winning tier: alpha_w x pot / (N x T) x T
+        //   Wait: per-token cashout = pot x 100% / T = $296,000 / 1000 = $296
+        //   Attacker tokens in winning tier: 55% x 1000 = 550
+        //   Recovery: 550 x $296 = $162,800
+        //   But wait, the "pot" is actually distributed to the scoring tier
+        //   pot x (tier_weight / W_TOTAL) / tokens_in_tier x attacker_tokens
+        //   For [100%, 0,...]: pot x 1 / 1000 x 550 = $296 x 550 = $162,800
 
-            // Cost: attacker_tokens_total x price
-            //   = (550 + 510 x 31) x $10 = (550 + 15,810) x $10 = 16,360 x $10 = $163,600
+        // Cost: attacker_tokens_total x price
+        //   = (550 + 510 x 31) x $10 = (550 + 15,810) x $10 = 16,360 x $10 = $163,600
 
-            // Net: $162,800 - $163,600 = -$800 (LOSS at 55%)
-        }
+        // Net: $162,800 - $163,600 = -$800 (LOSS at 55%)
 
         // At alpha_w=60%:
         {

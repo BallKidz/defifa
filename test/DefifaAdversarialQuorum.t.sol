@@ -295,7 +295,12 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // TEST 7: Two out of four attestors (50%) can reach quorum.
+    // TEST 7: Three out of four attestors can reach the HHI-adjusted quorum.
+    // With BWA (Benefit-Weighted Attestation), each attestor's power is reduced
+    // by their tier's share of the scorecard. For an equal 4-tier scorecard:
+    //   BWA power per user = MAX_ATTESTATION_POWER_TIER * 0.75 = 750_000_000
+    //   HHI-adjusted quorum = baseQuorum * 1.125 = 2_250_000_000
+    // So 3 users (2_250_000_000) just meets quorum, but 2 users (1_500_000_000) does not.
     // =========================================================================
     function test_halfAttestorsCanReachQuorum() external {
         _setupGame(4, 1 ether);
@@ -310,10 +315,12 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
         vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
 
-        // Users 0 and 1 attest (50% of total power).
+        // Users 0, 1, and 2 attest (75% of raw power, but BWA-adjusted to meet quorum).
         vm.prank(_users[0]);
         _gov.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(_users[1]);
+        _gov.attestToScorecardFrom(_gameId, proposalId);
+        vm.prank(_users[2]);
         _gov.attestToScorecardFrom(_gameId, proposalId);
 
         // After grace period.
@@ -321,7 +328,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
 
         // The proposal should be SUCCEEDED.
         DefifaScorecardState state = _gov.stateOf(_gameId, proposalId);
-        assertEq(uint256(state), uint256(DefifaScorecardState.SUCCEEDED), "50% attestation should reach quorum");
+        assertEq(uint256(state), uint256(DefifaScorecardState.SUCCEEDED), "3/4 attestation should reach quorum");
 
         // Ratification should succeed.
         _gov.ratifyScorecardFrom(_gameId, sc);
@@ -353,8 +360,9 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         // Wait for attestation.
         vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
 
-        // Only user 0 likes scorecard A (1/4, not quorum).
+        // User 0 (tier 1, 100% beneficiary of scorecard A) has BWA power = 0 and cannot attest.
         vm.prank(_users[0]);
+        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.attestToScorecardFrom(_gameId, proposalA);
 
         // Users 1, 2, 3 like scorecard B (3/4, quorum met).
@@ -400,66 +408,72 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
     // This proves the game handles burn-to-lower-quorum gracefully.
     // The quorum() function uses live supply (currentSupplyOfTier) rather
     // than a snapshot, so when tokens are burned the quorum threshold
-    // decreases. This is documented and accepted behavior — see
-    // DefifaGovernor.sol lines 203-207.
+    // decreases. This is documented and accepted behavior.
+    //
+    // With BWA + HHI-adjusted quorum, a minimum of 4 remaining tiers is needed
+    // for a balanced scorecard to reach quorum (since total BWA power for n tiers
+    // is MAX*(n-1) and the adjusted quorum for n=2 always exceeds that).
+    // We use 6 tiers, burn 2, leaving 4 tiers where 3/4 attestors suffice.
     // =========================================================================
     function test_burnTiersLowersQuorumAllowsRatification() external {
-        // --- Step 1: Setup 4 tiers, 1 user per tier ---
-        _setupGame(4, 1 ether);
+        // --- Step 1: Setup 6 tiers, 1 user per tier ---
+        _setupGame(6, 1 ether);
 
-        // Verify initial quorum: 4 minted tiers -> quorum = 2 * MAX_ATTESTATION_POWER_TIER.
+        // Verify initial quorum: 6 minted tiers -> quorum = 3 * MAX_ATTESTATION_POWER_TIER.
         uint256 initialQuorum = _gov.quorum(_gameId);
         uint256 maxTier = _gov.MAX_ATTESTATION_POWER_TIER();
-        assertEq(initialQuorum, (4 * maxTier) / 2, "initial quorum = 50% of 4 tiers");
+        assertEq(initialQuorum, (6 * maxTier) / 2, "initial quorum = 50% of 6 tiers");
 
-        // With 4 tiers, a single attestor (25%) cannot reach quorum.
-        // We will demonstrate that after 2 tiers are burned, 1 attestor CAN reach quorum.
-
-        // --- Step 2: Warp to REFUND phase, users 2 and 3 refund ---
-        // _setupGame leaves us in MINT phase; advance to REFUND.
+        // --- Step 2: Warp to REFUND phase, users 4 and 5 refund ---
         _toRefund();
 
-        // Users in tiers 3 and 4 refund (burn their tokens).
-        _cashOut(_users[2], 3, 1);
-        _cashOut(_users[3], 4, 1);
+        // Users in tiers 5 and 6 refund (burn their tokens).
+        _cashOut(_users[4], 5, 1);
+        _cashOut(_users[5], 6, 1);
 
-        // Verify tiers 3 and 4 now have zero supply.
-        assertEq(_nft.currentSupplyOfTier(3), 0, "tier 3 supply = 0 after refund");
-        assertEq(_nft.currentSupplyOfTier(4), 0, "tier 4 supply = 0 after refund");
+        // Verify tiers 5 and 6 now have zero supply.
+        assertEq(_nft.currentSupplyOfTier(5), 0, "tier 5 supply = 0 after refund");
+        assertEq(_nft.currentSupplyOfTier(6), 0, "tier 6 supply = 0 after refund");
 
-        // Quorum should now reflect only 2 minted tiers.
+        // Quorum should now reflect only 4 minted tiers.
         uint256 newQuorum = _gov.quorum(_gameId);
-        assertEq(newQuorum, (2 * maxTier) / 2, "quorum drops to 50% of 2 remaining tiers");
+        assertEq(newQuorum, (4 * maxTier) / 2, "quorum drops to 50% of 4 remaining tiers");
         assertLt(newQuorum, initialQuorum, "new quorum < initial quorum");
 
         // --- Step 3: Advance to SCORING phase ---
         _toScoring();
 
         // --- Step 4: Submit scorecard ---
-        // Tiers 1 and 2 split the pot; tiers 3 and 4 get 0 (no supply).
-        DefifaTierCashOutWeight[] memory sc = _buildScorecard(4);
+        // Equal split across remaining tiers 1-4; burned tiers 5+6 get 0.
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(6);
         uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
-        sc[0].cashOutWeight = tw / 2;
-        sc[1].cashOutWeight = tw / 2;
-        // sc[2].cashOutWeight = 0; (default)
-        // sc[3].cashOutWeight = 0; (default)
+        sc[0].cashOutWeight = tw / 4;
+        sc[1].cashOutWeight = tw / 4;
+        sc[2].cashOutWeight = tw / 4;
+        sc[3].cashOutWeight = tw / 4;
+        // sc[4].cashOutWeight = 0; (default, tier 5 burned)
+        // sc[5].cashOutWeight = 0; (default, tier 6 burned)
         uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
 
-        // --- Step 5: Only user 0 attests (1 of 2 remaining tiers = 50%) ---
+        // --- Step 5: Users 0, 1, and 2 attest (3 of 4 remaining tiers) ---
+        // BWA power per user (25% tier weight): 1e9 * 0.75 = 750_000_000.
+        // HHI-adjusted quorum for equal 4-tier scorecard = 2e9 * 1.125 = 2_250_000_000.
+        // 3 users * 750M = 2_250_000_000, meeting the adjusted quorum exactly.
         vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
 
         vm.prank(_users[0]);
         _gov.attestToScorecardFrom(_gameId, proposalId);
-
-        // A single attestor provides MAX_ATTESTATION_POWER_TIER = the new quorum.
-        // 1 * MAX >= (2 * MAX) / 2 -> quorum met.
+        vm.prank(_users[1]);
+        _gov.attestToScorecardFrom(_gameId, proposalId);
+        vm.prank(_users[2]);
+        _gov.attestToScorecardFrom(_gameId, proposalId);
 
         // --- Step 6: After grace period, proposal should be SUCCEEDED ---
         vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
 
         DefifaScorecardState state = _gov.stateOf(_gameId, proposalId);
         assertEq(
-            uint256(state), uint256(DefifaScorecardState.SUCCEEDED), "1 attestor reaches quorum after tiers 3+4 burned"
+            uint256(state), uint256(DefifaScorecardState.SUCCEEDED), "3 attestors reach quorum after tiers 5+6 burned"
         );
 
         // --- Step 7: Ratification should succeed ---
@@ -467,10 +481,10 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         assertTrue(_nft.cashOutWeightIsSet(), "scorecard ratified - weights are set");
 
         // --- Step 8: Verify game resilience ---
-        // Tiers 1 and 2 still have supply, meaning their holders can cash out
-        // once commitments are fulfilled. The game is in a healthy state.
         assertEq(_nft.currentSupplyOfTier(1), 1, "tier 1 supply intact");
         assertEq(_nft.currentSupplyOfTier(2), 1, "tier 2 supply intact");
+        assertEq(_nft.currentSupplyOfTier(3), 1, "tier 3 supply intact");
+        assertEq(_nft.currentSupplyOfTier(4), 1, "tier 4 supply intact");
     }
 
     // =========================================================================
@@ -525,7 +539,8 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0
+            scorecardTimeout: 0,
+            timelockDuration: 0
         });
     }
 

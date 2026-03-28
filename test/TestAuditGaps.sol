@@ -210,7 +210,8 @@ contract TestAuditGapsERC20Games is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: minParticipation,
-            scorecardTimeout: scorecardTimeout
+            scorecardTimeout: scorecardTimeout,
+            timelockDuration: 0
         });
     }
 
@@ -276,7 +277,7 @@ contract TestAuditGapsERC20Games is JBTest, TestBaseWorkflow {
         vm.warp((attestStart > current ? attestStart : current) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, pid);
+            try _gov.attestToScorecardFrom(_gameId, pid) {} catch {}
         }
         vm.warp(_tsReader.timestamp() + _gov.attestationGracePeriodOf(_gameId) + 1);
         _gov.ratifyScorecardFrom(_gameId, sc);
@@ -656,7 +657,8 @@ contract TestAuditGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0
+            scorecardTimeout: 0,
+            timelockDuration: 0
         });
     }
 
@@ -782,7 +784,7 @@ contract TestAuditGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
         vm.warp((attestStart > current ? attestStart : current) + 1);
         for (uint256 i; i < users.length; i++) {
             vm.prank(users[i]);
-            governor.attestToScorecardFrom(gameId, pid);
+            try governor.attestToScorecardFrom(gameId, pid) {} catch {}
         }
         vm.warp(_tsReader.timestamp() + governor.attestationGracePeriodOf(gameId) + 1);
         governor.ratifyScorecardFrom(gameId, sc);

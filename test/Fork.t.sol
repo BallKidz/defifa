@@ -969,7 +969,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0
+            scorecardTimeout: 0,
+            timelockDuration: 0
         });
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
@@ -1354,15 +1355,10 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         uint256 current = _tsReader.timestamp();
         vm.warp((attestStart > current ? attestStart : current) + 1);
 
-        // Non-holder attests — should succeed but add 0 weight.
+        // Non-holder attests — should revert because BWA weight is 0.
         address stranger = _addr(999);
         vm.prank(stranger);
-        uint256 weight = _gov.attestToScorecardFrom(_gameId, pid);
-        assertEq(weight, 0, "non-holder has 0 attestation power");
-
-        // But they can't attest again.
-        vm.prank(stranger);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_AlreadyAttested.selector);
+        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.attestToScorecardFrom(_gameId, pid);
     }
 
@@ -2068,7 +2064,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0
+            scorecardTimeout: 0,
+            timelockDuration: 0
         });
         (_pid, _nft, _gov) = _launch(d);
 
@@ -2201,7 +2198,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: minParticipation,
-            scorecardTimeout: scorecardTimeout
+            scorecardTimeout: scorecardTimeout,
+            timelockDuration: 0
         });
     }
 
@@ -2233,7 +2231,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0
+            scorecardTimeout: 0,
+            timelockDuration: 0
         });
     }
 
@@ -2319,7 +2318,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.warp((attestStart > current ? attestStart : current) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, pid);
+            try _gov.attestToScorecardFrom(_gameId, pid) {} catch {}
         }
         vm.warp(_tsReader.timestamp() + _gov.attestationGracePeriodOf(_gameId) + 1);
     }
