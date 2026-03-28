@@ -1050,25 +1050,32 @@ The defense stack in Section 9.2 — BWA, dead token economics, and resilient ga
 
 #### 9.4.2 Graduated Quorum by Scorecard Concentration
 
-**Problem.** Quorum is currently flat: $Q = (N_{\text{minted}} / 2) \times V_{\text{max}}$ regardless of the scorecard's weight distribution. A scorecard assigning 100% to one tier faces the same quorum as one distributing weight across 32 tiers. Fraudulent "steal everything" scorecards are not penalized.
+**Problem.** Base quorum is flat: $Q_{\text{base}} = N_{\text{eligible}} \times V_{\text{max}} / 2$ regardless of the scorecard's weight distribution. A scorecard assigning 100% to one tier faces the same quorum as one distributing weight across 32 tiers. Concentrated fraudulent scorecards are not penalized.
 
-**Mechanism.** Scale quorum by the scorecard's Herfindahl-Hirschman Index (HHI), a standard measure of concentration:
+**Mechanism.** Apply a concentration penalty based on the largest tier weight's squared share, scaled by the *headroom* — the gap between the maximum achievable BWA attestation and the base quorum:
 
-$$\text{HHI}(S) = \sum_{i=1}^{N} \left(\frac{w_i}{W_{\text{total}}}\right)^2$$
+$$\text{headroom} = Q_{\text{base}} - V_{\text{max}} - N = \frac{(N-2) \times V_{\text{max}}}{2} - N$$
 
-$$Q(S) = Q_{\text{base}} \times (1 + k \cdot \text{HHI}(S))$$
+$$\text{maxShare} = \frac{\max_i(w_i)}{W_{\text{total}}}$$
 
-where $k$ is a configurable concentration penalty factor.
+$$Q(S) = Q_{\text{base}} + \text{headroom} \times \text{maxShare}^2$$
 
-| Scorecard distribution | HHI | Quorum multiplier ($k=0.5$) |
+The $-N$ term accounts for per-tier integer rounding loss in the BWA computation (`mulDiv` truncation).
+
+**Properties:**
+- **Self-capping.** The penalty can never exceed headroom, so the adjusted quorum is always reachable by non-beneficiary attestors.
+- **Nonlinear.** maxShare² is quadratic: gentle for moderate concentration (25% max → 6.25% of headroom), steep for extreme concentration (100% max → 100% of headroom).
+- **No magic constants.** The formula derives entirely from game parameters — no configurable penalty factor.
+
+| Scorecard distribution | maxShare | Penalty (fraction of headroom) |
 |:----|:----|:----|
-| Equal across 32 tiers | 0.031 | 1.016 (essentially unchanged) |
-| World Cup (40/20/10/10/...) | ~0.25 | 1.125 (+12.5%) |
-| Winner-take-all (100/0/...) | 1.0 | 1.500 (+50%) |
+| Equal across 32 tiers | 3.1% | 0.1% (essentially unchanged) |
+| World Cup (40/20/10/10/...) | 40% | 16% |
+| Winner-take-all (100/0/...) | 100% | 100% (quorum = max achievable BWA) |
 
-**Effect.** Truthful scorecards that reflect real-world outcomes (typically distributed) are barely affected. Concentrated fraudulent scorecards — the primary attack vector — require up to 50% more attestation power. This directly increases the dead token cost of the attack.
+**Effect.** Distributed scorecards reflecting real-world outcomes are barely affected. Concentrated fraudulent scorecards face quadratically increasing quorum requirements, up to the theoretical BWA maximum for winner-take-all.
 
-**Implementation.** Compute HHI at scorecard submission time (alongside `quorumSnapshot`). Store the concentration-adjusted quorum in the `DefifaScorecard` struct. The `stateOf` function uses this adjusted quorum for the threshold check. The tier weights needed for HHI computation can be passed as calldata during submission and verified against the scorecard hash.
+**Implementation.** At scorecard submission time, find the largest tier weight and compute the adjusted quorum. Store it in `quorumSnapshot` on the `DefifaScorecard` struct. The `stateOf` function uses this snapshot for the threshold check. The headroom guard (`baseQuorum >= MAX_ATTESTATION_POWER_TIER`) ensures the penalty is only applied when there are enough tiers for it to be meaningful.
 
 #### 9.4.3 Attestation Withdrawal
 
@@ -1106,11 +1113,7 @@ where $k$ is a configurable concentration penalty factor.
 
 The storage approach is recommended: weights are written once at submission and read many times during attestation. The max storage is 128 uint256 slots per scorecard — approximately 400k gas at submission, amortized across all attestations.
 
-**Quorum adjustment.** Under BWA, the maximum possible attestation for any scorecard is $(N-1) \times V_{\text{max}}$ (the constant-total invariant). Quorum should be set relative to this BWA-adjusted total:
-
-$$Q_{\text{BWA}} = \frac{(N-1) \times V_{\text{max}}}{2}$$
-
-rather than the current $N_{\text{minted}} / 2 \times V_{\text{max}}$. This ensures quorum represents a meaningful fraction of *available* BWA-reduced power, not raw power.
+**Quorum adjustment.** Under BWA, the maximum possible attestation for any scorecard is $(N-1) \times V_{\text{max}}$ (the constant-total invariant). Base quorum is $N_{\text{eligible}} \times V_{\text{max}} / 2$, which represents 50% of raw power. The graduated quorum mechanism (Section 9.4.2) further adjusts this per-scorecard based on concentration, storing the result in `quorumSnapshot`.
 
 ### 9.5 Governance Deadlock Analysis
 

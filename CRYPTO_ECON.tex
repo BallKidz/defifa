@@ -870,31 +870,40 @@ Multiple scorecards can coexist in \textsc{queued}/\textsc{succeeded} simultaneo
 
 \subsubsection{Graduated Quorum by Scorecard Concentration}
 
-\textbf{Problem.} Quorum is currently flat: $Q = (N_{\text{minted}} / 2) \times V_{\text{max}}$ regardless of the scorecard's weight distribution. A ``steal everything'' scorecard faces the same quorum as a distributed one.
+\textbf{Problem.} Base quorum is flat: $Q_{\text{base}} = N_{\text{eligible}} \times V_{\text{max}} / 2$ regardless of the scorecard's weight distribution. A ``steal everything'' scorecard faces the same quorum as a distributed one.
 
-\textbf{Mechanism.} Scale quorum by the scorecard's Herfindahl-Hirschman Index (HHI):
+\textbf{Mechanism.} Apply a concentration penalty based on the largest tier weight's squared share, scaled by the \emph{headroom}---the gap between maximum achievable BWA attestation and the base quorum:
 \begin{equation}
-\text{HHI}(S) = \sum_{i=1}^{N} \left(\frac{w_i}{W_{\text{total}}}\right)^2
+\text{headroom} = Q_{\text{base}} - V_{\text{max}} - N = \frac{(N-2) \times V_{\text{max}}}{2} - N
 \end{equation}
 \begin{equation}
-Q(S) = Q_{\text{base}} \times (1 + k \cdot \text{HHI}(S))
+Q(S) = Q_{\text{base}} + \text{headroom} \times \left(\frac{\max_i(w_i)}{W_{\text{total}}}\right)^2
 \end{equation}
+
+The $-N$ term accounts for per-tier integer rounding loss in the BWA computation (\texttt{mulDiv} truncation).
+
+\textbf{Properties:}
+\begin{itemize}[nosep]
+\item \textbf{Self-capping.} The penalty can never exceed headroom, so the adjusted quorum is always reachable by non-beneficiary attestors.
+\item \textbf{Nonlinear.} $\text{maxShare}^2$ is quadratic: gentle for moderate concentration (25\% max $\to$ 6.25\% of headroom), steep for extreme (100\% max $\to$ 100\% of headroom).
+\item \textbf{No magic constants.} The formula derives entirely from game parameters.
+\end{itemize}
 
 \begin{table}[H]
 \centering
 \begin{tabular}{lll}
 \toprule
-\textbf{Distribution} & \textbf{HHI} & \textbf{Quorum ($k=0.5$)} \\
+\textbf{Distribution} & \textbf{maxShare} & \textbf{Penalty (fraction of headroom)} \\
 \midrule
-Equal across 32 tiers & 0.031 & $\times 1.016$ (unchanged) \\
-World Cup (40/20/10/10/\ldots) & $\sim$0.25 & $\times 1.125$ (+12.5\%) \\
-Winner-take-all (100/0/\ldots) & 1.0 & $\times 1.500$ (+50\%) \\
+Equal across 32 tiers & 3.1\% & 0.1\% (essentially unchanged) \\
+World Cup (40/20/10/10/\ldots) & 40\% & 16\% \\
+Winner-take-all (100/0/\ldots) & 100\% & 100\% (quorum = max achievable BWA) \\
 \bottomrule
 \end{tabular}
 \caption{Graduated quorum impact by scorecard concentration.}
 \end{table}
 
-Truthful distributed scorecards are barely affected. Concentrated fraudulent scorecards require up to 50\% more attestation power---directly increasing the dead token cost of the attack.
+Distributed scorecards are barely affected. Concentrated fraudulent scorecards face quadratically increasing quorum, up to the theoretical BWA maximum for winner-take-all.
 
 \subsubsection{Attestation Withdrawal}
 
@@ -925,11 +934,7 @@ During \textsc{active}, the grace period is still running, giving honest holders
 
 \textbf{Storage approach.} The tier weights must be accessible during attestation. Storing weights in the scorecard struct is recommended: written once at submission ($O(N)$ storage, $\sim$400k gas for 128 tiers), read many times during attestation (zero additional calldata per attestation).
 
-\textbf{Quorum adjustment.} Under BWA, maximum possible attestation for any scorecard is $(N-1) \times V_{\text{max}}$ (the constant-total invariant). Quorum should be:
-\[
-Q_{\text{BWA}} = \frac{(N-1) \times V_{\text{max}}}{2}
-\]
-rather than the current $N_{\text{minted}} / 2 \times V_{\text{max}}$, ensuring quorum represents a meaningful fraction of \emph{available} BWA-reduced power.
+\textbf{Quorum adjustment.} Under BWA, maximum possible attestation for any scorecard is $(N-1) \times V_{\text{max}}$ (the constant-total invariant). Base quorum is $N_{\text{eligible}} \times V_{\text{max}} / 2$, representing 50\% of raw power. The graduated quorum mechanism (Section 9.4.2) further adjusts this per-scorecard based on concentration, storing the result in \texttt{quorumSnapshot}.
 
 \subsection{Governance Deadlock Analysis}
 
