@@ -50,8 +50,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
     /// @notice The HHI sensitivity coefficient (k) for graduated quorum, in 1e18 scale.
     /// @dev Configurable penalty factor from CRYPTO_ECON Section 9.4.2.
-    /// At k=0.5 (5e17): a winner-take-all scorecard (HHI=1) needs 50% more quorum,
+    /// At k=0.5 (5e17): a winner-take-all scorecard (HHI=1) requests 50% more quorum,
     /// while an equally-distributed scorecard (HHI~0) gets only ~1-2% increase.
+    /// The effective increase is capped so that honest full-participation can always reach quorum
+    /// (see `submitScorecardFor`). For small games (few tiers), the cap binds before 50%.
     /// The value 0.5 is a tuning parameter, not a derived optimum — it can be adjusted
     /// by deploying a new governor if games need stricter or looser concentration penalties.
     uint256 internal constant _CONCENTRATION_PENALTY_FACTOR = 5e17;
