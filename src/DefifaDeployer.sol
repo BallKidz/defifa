@@ -537,7 +537,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             gameId: gameId,
             attestationStartTime: uint256(launchProjectData.attestationStartTime),
             attestationGracePeriod: uint256(launchProjectData.attestationGracePeriod),
-            timelockDuration: launchProjectData.timelockDuration
+            timelockDuration: uint256(launchProjectData.timelockDuration)
         });
 
         // Transfer ownership to the specified owner.
