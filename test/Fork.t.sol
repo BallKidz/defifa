@@ -969,7 +969,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0
+            scorecardTimeout: 0,
+            timelockDuration: 0
         });
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
@@ -2068,7 +2069,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0
+            scorecardTimeout: 0,
+            timelockDuration: 0
         });
         (_pid, _nft, _gov) = _launch(d);
 
@@ -2201,7 +2203,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: minParticipation,
-            scorecardTimeout: scorecardTimeout
+            scorecardTimeout: scorecardTimeout,
+            timelockDuration: 0
         });
     }
 
@@ -2233,7 +2236,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0
+            scorecardTimeout: 0,
+            timelockDuration: 0
         });
     }
 

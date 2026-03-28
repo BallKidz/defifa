@@ -210,7 +210,8 @@ contract TestAuditGapsERC20Games is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: minParticipation,
-            scorecardTimeout: scorecardTimeout
+            scorecardTimeout: scorecardTimeout,
+            timelockDuration: 0
         });
     }
 
@@ -656,7 +657,8 @@ contract TestAuditGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0
+            scorecardTimeout: 0,
+            timelockDuration: 0
         });
     }
 

@@ -847,26 +847,26 @@ The 32-team FIFA World Cup game exemplifies resilient design:
 
 \textbf{Is there a proven ideal game design?} Yes, with qualification. The Uniform Participation Theorem proves that a game with perfectly uniform tier supply is impervious to profitable governance attacks regardless of attacker capital. The ``ideal'' is therefore any event structure that naturally produces uniform minting---and the World Cup is the canonical real-world example. The qualification: no mechanism can prevent a 51\% attacker, just as no proof-of-stake protocol can. The defense is making 51\% ownership prohibitively expensive through high, uniform participation.
 
-\subsection{Proposed Governance Hardening}\label{sec:hardening}
+\subsection{Governance Hardening}\label{sec:hardening}
 
-The defense stack in Section~9.2---BWA, dead token economics, and resilient game design---provides strong structural guarantees. This section proposes four additional mechanisms that provide defense-in-depth against residual attack vectors. These are additive: each one independently strengthens the system, and they compose without interference.
+The defense stack in Section~9.2---BWA, dead token economics, and resilient game design---provides strong structural guarantees. This section describes four implemented mechanisms that provide defense-in-depth against residual attack vectors. These are additive: each one independently strengthens the system, and they compose without interference.
 
 \subsubsection{Post-Ratification Timelock}
 
-\textbf{Problem.} Currently, \texttt{ratifyScorecardFrom} executes the scorecard instantly---the moment quorum is met and the grace period expires. There is zero time for the community to react to fraud that slips through BWA.
+\textbf{Problem.} Without a timelock, \texttt{ratifyScorecardFrom} executes the scorecard instantly---the moment quorum is met and the grace period expires. There is zero time for the community to react to fraud that slips through BWA.
 
-\textbf{Mechanism.} Introduce a mandatory delay $\tau_{\text{lock}}$ between a scorecard reaching \textsc{succeeded} and its execution. During this window:
+\textbf{Mechanism.} A mandatory delay $\tau_{\text{lock}}$ exists between a scorecard reaching quorum (after grace period) and its execution. During this window:
 \begin{enumerate}[nosep]
-\item The scorecard is visible but not yet executable.
-\item If an alternative scorecard also reaches \textsc{succeeded} during the timelock, both are invalidated and the game enters \textsc{no\_contest}.
-\item If no competing scorecard reaches \textsc{succeeded}, the original becomes executable after $\tau_{\text{lock}}$.
+\item The scorecard enters the \textsc{queued} state---visible but not yet executable.
+\item Multiple scorecards can reach \textsc{queued} or \textsc{succeeded} simultaneously. The first to be ratified wins; others become \textsc{defeated}.
+\item After $\tau_{\text{lock}}$ expires, the scorecard transitions to \textsc{succeeded} and can be ratified.
 \end{enumerate}
 
-This avoids the griefing vector of the removed competing-scorecard mechanism: \textsc{no\_contest} only triggers when \emph{two independent scorecards both achieve quorum}---the attacker must marshal enough attestation power to pass a second scorecard, not merely submit one. Under BWA + graduated quorum, this is extremely expensive.
+Multiple scorecards can coexist in \textsc{queued}/\textsc{succeeded} simultaneously. The first \texttt{ratifyScorecardFrom} call wins. Under BWA + graduated quorum, marshaling enough attestation power for a fraudulent competing scorecard is extremely expensive.
 
 \textbf{Recommended:} $\tau_{\text{lock}} = 3$--$7$ days. Same pattern as Compound Governor, OpenZeppelin TimelockController, and Gnosis Safe.
 
-\textbf{Implementation.} Add a new state \textsc{queued} between \textsc{succeeded} and \textsc{ratified}. \texttt{ratifyScorecardFrom} only executes when the timelock has expired.
+\textbf{Implementation.} A \textsc{queued} state exists between \textsc{active} and \textsc{succeeded}. \texttt{ratifyScorecardFrom} only executes when the state is \textsc{succeeded} (timelock expired). The \texttt{timelockDuration} is configurable per game (set to 0 to disable).
 
 \subsubsection{Graduated Quorum by Scorecard Concentration}
 
@@ -898,20 +898,20 @@ Truthful distributed scorecards are barely affected. Concentrated fraudulent sco
 
 \subsubsection{Attestation Withdrawal}
 
-\textbf{Problem.} Attestation is currently irreversible---\texttt{hasAttested[msg.sender]} is a one-way boolean. Holders tricked into attesting to a fraudulent scorecard (phishing, social engineering) cannot correct their mistake.
+\textbf{Problem.} Without withdrawal, attestation would be irreversible. Holders tricked into attesting to a fraudulent scorecard (phishing, social engineering) cannot correct their mistake.
 
-\textbf{Mechanism.} Allow holders to revoke attestation before ratification:
+\textbf{Mechanism.} Holders can revoke attestation during the \textsc{active} phase:
 \begin{enumerate}[nosep]
-\item Store each attestor's weight alongside their boolean flag.
-\item Add \texttt{revokeAttestationFrom(gameId, scorecardId)}---subtracts the stored weight from the scorecard's count.
-\item Revocation is only available while the scorecard is \textsc{active} or \textsc{succeeded} (not after \textsc{ratified}).
+\item Each attestor's BWA weight is stored: \texttt{attestedWeightOf[msg.sender]}.
+\item \texttt{revokeAttestationFrom(gameId, scorecardId)} subtracts the stored weight from the scorecard's count.
+\item Revocation is only available while the scorecard state is \textsc{active}. Once \textsc{queued} (grace period ended + quorum met), revocations are disabled to prevent attest/revoke griefing.
 \end{enumerate}
 
-Combined with the timelock, there is a multi-day window for community self-correction. A fraudulent scorecard that accumulates attestation through deception can have its support withdrawn, dropping it below quorum.
+During \textsc{active}, the grace period is still running, giving honest holders time to correct mistakes. Combined with the timelock, the overall correction window spans the grace period plus timelock duration.
 
 \subsubsection{Scorecard-Aware Attestation Power (BWA Implementation)}
 
-\textbf{Problem.} The current \texttt{getAttestationWeight} computes raw attestation power---the same value regardless of which scorecard is being attested to. For BWA to function, attestation power must be \emph{scorecard-dependent}: each tier's contribution reduced by $(1 - w_i / W_{\text{total}})$.
+\textbf{Problem.} The raw \texttt{getAttestationWeight} computes attestation power without regard to which scorecard is being attested to. For BWA to function, attestation power must be \emph{scorecard-dependent}: each tier's contribution reduced by $(1 - w_i / W_{\text{total}})$.
 
 \textbf{Mechanism.} Modify the attestation flow to be scorecard-aware:
 \begin{enumerate}[nosep]

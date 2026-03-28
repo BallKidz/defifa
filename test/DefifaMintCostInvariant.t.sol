@@ -270,7 +270,8 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0
+            scorecardTimeout: 0,
+            timelockDuration: 0
         });
 
         uint256 pid = deployer.launchGameWith(d);

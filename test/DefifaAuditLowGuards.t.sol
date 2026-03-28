@@ -129,13 +129,13 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
         // First initialization should succeed.
         uint256 gameId = 42;
         _standaloneGov.initializeGame({
-            gameId: gameId, attestationStartTime: block.timestamp, attestationGracePeriod: 2 days
+            gameId: gameId, attestationStartTime: block.timestamp, attestationGracePeriod: 2 days, timelockDuration: 0
         });
 
         // Second initialization for the same gameId should revert.
         vm.expectRevert(DefifaGovernor.DefifaGovernor_AlreadyInitialized.selector);
         _standaloneGov.initializeGame({
-            gameId: gameId, attestationStartTime: block.timestamp, attestationGracePeriod: 2 days
+            gameId: gameId, attestationStartTime: block.timestamp, attestationGracePeriod: 2 days, timelockDuration: 0
         });
     }
 
@@ -163,7 +163,7 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
 
         vm.expectRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
         _standaloneGov.initializeGame({
-            gameId: 99, attestationStartTime: overflowStartTime, attestationGracePeriod: 2 days
+            gameId: 99, attestationStartTime: overflowStartTime, attestationGracePeriod: 2 days, timelockDuration: 0
         });
     }
 
@@ -178,7 +178,7 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
 
         vm.expectRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
         _standaloneGov.initializeGame({
-            gameId: 100, attestationStartTime: block.timestamp, attestationGracePeriod: overflowGracePeriod
+            gameId: 100, attestationStartTime: block.timestamp, attestationGracePeriod: overflowGracePeriod, timelockDuration: 0
         });
     }
 
@@ -271,7 +271,8 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0
+            scorecardTimeout: 0,
+            timelockDuration: 0
         });
     }
 

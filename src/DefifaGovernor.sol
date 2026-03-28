@@ -32,6 +32,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     error DefifaGovernor_GameNotFound();
     error DefifaGovernor_IncorrectTierOrder();
     error DefifaGovernor_NotAllowed();
+    error DefifaGovernor_NotAttested();
     error DefifaGovernor_Uint48Overflow();
     error DefifaGovernor_UnknownProposal();
     error DefifaGovernor_UnownedProposedCashoutValue();
@@ -42,6 +43,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
     /// @notice The max attestation power each tier has if every token within the tier attestations.
     uint256 public constant override MAX_ATTESTATION_POWER_TIER = 1_000_000_000;
+
+    /// @notice The concentration penalty factor for HHI-adjusted quorum (k=0.5 in 1e18 scale).
+    uint256 internal constant CONCENTRATION_PENALTY_FACTOR = 5e17;
+
+    /// @notice The total scorecard weight (1e18 scale, matches cashOutWeight denominator).
+    uint256 internal constant TOTAL_SCORECARD_WEIGHT = 1_000_000_000_000_000_000;
 
     //*********************************************************************//
     // --------------- public immutable stored properties ---------------- //
@@ -67,6 +74,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     //*********************************************************************//
 
     /// @notice The scorecard information, packed into a uint256.
+    /// @dev Bits 0-47: attestationStartTime, bits 48-95: attestationGracePeriod, bits 96-143: timelockDuration.
     /// @custom:param gameId The ID of the game for which the scorecard info applies.
     mapping(uint256 => uint256) internal _packedScorecardInfoOf;
 
@@ -79,6 +87,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @custom:param gameId The ID of the game for which the scorecard affects.
     /// @custom:param scorecardId The ID of the scorecard that has been attested to.
     mapping(uint256 => mapping(uint256 => DefifaAttestations)) internal _scorecardAttestationsOf;
+
+    /// @notice Tier weights per scorecard for BWA computation.
+    /// @dev Maps gameId => scorecardId => tierId (0-indexed) => cashOutWeight.
+    mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) internal _scorecardTierWeightsOf;
 
     //*********************************************************************//
     // -------------------------- constructor ---------------------------- //
@@ -112,7 +124,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Keep a reference to the scorecard state.
         DefifaScorecardState state = stateOf({gameId: gameId, scorecardId: scorecardId});
 
-        if (state != DefifaScorecardState.ACTIVE && state != DefifaScorecardState.SUCCEEDED) {
+        if (
+            state != DefifaScorecardState.ACTIVE && state != DefifaScorecardState.SUCCEEDED
+                && state != DefifaScorecardState.QUEUED
+        ) {
             revert DefifaGovernor_NotAllowed();
         }
 
@@ -120,19 +135,21 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         DefifaAttestations storage attestations = _scorecardAttestationsOf[gameId][scorecardId];
 
         // Make sure the account isn't attesting to the same scorecard again.
-        if (attestations.hasAttested[msg.sender]) revert DefifaGovernor_AlreadyAttested();
+        if (attestations.attestedWeightOf[msg.sender] != 0) revert DefifaGovernor_AlreadyAttested();
 
-        // Get a reference to the attestation weight, snapshotted at `attestationsBegin`.
-        // Using `attestationsBegin` is intentional — it is always a past timestamp set during `submitScorecardFor`,
-        // so same-block transfer manipulation cannot inflate attestation power. A fixed snapshot also ensures every
-        // attestor's weight is measured at the same point in time, which is fairer for gameplay.
-        weight = getAttestationWeight({gameId: gameId, account: msg.sender, timestamp: scorecard.attestationsBegin});
+        // Get a reference to the BWA-adjusted attestation weight, snapshotted at `attestationsBegin`.
+        weight = getBWAAttestationWeight({
+            gameId: gameId,
+            scorecardId: scorecardId,
+            account: msg.sender,
+            timestamp: scorecard.attestationsBegin
+        });
 
         // Increase the attestation count.
         attestations.count += weight;
 
-        // Store the fact that the account has attested to the scorecard.
-        attestations.hasAttested[msg.sender] = true;
+        // Store the BWA weight that was added (used for accurate subtraction on revoke).
+        attestations.attestedWeightOf[msg.sender] = weight;
 
         emit ScorecardAttested(gameId, scorecardId, weight, msg.sender);
     }
@@ -181,6 +198,28 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // slither-disable-next-line reentrancy-events
         emit ScorecardRatified(gameId, scorecardId, msg.sender);
+    }
+
+    /// @notice Revoke a previously submitted attestation. Only allowed during the ACTIVE phase.
+    /// @dev Once a scorecard enters QUEUED (grace period ended + quorum met), revocations are disabled.
+    /// This prevents the griefing loop (attest/revoke cycling) while allowing corrective action during debate.
+    /// @param gameId The ID of the game.
+    /// @param scorecardId The ID of the scorecard to revoke attestation from.
+    function revokeAttestationFrom(uint256 gameId, uint256 scorecardId) external virtual override {
+        // Only allow revocation during ACTIVE phase.
+        if (stateOf(gameId, scorecardId) != DefifaScorecardState.ACTIVE) revert DefifaGovernor_NotAllowed();
+
+        DefifaAttestations storage attestations = _scorecardAttestationsOf[gameId][scorecardId];
+        uint256 weight = attestations.attestedWeightOf[msg.sender];
+
+        // Must have previously attested.
+        if (weight == 0) revert DefifaGovernor_NotAttested();
+
+        // Subtract the weight and clear the attestation.
+        attestations.count -= weight;
+        attestations.attestedWeightOf[msg.sender] = 0;
+
+        emit AttestationRevoked(gameId, scorecardId, msg.sender, weight);
     }
 
     /// @notice Submits a scorecard to be attested to.
@@ -245,6 +284,24 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // when a scorecard is submitted early.
         scorecard.gracePeriodEnds = uint48(attestationsBegin + attestationGracePeriodOf(gameId));
 
+        // Store tier weights for BWA computation.
+        for (uint256 i; i < numberOfTierWeights; i++) {
+            _scorecardTierWeightsOf[gameId][scorecardId][tierWeights[i].id - 1] = tierWeights[i].cashOutWeight;
+        }
+
+        // Compute HHI (Herfindahl-Hirschman Index) for concentration-adjusted quorum.
+        uint256 hhi;
+        for (uint256 i; i < numberOfTierWeights; i++) {
+            uint256 w = tierWeights[i].cashOutWeight;
+            hhi += mulDiv(w, w, TOTAL_SCORECARD_WEIGHT);
+        }
+
+        // Compute HHI-adjusted quorum: more concentrated scorecards need higher quorum.
+        uint256 baseQuorum = quorum(gameId);
+        uint256 adjustmentFactor = mulDiv(CONCENTRATION_PENALTY_FACTOR, hhi, 1e18);
+        uint256 adjustedQuorum = baseQuorum + mulDiv(baseQuorum, adjustmentFactor, 1e18);
+        scorecard.quorumSnapshot = adjustedQuorum;
+
         // Keep a reference to the default attestation delegate.
         address defaultAttestationDelegate = IDefifaHook(metadata.dataHook).defaultAttestationDelegate();
 
@@ -274,7 +331,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @param account The address to check the attestation status of.
     /// @return A flag indicating if the given account has already attested to the scorecard.
     function hasAttestedTo(uint256 gameId, uint256 scorecardId, address account) external view returns (bool) {
-        return _scorecardAttestationsOf[gameId][scorecardId].hasAttested[account];
+        return _scorecardAttestationsOf[gameId][scorecardId].attestedWeightOf[account] != 0;
     }
 
     /// @notice The ID of a scorecard representing the provided tier weights.
@@ -302,10 +359,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @param attestationStartTime The amount of time between a scorecard being submitted and attestations to it being
     /// enabled, measured in seconds.
     /// @param attestationGracePeriod The amount of time that must go by before a scorecard can be ratified.
+    /// @param timelockDuration The cooling period after quorum is met before a scorecard can be ratified.
     function initializeGame(
         uint256 gameId,
         uint256 attestationStartTime,
-        uint256 attestationGracePeriod
+        uint256 attestationGracePeriod,
+        uint256 timelockDuration
     )
         public
         virtual
@@ -324,6 +383,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Ensure values fit within their allocated 48-bit widths before packing.
         if (attestationStartTime > type(uint48).max) revert DefifaGovernor_Uint48Overflow();
         if (attestationGracePeriod > type(uint48).max) revert DefifaGovernor_Uint48Overflow();
+        if (timelockDuration > type(uint48).max) revert DefifaGovernor_Uint48Overflow();
 
         // Pack the values.
         uint256 packed;
@@ -331,11 +391,13 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         packed |= attestationStartTime;
         // attestation grace period in bits 48-95 (48 bits).
         packed |= attestationGracePeriod << 48;
+        // timelock duration in bits 96-143 (48 bits).
+        packed |= timelockDuration << 96;
 
         // Store the packed value.
         _packedScorecardInfoOf[gameId] = packed;
 
-        emit GameInitialized(gameId, attestationStartTime, attestationGracePeriod, msg.sender);
+        emit GameInitialized(gameId, attestationStartTime, attestationGracePeriod, timelockDuration, msg.sender);
     }
 
     //*********************************************************************//
@@ -433,6 +495,75 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         }
     }
 
+    /// @notice Gets an account's BWA-adjusted attestation power relative to a specific scorecard.
+    /// @dev BWA (Benefit-Weighted Attestation) reduces a tier's attestation power by how much
+    /// that tier benefits from the scorecard. Power is reduced by `(tierWeight / TOTAL_SCORECARD_WEIGHT)`.
+    /// This means a tier with 100% of the scorecard weight gets 0 attestation power for that scorecard,
+    /// while a tier with 0% weight retains full power. This prevents beneficiaries from self-attesting.
+    /// @param gameId The ID of the game.
+    /// @param scorecardId The ID of the scorecard (determines tier weight lookup).
+    /// @param account The account to compute BWA power for.
+    /// @param timestamp The snapshot timestamp.
+    /// @return bwaAttestationPower The BWA-adjusted attestation power.
+    function getBWAAttestationWeight(
+        uint256 gameId,
+        uint256 scorecardId,
+        address account,
+        uint48 timestamp
+    )
+        public
+        view
+        virtual
+        override
+        returns (uint256 bwaAttestationPower)
+    {
+        // Get the game's current funding cycle along with its metadata.
+        // slither-disable-next-line unused-return
+        (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
+
+        // Get a reference to the hook and its store.
+        IDefifaHook hook = IDefifaHook(metadata.dataHook);
+        IJB721TiersHookStore store = hook.store();
+
+        // Get a reference to the number of tiers.
+        uint256 numberOfTiers = store.maxTierIdOf(metadata.dataHook);
+
+        // slither-disable-next-line calls-inside-a-loop
+        for (uint256 i; i < numberOfTiers; i++) {
+            // Tiers are 1-indexed.
+            uint256 tierId = i + 1;
+
+            // Get this account's attestation units within the tier (snapshot at timestamp).
+            uint256 tierAttestationUnitsForAccount =
+                hook.getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
+
+            if (tierAttestationUnitsForAccount != 0) {
+                // Get the total attestation units for this tier (snapshot at timestamp).
+                uint256 tierTotalAttestationUnits =
+                    hook.getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp});
+
+                // Include unminted pending reserves in the total (denominator only).
+                {
+                    uint256 pendingReserves = store.numberOfPendingReservesFor(metadata.dataHook, tierId);
+                    if (pendingReserves != 0) {
+                        JB721Tier memory tier =
+                            store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
+                        tierTotalAttestationUnits += pendingReserves * tier.votingUnits;
+                    }
+                }
+
+                // Raw power for this tier.
+                uint256 rawPower = mulDiv(MAX_ATTESTATION_POWER_TIER, tierAttestationUnitsForAccount, tierTotalAttestationUnits);
+
+                // BWA reduction: power * (1 - tierWeight / TOTAL_SCORECARD_WEIGHT).
+                uint256 tierWeight = _scorecardTierWeightsOf[gameId][scorecardId][i];
+                uint256 bwaMultiplier = 1e18 - mulDiv(tierWeight, 1e18, TOTAL_SCORECARD_WEIGHT);
+
+                bwaAttestationPower += mulDiv(rawPower, bwaMultiplier, 1e18);
+            }
+        }
+    }
+
     /// @notice The number of attestation units that must have participated in a proposal for it to be ratified.
     /// @dev Each tier with participation contributes MAX_ATTESTATION_POWER_TIER to the total eligible weight.
     /// A tier counts as "participated" if it has circulating tokens OR unminted pending reserves — the latter
@@ -484,7 +615,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @dev Boundary semantics (inclusive):
     ///   - At exactly `attestationsBegin`, the state transitions from PENDING to ACTIVE (attestations are open).
     ///   - At exactly `gracePeriodEnds`, the grace period has elapsed and the state transitions from ACTIVE to
-    ///     SUCCEEDED (if quorum is met) or remains ACTIVE (if not).
+    ///     QUEUED (if quorum met + timelock > 0) or SUCCEEDED (if quorum met + no timelock).
     function stateOf(uint256 gameId, uint256 scorecardId) public view virtual override returns (DefifaScorecardState) {
         // Keep a reference to the ratified scorecard ID.
         uint256 ratifiedScorecardId = ratifiedScorecardIdOf[gameId];
@@ -516,13 +647,27 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             return DefifaScorecardState.ACTIVE;
         }
 
-        // If quorum has been reached, the state is SUCCEEDED, otherwise it is ACTIVE.
-        // Note: scorecards that fail to reach quorum remain ACTIVE indefinitely — there is no DEFEATED
+        // If quorum has been reached (using the HHI-adjusted snapshot), check timelock.
+        if (scorecard.quorumSnapshot <= _scorecardAttestationsOf[gameId][scorecardId].count) {
+            uint256 _timelockDuration = timelockDurationOf(gameId);
+            if (_timelockDuration > 0 && block.timestamp < uint256(scorecard.gracePeriodEnds) + _timelockDuration) {
+                return DefifaScorecardState.QUEUED;
+            }
+            return DefifaScorecardState.SUCCEEDED;
+        }
+
+        // Scorecards that fail to reach quorum remain ACTIVE indefinitely — there is no DEFEATED
         // state transition for unratified scorecards. This is by design: new scorecards can always be
         // submitted and the game's no-contest timeout (scorecardTimeout) provides the ultimate backstop.
-        return quorum(gameId) <= _scorecardAttestationsOf[gameId][scorecardId].count
-            ? DefifaScorecardState.SUCCEEDED
-            : DefifaScorecardState.ACTIVE;
+        return DefifaScorecardState.ACTIVE;
+    }
+
+    /// @notice The timelock duration for a game (cooling period after quorum + grace period before ratification).
+    /// @param gameId The ID of the game.
+    /// @return The timelock duration in seconds.
+    function timelockDurationOf(uint256 gameId) public view override returns (uint256) {
+        // timelock duration in bits 96-143 (48 bits).
+        return uint256(uint48(_packedScorecardInfoOf[gameId] >> 96));
     }
 
     //*********************************************************************//

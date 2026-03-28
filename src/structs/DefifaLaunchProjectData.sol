@@ -54,4 +54,5 @@ struct DefifaLaunchProjectData {
     IJB721TiersHookStore store;
     uint256 minParticipation;
     uint32 scorecardTimeout;
+    uint256 timelockDuration;
 }

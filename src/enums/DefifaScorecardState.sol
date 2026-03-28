@@ -6,5 +6,6 @@ enum DefifaScorecardState {
     ACTIVE,
     DEFEATED,
     SUCCEEDED,
+    QUEUED,
     RATIFIED
 }

@@ -826,7 +826,8 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: minParticipation,
-            scorecardTimeout: scorecardTimeout
+            scorecardTimeout: scorecardTimeout,
+            timelockDuration: 0
         });
     }
 
