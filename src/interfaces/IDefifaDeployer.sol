@@ -82,7 +82,7 @@ interface IDefifaDeployer {
     /// @param gameId The ID of the game.
     /// @return minParticipation The minimum participation threshold.
     /// @return scorecardTimeout The scorecard timeout duration.
-    function safetyParamsOf(uint256 gameId) external view returns (uint256 minParticipation, uint32 scorecardTimeout);
+    function safetyParamsOf(uint256 gameId) external view returns (uint256 minParticipation, uint256 scorecardTimeout);
 
     /// @notice The timing parameters for a game.
     /// @param gameId The ID of the game.

@@ -183,7 +183,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         external
         view
         override
-        returns (uint256 minParticipation, uint32 scorecardTimeout)
+        returns (uint256 minParticipation, uint256 scorecardTimeout)
     {
         DefifaOpsData memory ops = _opsOf[gameId];
         return (ops.minParticipation, ops.scorecardTimeout);
@@ -535,9 +535,9 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Clone and initialize the new governor.
         GOVERNOR.initializeGame({
             gameId: gameId,
-            attestationStartTime: uint256(launchProjectData.attestationStartTime),
-            attestationGracePeriod: uint256(launchProjectData.attestationGracePeriod),
-            timelockDuration: uint256(launchProjectData.timelockDuration)
+            attestationStartTime: launchProjectData.attestationStartTime,
+            attestationGracePeriod: launchProjectData.attestationGracePeriod,
+            timelockDuration: launchProjectData.timelockDuration
         });
 
         // Transfer ownership to the specified owner.

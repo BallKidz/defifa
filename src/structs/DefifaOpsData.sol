@@ -16,5 +16,5 @@ struct DefifaOpsData {
     uint24 mintPeriodDuration;
     uint24 refundPeriodDuration;
     uint256 minParticipation;
-    uint32 scorecardTimeout;
+    uint256 scorecardTimeout;
 }

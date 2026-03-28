@@ -2178,7 +2178,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         uint8 n,
         uint256 tierPrice,
         uint256 minParticipation,
-        uint32 scorecardTimeout
+        uint256 scorecardTimeout
     )
         internal
         returns (DefifaLaunchProjectData memory)

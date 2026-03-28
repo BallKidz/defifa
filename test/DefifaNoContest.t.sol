@@ -466,7 +466,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
     /// @notice When both are set, minParticipation triggers first if balance is low.
     function testBothMechanisms_thresholdTriggersFirst() external {
         // Threshold: 10 ETH, Timeout: 90 days — but only mint 1 ETH
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 10 ether, uint32(90 days));
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 10 ether, 90 days);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
@@ -559,12 +559,12 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
 
     /// @notice safetyParamsOf returns the stored parameters.
     function testSafetyParamsOf() external {
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 42 ether, uint32(90 days));
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 42 ether, 90 days);
         (_pid, _nft, _gov) = _launch(d);
 
-        (uint256 minP, uint32 timeout) = deployer.safetyParamsOf(_pid);
+        (uint256 minP, uint256 timeout) = deployer.safetyParamsOf(_pid);
         assertEq(minP, 42 ether, "minParticipation should match");
-        assertEq(timeout, uint32(90 days), "scorecardTimeout should match");
+        assertEq(timeout, 90 days, "scorecardTimeout should match");
     }
 
     /// @notice safetyParamsOf returns 0s when not set.
@@ -572,7 +572,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 0, 0);
         (_pid, _nft, _gov) = _launch(d);
 
-        (uint256 minP, uint32 timeout) = deployer.safetyParamsOf(_pid);
+        (uint256 minP, uint256 timeout) = deployer.safetyParamsOf(_pid);
         assertEq(minP, 0, "default minParticipation should be 0");
         assertEq(timeout, 0, "default scorecardTimeout should be 0");
     }
@@ -791,7 +791,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         uint8 n,
         uint256 tierPrice,
         uint256 minParticipation,
-        uint32 scorecardTimeout
+        uint256 scorecardTimeout
     )
         internal
         returns (DefifaLaunchProjectData memory)
