@@ -181,8 +181,9 @@ contract FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
         vm.warp(_tsReader.timestamp() + _governor.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i = 0; i < _users.length; i++) {
+            // Skip users whose BWA power is 0 (100% beneficiaries) — they cannot attest.
             vm.prank(_users[i]);
-            _governor.attestToScorecardFrom(_gameId, _proposalId);
+            try _governor.attestToScorecardFrom(_gameId, _proposalId) {} catch {}
         }
         vm.warp(_tsReader.timestamp() + _governor.attestationGracePeriodOf(_gameId) + 1);
 

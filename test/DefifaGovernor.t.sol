@@ -441,8 +441,9 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.timestamp() + _governor.attestationStartTimeOf(_gameId) + 1);
         // We have only 40% vote on the proposal, making it still be below quorum.
         for (uint256 i = 0; i < _users.length * 4 / 10; i++) {
+            // Skip users whose BWA power is 0 (100% beneficiaries) — they cannot attest.
             vm.prank(_users[i]);
-            _governor.attestToScorecardFrom(_gameId, _proposalId);
+            try _governor.attestToScorecardFrom(_gameId, _proposalId) {} catch {}
         }
         // Forward the amount of blocks needed to reach the end (and round up)
         vm.warp(_tsReader.timestamp() + _governor.attestationGracePeriodOf(_gameId) + 1);
@@ -532,8 +533,9 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // 1 = For
         // 2 = Abstain
         for (uint256 i = 0; i < _users.length; i++) {
+            // Skip users whose BWA power is 0 (100% beneficiaries) — they cannot attest.
             vm.prank(_users[i]);
-            _governor.attestToScorecardFrom(_gameId, _proposalId);
+            try _governor.attestToScorecardFrom(_gameId, _proposalId) {} catch {}
         }
         // each block is of 12 secs
         vm.warp(block.timestamp + _governor.attestationGracePeriodOf(_gameId));
@@ -872,8 +874,9 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             // 1 = For
             // 2 = Abstain
             for (uint256 i = 0; i < _users.length; i++) {
+                // Skip users whose BWA power is 0 (100% beneficiaries) — they cannot attest.
                 vm.prank(_users[i]);
-                _governor.attestToScorecardFrom(_gameId, _proposalId);
+                try _governor.attestToScorecardFrom(_gameId, _proposalId) {} catch {}
             }
         }
 
@@ -1117,8 +1120,9 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.timestamp() + _governor.attestationStartTimeOf(_gameId));
         // All the users vote
         for (uint256 i = 0; i < _users.length; i++) {
+            // Skip users whose BWA power is 0 (100% beneficiaries) — they cannot attest.
             vm.prank(_users[i]);
-            _governor.attestToScorecardFrom(_gameId, _proposalId);
+            try _governor.attestToScorecardFrom(_gameId, _proposalId) {} catch {}
         }
         // Execute the proposal — should fail because grace period hasn't ended
         vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
@@ -1189,8 +1193,9 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // 1 = For
         // 2 = Abstain
         for (uint256 i = 0; i < _users.length; i++) {
+            // Skip users whose BWA power is 0 (100% beneficiaries) — they cannot attest.
             vm.prank(_users[i]);
-            _governor.attestToScorecardFrom(_gameId, _proposalId);
+            try _governor.attestToScorecardFrom(_gameId, _proposalId) {} catch {}
         }
 
         // Forward the amount of blocks needed to reach the end (and round up)

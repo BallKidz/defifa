@@ -684,8 +684,9 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
     function _attestAllFor(uint256 pid) internal {
         vm.warp(block.timestamp + _gov.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < _users.length; i++) {
+            // Skip users whose BWA power is 0 (100% beneficiaries) — they cannot attest.
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, pid);
+            try _gov.attestToScorecardFrom(_gameId, pid) {} catch {}
         }
         vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
     }

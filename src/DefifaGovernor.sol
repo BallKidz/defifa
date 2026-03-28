@@ -154,6 +154,11 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             gameId: gameId, scorecardId: scorecardId, account: msg.sender, timestamp: scorecard.attestationsBegin
         });
 
+        // Revert if the account has no attestation power for this scorecard.
+        // Without this check, a 100% beneficiary (BWA power = 0) could "attest" repeatedly
+        // because attestedWeightOf would remain 0 and never trip the already-attested guard.
+        if (weight == 0) revert DefifaGovernor_NotAllowed();
+
         // Add the BWA-weighted attestation to the running total.
         attestations.count += weight;
 

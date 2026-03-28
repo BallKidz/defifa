@@ -337,8 +337,9 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         // So max possible attestation = 3 * MAX = 3e9 = exactly the adjusted quorum.
         vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
 
-        // User 0 attests but contributes 0 due to BWA.
+        // User 0 (100% beneficiary) has 0 BWA power — attestation should revert.
         vm.prank(_users[0]);
+        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.attestToScorecardFrom(_gameId, scorecardId);
 
         // Users 1 and 2 attest (2 * MAX = 2e9 < 3e9).
@@ -767,6 +768,155 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         assertTrue(_nft.cashOutWeightIsSet(), "weights should be set after ratification");
         assertEq(
             uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.RATIFIED), "should be RATIFIED"
+        );
+    }
+
+    // =========================================================================
+    // EDGE CASE TESTS
+    // =========================================================================
+
+    /// @notice Concern 1: A user whose BWA power is 0 (100% beneficiary tier) should NOT be able to
+    ///         attest repeatedly. Attesting with 0 weight should revert — otherwise the zero-weight
+    ///         guard (attestedWeightOf != 0) never trips and they can spam attestations.
+    function test_zeroWeightAttestation_reverts() external {
+        _setupGame(4, 1 ether);
+        _toScoring();
+
+        // Submit scorecard: tier 1 gets 100% weight.
+        uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(4);
+        sc[0].cashOutWeight = tw; // tier 1 = 100%
+
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+
+        // User 0 holds ONLY tier 1 (100% beneficiary) — BWA power = 0.
+        uint256 bwaPower = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[0], uint48(_tsReader.ts()));
+        assertEq(bwaPower, 0, "tier 1 holder should have 0 BWA power for this scorecard");
+
+        // Attesting with 0 weight should revert.
+        vm.prank(_users[0]);
+        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        _gov.attestToScorecardFrom(_gameId, scorecardId);
+    }
+
+    /// @notice Concern 2: Attestation during SUCCEEDED state should work (by design).
+    function test_attestDuringSucceeded_works() external {
+        _setupGame(4, 1 ether);
+        _toScoring();
+
+        DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+
+        // 3 users attest (enough for quorum with BWA + HHI).
+        for (uint256 i; i < 3; i++) {
+            vm.prank(_users[i]);
+            _gov.attestToScorecardFrom(_gameId, scorecardId);
+        }
+
+        // After grace period, should be SUCCEEDED.
+        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        assertEq(
+            uint256(_gov.stateOf(_gameId, scorecardId)),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "should be SUCCEEDED"
+        );
+
+        // User 3 can still attest during SUCCEEDED.
+        vm.prank(_users[3]);
+        uint256 weight = _gov.attestToScorecardFrom(_gameId, scorecardId);
+        assertGt(weight, 0, "attestation during SUCCEEDED should have positive weight");
+        assertTrue(_gov.hasAttestedTo(_gameId, scorecardId, _users[3]), "user 3 should be attested");
+    }
+
+    /// @notice Concern 3: Revoking after a DIFFERENT scorecard is ratified should revert.
+    ///         The original scorecard is now DEFEATED, which is not ACTIVE.
+    function test_revokeAfterOtherRatified_reverts() external {
+        _setupGame(4, 1 ether);
+        _toScoring();
+
+        uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
+
+        // Scorecard A: equal distribution.
+        DefifaTierCashOutWeight[] memory scA = _evenScorecard(4);
+
+        // Scorecard B: tier 1 = 50%, tier 2 = 50%.
+        DefifaTierCashOutWeight[] memory scB = _buildScorecard(4);
+        scB[0].cashOutWeight = tw / 2;
+        scB[1].cashOutWeight = tw / 2;
+
+        uint256 proposalA = _gov.submitScorecardFor(_gameId, scA);
+        uint256 proposalB = _gov.submitScorecardFor(_gameId, scB);
+
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+
+        // All 4 attest to scorecard A.
+        for (uint256 i; i < 4; i++) {
+            vm.prank(_users[i]);
+            _gov.attestToScorecardFrom(_gameId, proposalA);
+        }
+
+        // User 0 also attests to scorecard B.
+        vm.prank(_users[0]);
+        _gov.attestToScorecardFrom(_gameId, proposalB);
+
+        // After grace period, ratify scorecard A.
+        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        _gov.ratifyScorecardFrom(_gameId, scA);
+
+        // Scorecard B is now DEFEATED.
+        assertEq(
+            uint256(_gov.stateOf(_gameId, proposalB)),
+            uint256(DefifaScorecardState.DEFEATED),
+            "B should be DEFEATED"
+        );
+
+        // User 0 tries to revoke from scorecard B — should revert (not ACTIVE).
+        vm.prank(_users[0]);
+        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        _gov.revokeAttestationFrom(_gameId, proposalB);
+    }
+
+    /// @notice Concern 4: Scorecard with all tiers at weight 0 has HHI = 0, unchanged quorum,
+    ///         and all tiers get full BWA power.
+    function test_allZeroWeightScorecard() external {
+        _setupGame(4, 1 ether);
+        _toScoring();
+
+        uint256 baseQuorum = _gov.quorum(_gameId);
+
+        // Submit scorecard with all weights = 0.
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(4);
+        // All weights default to 0.
+
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        uint48 snapshotTime = uint48(_tsReader.ts());
+
+        // BWA power should equal raw power for all tiers (no reduction).
+        for (uint256 i; i < 4; i++) {
+            uint256 rawPower = _gov.getAttestationWeight(_gameId, _users[i], snapshotTime);
+            uint256 bwaPower = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], snapshotTime);
+            assertEq(bwaPower, rawPower, "all-zero scorecard should give full BWA power");
+        }
+
+        // HHI = 0 → adjusted quorum = baseQuorum + 0 = baseQuorum.
+        // With 4 equal tiers, baseQuorum = 2 * MAX. BWA gives full power, so 2 users should suffice.
+        vm.prank(_users[0]);
+        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        vm.prank(_users[1]);
+        _gov.attestToScorecardFrom(_gameId, scorecardId);
+
+        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+
+        DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
+        assertEq(
+            uint256(state),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "all-zero scorecard should reach quorum with 2 attestors (no HHI penalty, full BWA power)"
         );
     }
 
