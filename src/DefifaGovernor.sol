@@ -44,12 +44,6 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @notice The max attestation power each tier has if every token within the tier attestations.
     uint256 public constant override MAX_ATTESTATION_POWER_TIER = 1_000_000_000;
 
-    /// @notice The concentration penalty factor for HHI-adjusted quorum (k=0.5 in 1e18 scale).
-    uint256 internal constant CONCENTRATION_PENALTY_FACTOR = 5e17;
-
-    /// @notice The total scorecard weight (1e18 scale, matches cashOutWeight denominator).
-    uint256 internal constant TOTAL_SCORECARD_WEIGHT = 1_000_000_000_000_000_000;
-
     //*********************************************************************//
     // --------------- public immutable stored properties ---------------- //
     //*********************************************************************//
@@ -139,10 +133,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Get a reference to the BWA-adjusted attestation weight, snapshotted at `attestationsBegin`.
         weight = getBWAAttestationWeight({
-            gameId: gameId,
-            scorecardId: scorecardId,
-            account: msg.sender,
-            timestamp: scorecard.attestationsBegin
+            gameId: gameId, scorecardId: scorecardId, account: msg.sender, timestamp: scorecard.attestationsBegin
         });
 
         // Increase the attestation count.
@@ -289,17 +280,34 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             _scorecardTierWeightsOf[gameId][scorecardId][tierWeights[i].id - 1] = tierWeights[i].cashOutWeight;
         }
 
-        // Compute HHI (Herfindahl-Hirschman Index) for concentration-adjusted quorum.
-        uint256 hhi;
-        for (uint256 i; i < numberOfTierWeights; i++) {
-            uint256 w = tierWeights[i].cashOutWeight;
-            hhi += mulDiv(w, w, TOTAL_SCORECARD_WEIGHT);
+        // Concentration-adjusted quorum: penalty = headroom * maxShare².
+        // Headroom = max achievable BWA - base quorum = (N-2) * MAX / 2.
+        // This is the gap honest attestors can fill above base quorum.
+        // maxShare² is nonlinear: gentle for moderate concentration, steep for extreme.
+        // The penalty can never exceed headroom, so quorum is always reachable by non-beneficiaries.
+        uint256 baseQuorum = quorum(gameId);
+        uint256 adjustedQuorum = baseQuorum;
+
+        if (baseQuorum >= MAX_ATTESTATION_POWER_TIER) {
+            // headroom = maxBWA - baseQuorum = (N-1)*MAX - N*MAX/2 = (N-2)*MAX/2.
+            uint256 headroom = baseQuorum - MAX_ATTESTATION_POWER_TIER;
+            // Subtract numberOfTierWeights to account for per-tier mulDiv truncation in BWA.
+            if (headroom > numberOfTierWeights) headroom -= numberOfTierWeights;
+
+            // Find the largest tier weight.
+            uint256 totalCashOutWeight = IDefifaHook(metadata.dataHook).TOTAL_CASHOUT_WEIGHT();
+            uint256 maxWeight;
+            for (uint256 i; i < numberOfTierWeights; i++) {
+                if (tierWeights[i].cashOutWeight > maxWeight) maxWeight = tierWeights[i].cashOutWeight;
+            }
+
+            // maxShare² in totalCashOutWeight scale (nonlinear: gentle for moderate, steep for extreme).
+            uint256 maxShareSquared = mulDiv(maxWeight, maxWeight, totalCashOutWeight);
+
+            // Penalty fills headroom proportional to concentration².
+            adjustedQuorum += mulDiv(headroom, maxShareSquared, totalCashOutWeight);
         }
 
-        // Compute HHI-adjusted quorum: more concentrated scorecards need higher quorum.
-        uint256 baseQuorum = quorum(gameId);
-        uint256 adjustmentFactor = mulDiv(CONCENTRATION_PENALTY_FACTOR, hhi, 1e18);
-        uint256 adjustedQuorum = baseQuorum + mulDiv(baseQuorum, adjustmentFactor, 1e18);
         scorecard.quorumSnapshot = adjustedQuorum;
 
         // Keep a reference to the default attestation delegate.
@@ -497,7 +505,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
     /// @notice Gets an account's BWA-adjusted attestation power relative to a specific scorecard.
     /// @dev BWA (Benefit-Weighted Attestation) reduces a tier's attestation power by how much
-    /// that tier benefits from the scorecard. Power is reduced by `(tierWeight / TOTAL_SCORECARD_WEIGHT)`.
+    /// that tier benefits from the scorecard. Power is reduced by `(tierWeight / totalCashOutWeight)`.
     /// This means a tier with 100% of the scorecard weight gets 0 attestation power for that scorecard,
     /// while a tier with 0% weight retains full power. This prevents beneficiaries from self-attesting.
     /// @param gameId The ID of the game.
@@ -528,6 +536,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Get a reference to the number of tiers.
         uint256 numberOfTiers = store.maxTierIdOf(metadata.dataHook);
 
+        // Cache the total cashout weight denominator from the hook.
+        uint256 totalCashOutWeight = hook.TOTAL_CASHOUT_WEIGHT();
+
         // slither-disable-next-line calls-inside-a-loop
         for (uint256 i; i < numberOfTiers; i++) {
             // Tiers are 1-indexed.
@@ -553,13 +564,14 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                 }
 
                 // Raw power for this tier.
-                uint256 rawPower = mulDiv(MAX_ATTESTATION_POWER_TIER, tierAttestationUnitsForAccount, tierTotalAttestationUnits);
+                uint256 rawPower =
+                    mulDiv(MAX_ATTESTATION_POWER_TIER, tierAttestationUnitsForAccount, tierTotalAttestationUnits);
 
-                // BWA reduction: power * (1 - tierWeight / TOTAL_SCORECARD_WEIGHT).
+                // BWA reduction: power * (1 - tierWeight / totalCashOutWeight).
                 uint256 tierWeight = _scorecardTierWeightsOf[gameId][scorecardId][i];
-                uint256 bwaMultiplier = 1e18 - mulDiv(tierWeight, 1e18, TOTAL_SCORECARD_WEIGHT);
+                uint256 bwaMultiplier = totalCashOutWeight - tierWeight;
 
-                bwaAttestationPower += mulDiv(rawPower, bwaMultiplier, 1e18);
+                bwaAttestationPower += mulDiv(rawPower, bwaMultiplier, totalCashOutWeight);
             }
         }
     }
