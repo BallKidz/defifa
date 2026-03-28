@@ -195,7 +195,8 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
 
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
         vm.warp(_tsReader.timestamp() + _governor.attestationStartTimeOf(_gameId) + 1);
-        for (uint256 i = 0; i < _users.length; i++) {
+        // Start from i=1: user 0 holds tier 1 which gets 100% weight, so BWA reduces their power to 0.
+        for (uint256 i = 1; i < _users.length; i++) {
             vm.prank(_users[i]);
             _governor.attestToScorecardFrom(_gameId, _proposalId);
         }
