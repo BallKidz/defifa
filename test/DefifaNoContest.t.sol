@@ -887,7 +887,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         vm.warp(block.timestamp + _gov.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, pid);
+            try _gov.attestToScorecardFrom(_gameId, pid) {} catch {}
         }
         vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
     }

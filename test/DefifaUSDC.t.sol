@@ -278,7 +278,7 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
         vm.warp((attestStart > current ? attestStart : current) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, pid);
+            try _gov.attestToScorecardFrom(_gameId, pid) {} catch {}
         }
         vm.warp(_tsReader.timestamp() + _gov.attestationGracePeriodOf(_gameId) + 1);
         _gov.ratifyScorecardFrom(_gameId, sc);

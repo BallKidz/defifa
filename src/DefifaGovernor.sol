@@ -136,6 +136,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             gameId: gameId, scorecardId: scorecardId, account: msg.sender, timestamp: scorecard.attestationsBegin
         });
 
+        // Revert if BWA reduces this account's power to zero (e.g. 100% beneficiary of the scorecard).
+        // Without this guard, zero-weight attestors could call repeatedly since attestedWeightOf stays 0.
+        if (weight == 0) revert DefifaGovernor_NotAllowed();
+
         // Increase the attestation count.
         attestations.count += weight;
 
@@ -659,7 +663,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             return DefifaScorecardState.ACTIVE;
         }
 
-        // If quorum has been reached (using the HHI-adjusted snapshot), check timelock.
+        // If quorum has been reached (using the concentration-adjusted snapshot), check timelock.
         if (scorecard.quorumSnapshot <= _scorecardAttestationsOf[gameId][scorecardId].count) {
             uint256 _timelockDuration = timelockDurationOf(gameId);
             if (_timelockDuration > 0 && block.timestamp < uint256(scorecard.gracePeriodEnds) + _timelockDuration) {
