@@ -360,8 +360,9 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         // Wait for attestation.
         vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
 
-        // Only user 0 likes scorecard A (1/4, not quorum).
+        // User 0 (tier 1, 100% beneficiary of scorecard A) has BWA power = 0 and cannot attest.
         vm.prank(_users[0]);
+        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.attestToScorecardFrom(_gameId, proposalA);
 
         // Users 1, 2, 3 like scorecard B (3/4, quorum met).
