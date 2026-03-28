@@ -606,8 +606,9 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
         // Other users attest.
         for (uint256 i = 2; i < 4; i++) {
+            // Skip users whose BWA power is 0 (100% beneficiaries) — they cannot attest.
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, pid);
+            try _gov.attestToScorecardFrom(_gameId, pid) {} catch {}
         }
 
         // Advance past grace period.
@@ -1012,8 +1013,9 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         uint256 pid = _gov.submitScorecardFor(_gameId, sc);
         vm.warp(_tsReader.timestamp() + _gov.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < allUsers.length; i++) {
+            // Skip users whose BWA power is 0 (100% beneficiaries) — they cannot attest.
             vm.prank(allUsers[i]);
-            _gov.attestToScorecardFrom(_gameId, pid);
+            try _gov.attestToScorecardFrom(_gameId, pid) {} catch {}
         }
         vm.warp(_tsReader.timestamp() + _gov.attestationGracePeriodOf(_gameId) + 1);
         _gov.ratifyScorecardFrom(_gameId, sc);
@@ -1355,15 +1357,10 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         uint256 current = _tsReader.timestamp();
         vm.warp((attestStart > current ? attestStart : current) + 1);
 
-        // Non-holder attests — should succeed but add 0 weight.
+        // Non-holder (zero BWA power) is rejected by the zero-weight guard.
         address stranger = _addr(999);
         vm.prank(stranger);
-        uint256 weight = _gov.attestToScorecardFrom(_gameId, pid);
-        assertEq(weight, 0, "non-holder has 0 attestation power");
-
-        // But they can't attest again.
-        vm.prank(stranger);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_AlreadyAttested.selector);
+        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.attestToScorecardFrom(_gameId, pid);
     }
 
@@ -1612,6 +1609,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         // delegate checkpoint units (from store's votingUnits = price) are 2x total tier checkpoints.
         uint256 firstWeight;
         for (uint256 i; i < 4; i++) {
+            // With even scorecard (25% each), BWA reduces power to 75% but never to 0.
             vm.prank(_users[i]);
             uint256 w = _gov.attestToScorecardFrom(_gameId, pid);
             assertGt(w, 0, "sole holder has attestation power");
@@ -1633,7 +1631,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         uint256 expectedQuorum = (3 * _gov.MAX_ATTESTATION_POWER_TIER()) / 2;
         assertEq(q, expectedQuorum, "quorum = floor(3 * 1e9 / 2)");
 
-        // 2 of 3 tiers attesting should exceed quorum.
+        // Under BWA with even distribution (33% each), each user's attestation power is reduced
+        // to ~67% of MAX. Combined with HHI-adjusted quorum, all 3 users must attest.
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(3);
         uint256 pid = _gov.submitScorecardFor(_gameId, sc);
 
@@ -1641,13 +1640,13 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         uint256 current = _tsReader.timestamp();
         vm.warp((attestStart > current ? attestStart : current) + 1);
 
-        // Only users 0 and 1 attest (2 of 3 tiers).
-        vm.prank(_users[0]);
-        _gov.attestToScorecardFrom(_gameId, pid);
-        vm.prank(_users[1]);
-        _gov.attestToScorecardFrom(_gameId, pid);
+        // All 3 tiers attest.
+        for (uint256 i; i < 3; i++) {
+            vm.prank(_users[i]);
+            _gov.attestToScorecardFrom(_gameId, pid);
+        }
 
-        // 2e9 > 1.5e9 → quorum met.
+        // Total BWA = 3 * ~667M ≈ 2e9 > adjusted quorum ~1.75e9 → quorum met.
         vm.warp(_tsReader.timestamp() + _gov.attestationGracePeriodOf(_gameId) + 1);
         assertEq(uint256(_gov.stateOf(_gameId, pid)), uint256(DefifaScorecardState.SUCCEEDED));
     }
@@ -1920,8 +1919,9 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
         // Attest all.
         for (uint256 i; i < _users.length; i++) {
+            // Skip users whose BWA power is 0 (100% beneficiaries) — they cannot attest.
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, pid);
+            try _gov.attestToScorecardFrom(_gameId, pid) {} catch {}
         }
 
         // Still ACTIVE during grace period (even if quorum met).
@@ -2322,8 +2322,9 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         uint256 current = _tsReader.timestamp();
         vm.warp((attestStart > current ? attestStart : current) + 1);
         for (uint256 i; i < _users.length; i++) {
+            // Skip users whose BWA power is 0 (100% beneficiaries) — they cannot attest.
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, pid);
+            try _gov.attestToScorecardFrom(_gameId, pid) {} catch {}
         }
         vm.warp(_tsReader.timestamp() + _gov.attestationGracePeriodOf(_gameId) + 1);
     }

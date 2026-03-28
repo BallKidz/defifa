@@ -330,6 +330,27 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         uint256 adjustmentFactor = mulDiv({x: _CONCENTRATION_PENALTY_FACTOR, y: hhi, denominator: 1e18});
         // Apply the adjustment to the base quorum.
         uint256 adjustedQuorum = baseQuorum + mulDiv({x: baseQuorum, y: adjustmentFactor, denominator: 1e18});
+
+        // Cap: ensure honest full-participation can always reach quorum.
+        // Under BWA, the theoretical max attestation power is (N-1) * MAX_ATTESTATION_POWER_TIER,
+        // because sum(1 - w_i/W) = N - 1 for any weight distribution.
+        // Since baseQuorum = N * MAX_ATTESTATION_POWER_TIER / 2, we derive: maxBWA = 2 * baseQuorum - MAX.
+        // We apply a 1% haircut to absorb mulDiv rounding loss across all attestors. Each attestor's BWA
+        // computation involves two mulDiv operations (bwaMultiplier and power scaling), each losing up to
+        // 1 wei. With many attestors per tier, the cumulative loss can exceed a naive per-tier buffer.
+        // For single-tier games (baseQuorum < MAX), quorum caps at 0 (only one outcome possible).
+        if (baseQuorum >= MAX_ATTESTATION_POWER_TIER) {
+            uint256 theoreticalMax = 2 * baseQuorum - MAX_ATTESTATION_POWER_TIER;
+            // 1% haircut: maxAchievableBWA = theoreticalMax * 99/100.
+            uint256 maxAchievableBWA = (theoreticalMax * 99) / 100;
+            if (adjustedQuorum > maxAchievableBWA) {
+                adjustedQuorum = maxAchievableBWA;
+            }
+        } else {
+            // Single tier or no tiers: only one possible outcome, governance is trivial.
+            adjustedQuorum = 0;
+        }
+
         // Snapshot the adjusted quorum so stateOf can check against it without recomputing.
         scorecard.quorumSnapshot = adjustedQuorum;
 
@@ -652,6 +673,14 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Quorum = 50% of all participated tiers' attestation power.
         return eligibleTierWeights / 2;
+    }
+
+    /// @notice The HHI-adjusted quorum snapshot stored at scorecard submission time.
+    /// @param gameId The ID of the game.
+    /// @param scorecardId The ID of the scorecard.
+    /// @return The adjusted quorum threshold for this specific scorecard.
+    function quorumSnapshotOf(uint256 gameId, uint256 scorecardId) public view override returns (uint256) {
+        return _scorecardOf[gameId][scorecardId].quorumSnapshot;
     }
 
     /// @notice The state of a proposal.

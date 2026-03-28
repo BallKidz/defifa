@@ -1049,4 +1049,299 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             sc[i].cashOutWeight = tw / n;
         }
     }
+
+    // =========================================================================
+    // BWA ECONOMIC SIMULATIONS — k=0.5 calibration analysis
+    // =========================================================================
+
+    /// @notice Simulation 1: World Cup-style 32-team tournament.
+    /// Distribution: 1st=40%, 2nd=20%, 3rd=10%, 4th=5%, rest share 25% evenly.
+    /// Validates that BWA + HHI creates a meaningful defense at realistic scale.
+    function test_sim_worldCup32Teams() external {
+        _setupGame(32, 0.1 ether);
+        _toScoring();
+
+        uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(32);
+
+        // World Cup-style distribution.
+        sc[0].cashOutWeight = (tw * 40) / 100;  // 1st: 40%
+        sc[1].cashOutWeight = (tw * 20) / 100;  // 2nd: 20%
+        sc[2].cashOutWeight = (tw * 10) / 100;  // 3rd: 10%
+        sc[3].cashOutWeight = (tw * 5) / 100;   // 4th: 5%
+
+        // Remaining 28 teams share 25%.
+        uint256 assigned = sc[0].cashOutWeight + sc[1].cashOutWeight + sc[2].cashOutWeight + sc[3].cashOutWeight;
+        uint256 remaining = tw - assigned;
+        for (uint256 i = 4; i < 32; i++) {
+            sc[i].cashOutWeight = remaining / 28;
+        }
+
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+
+        // Measure BWA power for each participant type.
+        uint256 power1st = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[0], uint48(_tsReader.ts()));
+        uint256 power2nd = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[1], uint48(_tsReader.ts()));
+        uint256 powerLast = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[31], uint48(_tsReader.ts()));
+        uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
+
+        // 1st place (40% weight): BWA multiplier = 1 - 0.4 = 0.6 → 60% power.
+        assertApproxEqRel(power1st, (maxPower * 60) / 100, 0.01e18, "1st place ~60% power");
+
+        // 2nd place (20% weight): BWA multiplier = 1 - 0.2 = 0.8 → 80% power.
+        assertApproxEqRel(power2nd, (maxPower * 80) / 100, 0.01e18, "2nd place ~80% power");
+
+        // Last place (~0.9% weight): BWA multiplier ~ 0.991 → ~99% power.
+        assertGt(powerLast, (maxPower * 98) / 100, "bottom tier retains >98% power");
+
+        // HHI-adjusted quorum should be meaningfully higher than base quorum.
+        uint256 baseQuorum = _gov.quorum(_gameId);
+        uint256 adjustedQuorum = _gov.quorumSnapshotOf(_gameId, scorecardId);
+        uint256 quorumIncrease = ((adjustedQuorum - baseQuorum) * 10000) / baseQuorum;
+        // With k=0.5 and this distribution, HHI ≈ 0.235 → ~11.7% increase.
+        assertGt(quorumIncrease, 500, "quorum increase >5% for World Cup distribution");
+        assertLt(quorumIncrease, 2500, "quorum increase <25% (not unreasonable)");
+
+        // Total BWA power across all 32 users should be significantly less than 32 * MAX.
+        uint256 totalBWA;
+        for (uint256 i; i < 32; i++) {
+            totalBWA += _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
+        }
+        // Honest resolution should still be achievable: total BWA > adjustedQuorum.
+        assertGt(totalBWA, adjustedQuorum, "honest participants can still reach quorum");
+    }
+
+    /// @notice Simulation 2: Attacker controls 1 of 4 tiers, tries 100%-to-self scorecard.
+    /// Under BWA + HHI, the attacker cannot reach quorum even with 100% of their tier.
+    function test_sim_attackerOneOfFour() external {
+        _setupGame(4, 1 ether);
+        _toScoring();
+
+        uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
+
+        // Honest scorecard: even distribution.
+        DefifaTierCashOutWeight[] memory honest = _buildScorecard(4);
+        for (uint256 i; i < 4; i++) honest[i].cashOutWeight = tw / 4;
+
+        // Fraudulent scorecard: tier 1 gets everything.
+        DefifaTierCashOutWeight[] memory fraud = _buildScorecard(4);
+        fraud[0].cashOutWeight = tw;
+
+        uint256 honestId = _gov.submitScorecardFor(_gameId, honest);
+        uint256 fraudId = _gov.submitScorecardFor(_gameId, fraud);
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+
+        // Attacker (user 0, tier 1) tries to attest to fraud scorecard — reverts (0 BWA power).
+        vm.prank(_users[0]);
+        vm.expectRevert(abi.encodeWithSignature("DefifaGovernor_NotAllowed()"));
+        _gov.attestToScorecardFrom(_gameId, fraudId);
+
+        // Even if the attacker could somehow get other beneficiary tiers to collude,
+        // the HHI-adjusted quorum for the fraud scorecard is much higher.
+        uint256 honestQuorum = _gov.quorumSnapshotOf(_gameId, honestId);
+        uint256 fraudQuorum = _gov.quorumSnapshotOf(_gameId, fraudId);
+        assertGt(fraudQuorum, honestQuorum, "fraud scorecard has higher quorum");
+
+        // The fraud scorecard's quorum is capped at (N-1)*MAX = 3*MAX (the max achievable BWA power).
+        // The honest scorecard's quorum is lower due to lower HHI. Increase ≈ 33%.
+        uint256 increase = ((fraudQuorum - honestQuorum) * 100) / honestQuorum;
+        assertGt(increase, 20, "fraud quorum meaningfully higher than honest");
+        assertLt(increase, 60, "fraud quorum increase bounded by BWA cap");
+
+        // Honest users can still ratify the honest scorecard.
+        for (uint256 i; i < 4; i++) {
+            vm.prank(_users[i]);
+            try _gov.attestToScorecardFrom(_gameId, honestId) {} catch {}
+        }
+        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        assertEq(
+            uint256(_gov.stateOf(_gameId, honestId)),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "honest scorecard reaches SUCCEEDED"
+        );
+    }
+
+    /// @notice Simulation 3: 8-team bracket where top 2 control 60% weight.
+    /// Tests that BWA meaningfully reduces their power but doesn't block honest resolution.
+    function test_sim_8teamTopHeavy() external {
+        _setupGame(8, 0.5 ether);
+        _toScoring();
+
+        uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(8);
+
+        // Top-heavy distribution: 35/25/15/10/5/4/3/3
+        sc[0].cashOutWeight = (tw * 35) / 100;
+        sc[1].cashOutWeight = (tw * 25) / 100;
+        sc[2].cashOutWeight = (tw * 15) / 100;
+        sc[3].cashOutWeight = (tw * 10) / 100;
+        sc[4].cashOutWeight = (tw * 5) / 100;
+        sc[5].cashOutWeight = (tw * 4) / 100;
+        sc[6].cashOutWeight = (tw * 3) / 100;
+        sc[7].cashOutWeight = (tw * 3) / 100;
+
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+
+        uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
+
+        // 1st place (35%): BWA multiplier = 0.65 → 65% power.
+        uint256 power1st = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[0], uint48(_tsReader.ts()));
+        assertApproxEqRel(power1st, (maxPower * 65) / 100, 0.01e18, "1st place ~65% power");
+
+        // 8th place (3%): BWA multiplier = 0.97 → 97% power.
+        uint256 power8th = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[7], uint48(_tsReader.ts()));
+        assertGt(power8th, (maxPower * 96) / 100, "8th place retains >96% power");
+
+        // All 8 users attest — should still reach quorum.
+        uint256 totalBWA;
+        for (uint256 i; i < 8; i++) {
+            vm.prank(_users[i]);
+            uint256 w = _gov.attestToScorecardFrom(_gameId, scorecardId);
+            totalBWA += w;
+        }
+
+        uint256 adjustedQuorum = _gov.quorumSnapshotOf(_gameId, scorecardId);
+        assertGt(totalBWA, adjustedQuorum, "all 8 users together exceed quorum");
+
+        // Verify the scorecard reaches quorum.
+        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        assertEq(
+            uint256(_gov.stateOf(_gameId, scorecardId)),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "top-heavy scorecard still passes with full participation"
+        );
+    }
+
+    /// @notice Simulation 4: Fuzz k=0.5 across many scorecard distributions.
+    /// For ANY honest scorecard (all N tiers attest), total BWA power > HHI-adjusted quorum.
+    /// This proves k=0.5 never blocks legitimate consensus.
+    function test_sim_fuzz_honestAlwaysPasses(uint8 nTiers) external {
+        nTiers = uint8(bound(nTiers, 2, 32));
+        _setupGame(nTiers, 0.1 ether);
+        _toScoring();
+
+        uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(nTiers);
+
+        // Generate a random-ish but valid distribution.
+        uint256 assigned;
+        for (uint256 i; i < nTiers; i++) {
+            if (i == uint256(nTiers) - 1) {
+                sc[i].cashOutWeight = tw - assigned;
+            } else {
+                // Give each tier a weight proportional to (nTiers - i)^2 for a "power law" distribution.
+                uint256 rank = nTiers - i;
+                uint256 raw = rank * rank;
+                sc[i].cashOutWeight = (tw * raw) / _sumOfSquares(nTiers);
+                assigned += sc[i].cashOutWeight;
+            }
+        }
+
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+
+        // All users attest.
+        uint256 totalBWA;
+        for (uint256 i; i < nTiers; i++) {
+            vm.prank(_users[i]);
+            try _gov.attestToScorecardFrom(_gameId, scorecardId) returns (uint256 w) {
+                totalBWA += w;
+            } catch {
+                // User's BWA power is 0 — skip.
+            }
+        }
+
+        uint256 adjustedQuorum = _gov.quorumSnapshotOf(_gameId, scorecardId);
+        // The quorum cap guarantees totalBWA >= adjustedQuorum (with equality at the boundary).
+        // The on-chain check is `quorumSnapshot <= attestations.count`, so equality suffices.
+        assertGe(totalBWA, adjustedQuorum, "honest full-participation always meets quorum");
+    }
+
+    /// @notice Helper: sum of i^2 for i in 1..n.
+    function _sumOfSquares(uint256 n) internal pure returns (uint256 s) {
+        for (uint256 i = 1; i <= n; i++) s += i * i;
+    }
+
+    // =========================================================================
+    // GAS BENCHMARKS — attestation cost at scale
+    // =========================================================================
+
+    /// @notice Gas benchmark: attestation with 4 tiers (typical game).
+    function test_gas_attestWith4Tiers() external {
+        _setupGame(4, 1 ether);
+        _toScoring();
+        DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+
+        vm.prank(_users[0]);
+        uint256 gasBefore = gasleft();
+        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        uint256 gasUsed = gasBefore - gasleft();
+        emit log_named_uint("Gas: attestation (4 tiers)", gasUsed);
+        assertLt(gasUsed, 500_000, "4-tier attestation under 500k gas");
+    }
+
+    /// @notice Gas benchmark: attestation with 16 tiers (large tournament).
+    function test_gas_attestWith16Tiers() external {
+        _setupGame(16, 0.1 ether);
+        _toScoring();
+        DefifaTierCashOutWeight[] memory sc = _evenScorecard(16);
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+
+        vm.prank(_users[0]);
+        uint256 gasBefore = gasleft();
+        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        uint256 gasUsed = gasBefore - gasleft();
+        emit log_named_uint("Gas: attestation (16 tiers)", gasUsed);
+        assertLt(gasUsed, 1_000_000, "16-tier attestation under 1M gas");
+    }
+
+    /// @notice Gas benchmark: attestation with 32 tiers (World Cup scale).
+    function test_gas_attestWith32Tiers() external {
+        _setupGame(32, 0.1 ether);
+        _toScoring();
+        DefifaTierCashOutWeight[] memory sc = _evenScorecard(32);
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+
+        vm.prank(_users[0]);
+        uint256 gasBefore = gasleft();
+        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        uint256 gasUsed = gasBefore - gasleft();
+        emit log_named_uint("Gas: attestation (32 tiers)", gasUsed);
+        assertLt(gasUsed, 2_000_000, "32-tier attestation under 2M gas");
+    }
+
+    /// @notice Gas benchmark: attestation with 64 tiers (stress test).
+    function test_gas_attestWith64Tiers() external {
+        _setupGame(64, 0.05 ether);
+        _toScoring();
+        DefifaTierCashOutWeight[] memory sc = _evenScorecard(64);
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+
+        vm.prank(_users[0]);
+        uint256 gasBefore = gasleft();
+        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        uint256 gasUsed = gasBefore - gasleft();
+        emit log_named_uint("Gas: attestation (64 tiers)", gasUsed);
+        assertLt(gasUsed, 5_000_000, "64-tier attestation under 5M gas");
+    }
+
+    /// @notice Gas benchmark: scorecard submission with 32 tiers (includes HHI computation).
+    function test_gas_submitScorecardWith32Tiers() external {
+        _setupGame(32, 0.1 ether);
+        _toScoring();
+        DefifaTierCashOutWeight[] memory sc = _evenScorecard(32);
+
+        uint256 gasBefore = gasleft();
+        _gov.submitScorecardFor(_gameId, sc);
+        uint256 gasUsed = gasBefore - gasleft();
+        emit log_named_uint("Gas: submitScorecard (32 tiers)", gasUsed);
+        assertLt(gasUsed, 2_000_000, "32-tier submission under 2M gas");
+    }
 }

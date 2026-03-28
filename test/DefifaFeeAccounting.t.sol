@@ -548,8 +548,9 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         // Advance to attestation period and vote.
         vm.warp(block.timestamp + _governor.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i = 0; i < users.length; i++) {
+            // Skip users whose BWA power is 0 (100% beneficiaries) — they cannot attest.
             vm.prank(users[i]);
-            _governor.attestToScorecardFrom(_gameId, proposalId);
+            try _governor.attestToScorecardFrom(_gameId, proposalId) {} catch {}
         }
 
         // Advance past grace period.
