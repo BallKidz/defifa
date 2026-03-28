@@ -49,14 +49,15 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     //*********************************************************************//
 
     /// @notice The HHI sensitivity coefficient (k) for graduated quorum, in 1e18 scale.
-    /// @dev Configurable penalty factor from CRYPTO_ECON Section 9.4.2.
-    /// At k=0.5 (5e17): a winner-take-all scorecard (HHI=1) requests 50% more quorum,
+    /// @dev At k=0.5: a winner-take-all scorecard (HHI=1) requests 50% more quorum,
     /// while an equally-distributed scorecard (HHI~0) gets only ~1-2% increase.
-    /// The effective increase is capped so that honest full-participation can always reach quorum
+    /// The effective increase is capped so that honest full-participation always reaches quorum
     /// (see `submitScorecardFor`). For small games (few tiers), the cap binds before 50%.
-    /// The value 0.5 is a tuning parameter, not a derived optimum — it can be adjusted
-    /// by deploying a new governor if games need stricter or looser concentration penalties.
+    /// This is a tuning parameter — it can be adjusted by deploying a new governor.
     uint256 internal constant _CONCENTRATION_PENALTY_FACTOR = 5e17;
+
+    /// @notice The minimum grace period enforced on game initialization.
+    uint256 internal constant _MIN_GRACE_PERIOD = 1 days;
 
     //*********************************************************************//
     // --------------- public immutable stored properties ---------------- //
@@ -337,16 +338,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Under BWA, the theoretical max attestation power is (N-1) * MAX_ATTESTATION_POWER_TIER,
         // because sum(1 - w_i/W) = N - 1 for any weight distribution.
         // Since baseQuorum = N * MAX_ATTESTATION_POWER_TIER / 2, we derive: maxBWA = 2 * baseQuorum - MAX.
-        // We apply a 1% haircut to absorb mulDiv rounding loss across all attestors. Each attestor's BWA
-        // computation involves two mulDiv operations (bwaMultiplier and power scaling), each losing up to
-        // 1 wei. With many attestors per tier, the cumulative loss can exceed a naive per-tier buffer.
+        // BWA uses ceiling division so rounding always favors attestors — no haircut needed.
         // For single-tier games (baseQuorum < MAX), quorum caps at 0 (only one outcome possible).
         if (baseQuorum >= MAX_ATTESTATION_POWER_TIER) {
             uint256 theoreticalMax = 2 * baseQuorum - MAX_ATTESTATION_POWER_TIER;
-            // 1% haircut: maxAchievableBWA = theoreticalMax * 99/100.
-            uint256 maxAchievableBWA = (theoreticalMax * 99) / 100;
-            if (adjustedQuorum > maxAchievableBWA) {
-                adjustedQuorum = maxAchievableBWA;
+            if (adjustedQuorum > theoreticalMax) {
+                adjustedQuorum = theoreticalMax;
             }
         } else {
             // Single tier or no tiers: only one possible outcome, governance is trivial.
@@ -431,8 +428,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Set a default attestation start time if needed.
         if (attestationStartTime == 0) attestationStartTime = block.timestamp;
 
-        // Enforce a minimum grace period of 1 day to prevent instant ratification.
-        if (attestationGracePeriod < 1 days) attestationGracePeriod = 1 days;
+        // Enforce a minimum grace period to prevent instant ratification.
+        if (attestationGracePeriod < _MIN_GRACE_PERIOD) attestationGracePeriod = _MIN_GRACE_PERIOD;
 
         // Ensure values fit within their allocated 48-bit widths before packing.
         if (attestationStartTime > type(uint48).max) revert DefifaGovernor_Uint48Overflow();
@@ -441,11 +438,11 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Pack the values.
         uint256 packed;
-        // attestation start time in bits 0-47 (48 bits).
+        // attestation start time in bits 0-47.
         packed |= attestationStartTime;
-        // attestation grace period in bits 48-95 (48 bits).
+        // attestation grace period in bits 48-95.
         packed |= attestationGracePeriod << 48;
-        // timelock duration in bits 96-143 (48 bits).
+        // timelock duration in bits 96-143.
         packed |= timelockDuration << 96;
 
         // Store the packed value.
@@ -462,7 +459,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @param gameId The ID of the game to get the attestation period of.
     /// @return The attestation period in number of blocks.
     function attestationGracePeriodOf(uint256 gameId) public view override returns (uint256) {
-        // attestation grace period in bits 48-95 (48 bits).
+        // attestation grace period in bits 48-95.
         return uint256(uint48(_packedScorecardInfoOf[gameId] >> 48));
     }
 
@@ -613,11 +610,16 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                 }
 
                 // Compute the raw attestation power for this tier (before BWA reduction).
+                // Ceiling division ensures rounding favors the attestor, so the theoretical max BWA
+                // is always achievable with full participation — no quorum haircut needed.
                 uint256 rawPower = mulDiv({
                     x: MAX_ATTESTATION_POWER_TIER,
                     y: tierAttestationUnitsForAccount,
                     denominator: tierTotalAttestationUnits
                 });
+                if (rawPower * tierTotalAttestationUnits < MAX_ATTESTATION_POWER_TIER * tierAttestationUnitsForAccount) {
+                    rawPower += 1;
+                }
 
                 // Look up how much this tier benefits from the scorecard.
                 uint256 tierWeight = _scorecardTierWeightsOf[gameId][scorecardId][i];
@@ -627,8 +629,13 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                 // A tier receiving 0% of the weight gets multiplier 1 (full attestation power).
                 uint256 bwaMultiplier = 1e18 - mulDiv({x: tierWeight, y: 1e18, denominator: totalCashOutWeight});
 
-                // Apply the BWA multiplier to the raw power.
-                bwaAttestationPower += mulDiv({x: rawPower, y: bwaMultiplier, denominator: 1e18});
+                // Apply the BWA multiplier to the raw power (ceiling division).
+                uint256 tierBwaPower = mulDiv({x: rawPower, y: bwaMultiplier, denominator: 1e18});
+                if (tierBwaPower * 1e18 < rawPower * bwaMultiplier) {
+                    tierBwaPower += 1;
+                }
+
+                bwaAttestationPower += tierBwaPower;
             }
         }
     }
@@ -750,7 +757,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @param gameId The ID of the game.
     /// @return The timelock duration in seconds.
     function timelockDurationOf(uint256 gameId) public view override returns (uint256) {
-        // timelock duration in bits 96-143 (48 bits).
+        // timelock duration in bits 96-143.
         return uint256(uint48(_packedScorecardInfoOf[gameId] >> 96));
     }
 
