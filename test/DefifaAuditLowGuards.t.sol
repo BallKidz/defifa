@@ -178,7 +178,10 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
 
         vm.expectRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
         _standaloneGov.initializeGame({
-            gameId: 100, attestationStartTime: block.timestamp, attestationGracePeriod: overflowGracePeriod, timelockDuration: 0
+            gameId: 100,
+            attestationStartTime: block.timestamp,
+            attestationGracePeriod: overflowGracePeriod,
+            timelockDuration: 0
         });
     }
 

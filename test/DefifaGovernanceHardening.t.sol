@@ -155,15 +155,13 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         // Get the scorecard's snapshot time (attestationsBegin).
         // User 0 holds tier 1 (100% beneficiary) -- should have 0 BWA power for this scorecard.
-        uint256 bwaPowerUser0 =
-            _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[0], uint48(_tsReader.ts()));
+        uint256 bwaPowerUser0 = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[0], uint48(_tsReader.ts()));
         assertEq(bwaPowerUser0, 0, "tier 1 holder (100% beneficiary) should have 0 BWA power");
 
         // Users 1-3 hold tiers 2-4 (0% beneficiary) -- should have full MAX_ATTESTATION_POWER_TIER.
         uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
         for (uint256 i = 1; i < 4; i++) {
-            uint256 bwaPower =
-                _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
+            uint256 bwaPower = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
             assertEq(bwaPower, maxPower, "non-beneficiary tier holder should have full BWA power");
         }
     }
@@ -281,7 +279,11 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
 
         DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
-        assertEq(uint256(state), uint256(DefifaScorecardState.ACTIVE), "2 attestors should NOT meet HHI-adjusted quorum for equal scorecard");
+        assertEq(
+            uint256(state),
+            uint256(DefifaScorecardState.ACTIVE),
+            "2 attestors should NOT meet HHI-adjusted quorum for equal scorecard"
+        );
 
         // With 3 out of 4 users attesting: totalWeight = 3 * 0.75 * MAX = 2.25 * MAX = 2_250_000_000.
         // This exactly meets the adjusted quorum.
@@ -289,7 +291,11 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _gov.attestToScorecardFrom(_gameId, scorecardId);
 
         state = _gov.stateOf(_gameId, scorecardId);
-        assertEq(uint256(state), uint256(DefifaScorecardState.SUCCEEDED), "3 attestors should meet HHI-adjusted quorum for equal scorecard");
+        assertEq(
+            uint256(state),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "3 attestors should meet HHI-adjusted quorum for equal scorecard"
+        );
     }
 
     /// @notice Test 5: Winner-take-all scorecard has maximum HHI penalty.
@@ -344,14 +350,22 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
 
         DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
-        assertEq(uint256(state), uint256(DefifaScorecardState.ACTIVE), "2 non-beneficiary attestors should not meet 50%-penalized quorum");
+        assertEq(
+            uint256(state),
+            uint256(DefifaScorecardState.ACTIVE),
+            "2 non-beneficiary attestors should not meet 50%-penalized quorum"
+        );
 
         // User 3 attests (3 * MAX = 3e9 = exactly adjusted quorum).
         vm.prank(_users[3]);
         _gov.attestToScorecardFrom(_gameId, scorecardId);
 
         state = _gov.stateOf(_gameId, scorecardId);
-        assertEq(uint256(state), uint256(DefifaScorecardState.SUCCEEDED), "3 non-beneficiary attestors should meet 50%-penalized quorum");
+        assertEq(
+            uint256(state),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "3 non-beneficiary attestors should meet 50%-penalized quorum"
+        );
     }
 
     // =========================================================================
@@ -424,7 +438,11 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         // Warp past grace period.
         vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
-        assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.QUEUED), "should be QUEUED initially");
+        assertEq(
+            uint256(_gov.stateOf(_gameId, scorecardId)),
+            uint256(DefifaScorecardState.QUEUED),
+            "should be QUEUED initially"
+        );
 
         // Warp past timelock.
         vm.warp(_tsReader.ts() + timelockDuration + 1);
@@ -456,7 +474,9 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
 
         DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
-        assertEq(uint256(state), uint256(DefifaScorecardState.SUCCEEDED), "should go directly to SUCCEEDED with 0 timelock");
+        assertEq(
+            uint256(state), uint256(DefifaScorecardState.SUCCEEDED), "should go directly to SUCCEEDED with 0 timelock"
+        );
 
         // Ratification should work immediately.
         _gov.ratifyScorecardFrom(_gameId, sc);
@@ -498,15 +518,23 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + timelockDuration + 2);
 
         // Both should be SUCCEEDED.
-        assertEq(uint256(_gov.stateOf(_gameId, proposalA)), uint256(DefifaScorecardState.SUCCEEDED), "A should be SUCCEEDED");
-        assertEq(uint256(_gov.stateOf(_gameId, proposalB)), uint256(DefifaScorecardState.SUCCEEDED), "B should be SUCCEEDED");
+        assertEq(
+            uint256(_gov.stateOf(_gameId, proposalA)), uint256(DefifaScorecardState.SUCCEEDED), "A should be SUCCEEDED"
+        );
+        assertEq(
+            uint256(_gov.stateOf(_gameId, proposalB)), uint256(DefifaScorecardState.SUCCEEDED), "B should be SUCCEEDED"
+        );
 
         // Ratify scorecard A first.
         _gov.ratifyScorecardFrom(_gameId, scA);
 
         // After ratification, A is RATIFIED, B is DEFEATED.
-        assertEq(uint256(_gov.stateOf(_gameId, proposalA)), uint256(DefifaScorecardState.RATIFIED), "A should be RATIFIED");
-        assertEq(uint256(_gov.stateOf(_gameId, proposalB)), uint256(DefifaScorecardState.DEFEATED), "B should be DEFEATED");
+        assertEq(
+            uint256(_gov.stateOf(_gameId, proposalA)), uint256(DefifaScorecardState.RATIFIED), "A should be RATIFIED"
+        );
+        assertEq(
+            uint256(_gov.stateOf(_gameId, proposalB)), uint256(DefifaScorecardState.DEFEATED), "B should be DEFEATED"
+        );
     }
 
     // =========================================================================
@@ -628,7 +656,11 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         // Before grace period ends, user 3 revokes.
         // The scorecard is still in ACTIVE state (grace period not done yet).
-        assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.ACTIVE), "should be ACTIVE during grace period");
+        assertEq(
+            uint256(_gov.stateOf(_gameId, scorecardId)),
+            uint256(DefifaScorecardState.ACTIVE),
+            "should be ACTIVE during grace period"
+        );
 
         vm.prank(_users[3]);
         _gov.revokeAttestationFrom(_gameId, scorecardId);
@@ -641,7 +673,11 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
 
         DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
-        assertEq(uint256(state), uint256(DefifaScorecardState.ACTIVE), "should remain ACTIVE after revocations drop below quorum");
+        assertEq(
+            uint256(state),
+            uint256(DefifaScorecardState.ACTIVE),
+            "should remain ACTIVE after revocations drop below quorum"
+        );
     }
 
     // =========================================================================
@@ -671,8 +707,8 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         // --- Verify HHI adjusted quorum is higher than base ---
         // HHI = mulDiv(5e17,5e17,1e18) + mulDiv(3e17,3e17,1e18) + mulDiv(15e16,15e16,1e18) + mulDiv(5e16,5e16,1e18)
         //      = 25e16 + 9e16 + 225e14 + 25e14 = 25e16 + 9e16 + 2.25e16 + 0.25e16 = 365e15
-        uint256 hhi = mulDiv(5e17, 5e17, 1e18) + mulDiv(3e17, 3e17, 1e18) + mulDiv(15e16, 15e16, 1e18)
-            + mulDiv(5e16, 5e16, 1e18);
+        uint256 hhi =
+            mulDiv(5e17, 5e17, 1e18) + mulDiv(3e17, 3e17, 1e18) + mulDiv(15e16, 15e16, 1e18) + mulDiv(5e16, 5e16, 1e18);
         uint256 adjustmentFactor = mulDiv(5e17, hhi, 1e18);
         uint256 expectedQuorum = baseQuorum + mulDiv(baseQuorum, adjustmentFactor, 1e18);
         assertGt(expectedQuorum, baseQuorum, "HHI-adjusted quorum should be higher than base");
@@ -711,7 +747,9 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
 
         DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
-        assertEq(uint256(state), uint256(DefifaScorecardState.QUEUED), "should be QUEUED after grace period with timelock");
+        assertEq(
+            uint256(state), uint256(DefifaScorecardState.QUEUED), "should be QUEUED after grace period with timelock"
+        );
 
         // --- Cannot ratify during QUEUED ---
         vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
@@ -726,7 +764,9 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         // --- Ratify ---
         _gov.ratifyScorecardFrom(_gameId, sc);
         assertTrue(_nft.cashOutWeightIsSet(), "weights should be set after ratification");
-        assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.RATIFIED), "should be RATIFIED");
+        assertEq(
+            uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.RATIFIED), "should be RATIFIED"
+        );
     }
 
     // =========================================================================
