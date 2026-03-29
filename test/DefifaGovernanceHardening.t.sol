@@ -306,8 +306,8 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _setupGame(4, 1 ether);
         _toScoring();
 
-        uint256 baseQuorum = _gov.quorum(_gameId);
-        uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
+        _gov.quorum(_gameId);
+        _gov.MAX_ATTESTATION_POWER_TIER();
 
         // Submit winner-take-all scorecard: tier 1 gets 100%.
         uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
@@ -815,6 +815,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
 
             // Sum BWA power across all 4 users (each sole holder of their tier).
+            // forge-lint: disable-next-line(mixed-case-variable)
             uint256 totalBWA;
             for (uint256 i; i < 4; i++) {
                 totalBWA += _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
@@ -852,6 +853,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
         vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
 
+        // forge-lint: disable-next-line(mixed-case-variable)
         uint256 totalBWA;
         for (uint256 i; i < 4; i++) {
             totalBWA += _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
@@ -892,6 +894,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
 
             // Compute total achievable BWA.
+            // forge-lint: disable-next-line(mixed-case-variable)
             uint256 totalBWA;
             for (uint256 i; i < 5; i++) {
                 totalBWA += _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
@@ -981,6 +984,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _gov.submitScorecardFor(_gameId, scConc);
 
         // Winner-take-all scorecard.
+        // forge-lint: disable-next-line(mixed-case-variable)
         DefifaTierCashOutWeight[] memory scWTA = _buildScorecard(5);
         scWTA[0].cashOutWeight = tw;
         _gov.submitScorecardFor(_gameId, scWTA);
