@@ -75,6 +75,7 @@ interface IDefifaGovernor {
     /// @param account The account to check.
     /// @param timestamp The timestamp to check.
     /// @return bwaAttestationPower The BWA-adjusted attestation power.
+    // forge-lint: disable-next-line(mixed-case-function)
     function getBWAAttestationWeight(
         uint256 gameId,
         uint256 scorecardId,
