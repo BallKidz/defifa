@@ -7,6 +7,7 @@ import {
     JB721TiersRulesetMetadataResolver
 } from "@bananapus/721-hook-v6/src/libraries/JB721TiersRulesetMetadataResolver.sol";
 import {JB721TierConfig} from "@bananapus/721-hook-v6/src/structs/JB721TierConfig.sol";
+import {JB721TierConfigFlags} from "@bananapus/721-hook-v6/src/structs/JB721TierConfigFlags.sol";
 import {IJBAddressRegistry} from "@bananapus/address-registry-v6/src/interfaces/IJBAddressRegistry.sol";
 import {IJBController, JBRulesetConfig, JBTerminalConfig} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
@@ -471,13 +472,15 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 encodedIPFSUri: defifaTier.encodedIPFSUri,
                 category: 0,
                 discountPercent: 0,
-                allowOwnerMint: false,
-                useReserveBeneficiaryAsDefault: defifaTier.shouldUseReservedTokenBeneficiaryAsDefault,
-                transfersPausable: false,
-                useVotingUnits: false,
-                cantBeRemoved: true,
-                cantIncreaseDiscountPercent: true,
-                cantBuyWithCredits: false,
+                flags: JB721TierConfigFlags({
+                    allowOwnerMint: false,
+                    useReserveBeneficiaryAsDefault: defifaTier.shouldUseReservedTokenBeneficiaryAsDefault,
+                    transfersPausable: false,
+                    useVotingUnits: false,
+                    cantBeRemoved: true,
+                    cantIncreaseDiscountPercent: true,
+                    cantBuyWithCredits: false
+                }),
                 splitPercent: 0,
                 splits: new JBSplit[](0)
             });

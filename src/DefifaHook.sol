@@ -882,7 +882,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         uint256[] memory tokenIds;
 
         // Record the mint. The returned token IDs correspond to the tiers passed in.
-        // slither-disable-next-line reentrancy-benign
+        // slither-disable-next-line unused-return,reentrancy-benign
         (tokenIds, leftoverAmount,) = store.recordMint({
             amount: amount,
             tierIds: mintTierIds,
@@ -1083,7 +1083,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Transfers must not be paused (when not minting or burning).
         if (from != address(0)) {
             // If transfers are pausable, check if they're paused.
-            if (tier.transfersPausable) {
+            if (tier.flags.transfersPausable) {
                 // Get a reference to the project's current ruleset.
                 JBRuleset memory ruleset = rulesets.currentOf(PROJECT_ID);
 
