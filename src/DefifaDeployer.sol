@@ -476,6 +476,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 useVotingUnits: false,
                 cannotBeRemoved: true,
                 cannotIncreaseDiscountPercent: true,
+                cantBuyWithCredits: false,
                 splitPercent: 0,
                 splits: new JBSplit[](0)
             });

@@ -880,7 +880,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Record the mint. The returned token IDs correspond to the tiers passed in.
         // slither-disable-next-line reentrancy-benign
-        (tokenIds, leftoverAmount) = store.recordMint({
+        (tokenIds, leftoverAmount,) = store.recordMint({
             amount: amount,
             tierIds: mintTierIds,
             isOwnerMint: false // Not a manual mint
