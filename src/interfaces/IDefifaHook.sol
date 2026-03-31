@@ -1,9 +1,9 @@
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.0;
 
-import {IJB721Hook} from "@bananapus/721-hook-v6/src/interfaces/IJB721Hook.sol";
 import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
+import {IJB721Hook} from "@bananapus/721-hook-v6/src/interfaces/IJB721Hook.sol";
 import {JB721TierConfig} from "@bananapus/721-hook-v6/src/structs/JB721TierConfig.sol";
 import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
 import {IJBRulesets} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
@@ -17,6 +17,12 @@ import {IDefifaGamePotReporter} from "./IDefifaGamePotReporter.sol";
 /// @notice The hook interface for Defifa games, extending the 721 hook with game-specific attestation delegation,
 /// scorecard-based cash out weights, and token claiming.
 interface IDefifaHook is IJB721Hook {
+    /// @notice Emitted when an NFT is minted from a contribution.
+    /// @param tokenId The token ID of the minted NFT.
+    /// @param tierId The tier the NFT was minted from.
+    /// @param beneficiary The address that received the NFT.
+    /// @param totalAmountContributed The total amount contributed in the minting transaction.
+    /// @param caller The address that triggered the mint.
     event Mint(
         uint256 indexed tokenId,
         uint256 indexed tierId,
@@ -25,20 +31,43 @@ interface IDefifaHook is IJB721Hook {
         address caller
     );
 
+    /// @notice Emitted when a reserved token is minted.
+    /// @param tokenId The token ID of the minted reserved token.
+    /// @param tierId The tier the reserved token was minted from.
+    /// @param beneficiary The address that received the reserved token.
+    /// @param caller The address that triggered the mint.
     event MintReservedToken(
         uint256 indexed tokenId, uint256 indexed tierId, address indexed beneficiary, address caller
     );
 
+    /// @notice Emitted when a delegate's attestation balance changes for a tier.
+    /// @param delegate The delegate whose attestation balance changed.
+    /// @param tierId The tier whose attestation balance changed.
+    /// @param previousBalance The prior attestation balance.
+    /// @param newBalance The updated attestation balance.
+    /// @param caller The address that triggered the change.
     event TierDelegateAttestationsChanged(
         address indexed delegate, uint256 indexed tierId, uint256 previousBalance, uint256 newBalance, address caller
     );
 
+    /// @notice Emitted when a delegator changes delegates for a tier.
+    /// @param delegator The address changing its delegate.
+    /// @param fromDelegate The previous delegate.
+    /// @param toDelegate The new delegate.
     event DelegateChanged(address indexed delegator, address indexed fromDelegate, address indexed toDelegate);
 
+    /// @notice Emitted when claimable game tokens are claimed.
+    /// @param beneficiary The address receiving the claimed tokens.
+    /// @param defifaTokenAmount The amount of Defifa tokens claimed.
+    /// @param baseProtocolTokenAmount The amount of base protocol tokens claimed.
+    /// @param caller The address that triggered the claim.
     event ClaimedTokens(
         address indexed beneficiary, uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount, address caller
     );
 
+    /// @notice Emitted when tier cash out weights are set.
+    /// @param tierWeights The cash out weights that were set for each tier.
+    /// @param caller The address that set the tier weights.
     event TierCashOutWeightsSet(DefifaTierCashOutWeight[] tierWeights, address caller);
 
     /// @notice The total amount redeemed from this game (refunds not counted).
