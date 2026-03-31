@@ -474,8 +474,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 useReserveBeneficiaryAsDefault: defifaTier.shouldUseReservedTokenBeneficiaryAsDefault,
                 transfersPausable: false,
                 useVotingUnits: false,
-                cannotBeRemoved: true,
-                cannotIncreaseDiscountPercent: true,
+                cantBeRemoved: true,
+                cantIncreaseDiscountPercent: true,
                 cantBuyWithCredits: false,
                 splitPercent: 0,
                 splits: new JBSplit[](0)
