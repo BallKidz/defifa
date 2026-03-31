@@ -68,10 +68,14 @@ Cash-out weights set via `ratifyScorecardFrom` cannot be updated or corrected. T
 
 `ratifyScorecardFrom` executes arbitrary calldata on the hook via low-level call. The hook's `setTierCashOutWeightsTo` has an `onlyOwner` guard and a `cashOutWeightIsSet` check preventing double-set. Both guards prevent reentrancy exploitation.
 
-### 8.5 Attestation snapshot uses block.timestamp - 1 (Codex R2 fix)
+### 8.5 Attestation snapshot uses attestationsBegin - 1 (Codex R2 fix)
 
-`attestToScorecardFrom` snapshots attestation weight at `block.timestamp - 1` instead of `attestationsBegin`. This prevents same-block transfer manipulation where a holder attests, transfers the NFT, and the recipient also attests in the same block. The trade-off is that NFTs minted in the same block as an attestation call have zero weight for that call -- the holder must wait 1 second. This is acceptable because attestation typically happens well after minting, and the 1-second delay is negligible.
+`attestToScorecardFrom` snapshots attestation weight at `attestationsBegin - 1` instead of `attestationsBegin`. This prevents same-block transfer manipulation where a holder attests, transfers the NFT, and the recipient also attests in the same block. The trade-off is that NFTs minted in the same block as `attestationsBegin` have zero weight for that attestation call. This is acceptable because attestation typically happens well after minting, and the delay is negligible.
 
-### 8.6 Pending reserves dilute cash-out weight (Codex R2 fix)
+### 8.6 Pending reserves snapshotted at submission and included in denominators (Codex R2 fix)
 
-`computeCashOutWeight` includes pending (unminted) reserve NFTs in the denominator. This means a paid holder's per-token cash-out share is reduced by the number of pending reserves in their tier. The trade-off is that if reserve NFTs are never minted (e.g., the reserve beneficiary is set to address(0) and minting reverts), those shares remain locked in the contract. This is acceptable because: (1) it prevents paid holders from front-running reserve minting to extract the reserves' share, and (2) reserve beneficiaries are set at deployment and should always be valid.
+Two related protections:
+
+**Governance:** `submitScorecardFor` snapshots `numberOfPendingReservesFor()` per tier into `_pendingReservesSnapshotOf`. `getBWAAttestationWeight` reads from this snapshot instead of live state. This prevents reserve minting between submission and attestation from inflating a holder's voting power by removing pending-reserve dilution. The trade-off is that if reserves are minted after submission, the dilution persists even though the reserves are no longer pending. This is conservative but correct -- it locks governance power at submission time.
+
+**Cash-out (fee tokens):** `afterCashOutRecordedWith` includes `_pendingReserveMintCost()` (sum of `pendingReserves * tier.price` across all tiers) in the fee token claim denominator. This prevents paid holders from claiming a disproportionate share of $DEFIFA/$NANA tokens before reserves are minted. The trade-off is that if reserve NFTs are never minted (e.g., the reserve beneficiary is set to address(0) and minting reverts), those shares of fee tokens remain locked in the contract. This is acceptable because: (1) it prevents paid holders from front-running reserve minting to extract the reserves' share, and (2) reserve beneficiaries are set at deployment and should always be valid.

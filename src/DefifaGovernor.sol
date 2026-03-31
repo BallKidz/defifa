@@ -82,8 +82,17 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @custom:param scorecardId The ID of the scorecard that has been attested to.
     mapping(uint256 => mapping(uint256 => DefifaAttestations)) internal _scorecardAttestationsOf;
 
+    /// @notice Snapshot of pending reserves per tier at scorecard submission time.
+    /// @dev Prevents reserve dilution between submission and attestation.
+    /// @custom:param gameId The ID of the game.
+    /// @custom:param scorecardId The ID of the scorecard.
+    /// @custom:param tierId The tier ID (1-indexed).
+    mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) internal _pendingReservesSnapshotOf;
+
     /// @notice Tier weights per scorecard for BWA computation.
-    /// @dev Maps gameId => scorecardId => tierId (0-indexed) => cashOutWeight.
+    /// @custom:param gameId The ID of the game.
+    /// @custom:param scorecardId The ID of the scorecard.
+    /// @custom:param tierId The tier ID (0-indexed).
     mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) internal _scorecardTierWeightsOf;
 
     //*********************************************************************//
@@ -131,9 +140,11 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Make sure the account isn't attesting to the same scorecard again.
         if (attestations.attestedWeightOf[msg.sender] != 0) revert DefifaGovernor_AlreadyAttested();
 
-        // Get a reference to the BWA-adjusted attestation weight, snapshotted at `attestationsBegin`.
+        // Get a reference to the BWA-adjusted attestation weight, snapshotted at one second before
+        // `attestationsBegin`. Using `attestationsBegin - 1` ensures the checkpoint is from before the
+        // attestation window opens, preventing same-block transfer/re-attest exploits.
         weight = getBWAAttestationWeight({
-            gameId: gameId, scorecardId: scorecardId, account: msg.sender, timestamp: scorecard.attestationsBegin
+            gameId: gameId, scorecardId: scorecardId, account: msg.sender, timestamp: scorecard.attestationsBegin - 1
         });
 
         // Revert if BWA reduces this account's power to zero (e.g. 100% beneficiary of the scorecard).
@@ -282,6 +293,18 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Store tier weights for BWA computation.
         for (uint256 i; i < numberOfTierWeights; i++) {
             _scorecardTierWeightsOf[gameId][scorecardId][tierWeights[i].id - 1] = tierWeights[i].cashOutWeight;
+        }
+
+        // Snapshot pending reserves for each tier at submission time.
+        // This prevents reserve minting between submission and attestation from diluting votes.
+        {
+            IJB721TiersHookStore _store = IDefifaHook(metadata.dataHook).store();
+            uint256 _numberOfTiers = _store.maxTierIdOf(metadata.dataHook);
+            for (uint256 i; i < _numberOfTiers; i++) {
+                uint256 tierId = i + 1;
+                _pendingReservesSnapshotOf[gameId][scorecardId][tierId] =
+                    _store.numberOfPendingReservesFor(metadata.dataHook, tierId);
+            }
         }
 
         // Concentration-adjusted quorum: penalty = headroom * maxShare².
@@ -559,8 +582,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                     hook.getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp});
 
                 // Include unminted pending reserves in the total (denominator only).
+                // Uses the snapshot taken at scorecard submission time to prevent reserve
+                // minting between submission and attestation from diluting votes.
                 {
-                    uint256 pendingReserves = store.numberOfPendingReservesFor(metadata.dataHook, tierId);
+                    uint256 pendingReserves = _pendingReservesSnapshotOf[gameId][scorecardId][tierId];
                     if (pendingReserves != 0) {
                         JB721Tier memory tier =
                             store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});

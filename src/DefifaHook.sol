@@ -670,8 +670,12 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             amountRedeemed += context.reclaimedAmount.value;
 
             // Claim the $DEFIFA and $NANA tokens for the user.
+            // Include pending reserve mint cost in the denominator so that unminted reserves
+            // are accounted for, preventing paid holders from claiming a disproportionate share.
             beneficiaryReceivedTokens = _claimTokensFor({
-                beneficiary: context.holder, shareToBeneficiary: cumulativeMintPrice, outOfTotal: _totalMintCost
+                beneficiary: context.holder,
+                shareToBeneficiary: cumulativeMintPrice,
+                outOfTotal: _totalMintCost + _pendingReserveMintCost()
             });
         }
 
@@ -776,6 +780,28 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     //*********************************************************************//
     // ------------------------ internal functions ----------------------- //
     //*********************************************************************//
+
+    /// @notice Computes the total mint cost of all pending (unminted) reserve NFTs across all tiers.
+    /// @dev Used to include pending reserves in the fee token claim denominator so that paid holders
+    /// cannot claim a disproportionate share before reserves are minted.
+    /// @return cost The total mint cost of pending reserves.
+    function _pendingReserveMintCost() internal view returns (uint256 cost) {
+        IJB721TiersHookStore _store = store;
+        address hook = address(this);
+        uint256 numberOfTiers = _store.maxTierIdOf(hook);
+
+        for (uint256 i; i < numberOfTiers;) {
+            uint256 tierId = i + 1;
+            uint256 pendingReserves = _store.numberOfPendingReservesFor({hook: hook, tierId: tierId});
+            if (pendingReserves != 0) {
+                JB721Tier memory tier = _store.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
+                cost += pendingReserves * tier.price;
+            }
+            unchecked {
+                ++i;
+            }
+        }
+    }
 
     /// @notice Claims the defifa and base protocol tokens for a beneficiary.
     /// @param beneficiary The address to claim tokens for.

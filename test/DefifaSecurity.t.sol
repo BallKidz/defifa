@@ -430,18 +430,13 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         sc[2].cashOutWeight = tw / 4;
         sc[3].cashOutWeight = tw / 4;
 
-        // All 4 paid users + reserve beneficiary attest
-        address[] memory allUsers = new address[](5);
-        allUsers[0] = _users[0];
-        allUsers[1] = _users[1];
-        allUsers[2] = _users[2];
-        allUsers[3] = _users[3];
-        allUsers[4] = _reserveAddr;
-
+        // Only paid minters attest -- reserve beneficiary has zero attestation weight at the
+        // snapshot (attestationsBegin - 1) because they received NFTs via reserve minting after
+        // the snapshot timestamp.
         uint256 pid = _gov.submitScorecardFor(_gameId, sc);
         vm.warp(_tsReader.timestamp() + _gov.attestationStartTimeOf(_gameId) + 1);
-        for (uint256 i; i < allUsers.length; i++) {
-            vm.prank(allUsers[i]);
+        for (uint256 i; i < _users.length; i++) {
+            vm.prank(_users[i]);
             _gov.attestToScorecardFrom(_gameId, pid);
         }
         vm.warp(_tsReader.timestamp() + _gov.attestationGracePeriodOf(_gameId) + 1);

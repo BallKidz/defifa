@@ -349,7 +349,8 @@ uint256 scorecardId = governor.submitScorecardFor(gameId, tierWeights);
 
 1. `DefifaGovernor._scorecardOf[gameId][scorecardId].attestationsBegin` -- Set to `max(block.timestamp, attestationStartTime)`.
 2. `DefifaGovernor._scorecardOf[gameId][scorecardId].gracePeriodEnds` -- Set to `attestationsBegin + attestationGracePeriod`.
-3. `DefifaGovernor.defaultAttestationDelegateProposalOf[gameId]` -- Set to `scorecardId` if sender is the default attestation delegate.
+3. `DefifaGovernor._pendingReservesSnapshotOf[gameId][scorecardId][tierId]` -- Snapshots `numberOfPendingReservesFor()` for every tier. Used by `getBWAAttestationWeight()` to prevent reserve minting from inflating attestation power.
+4. `DefifaGovernor.defaultAttestationDelegateProposalOf[gameId]` -- Set to `scorecardId` if sender is the default attestation delegate.
 
 ### Events
 
@@ -370,7 +371,7 @@ uint256 scorecardId = governor.submitScorecardFor(gameId, tierWeights);
 
 **Entry point:** `DefifaGovernor.attestToScorecardFrom(uint256 gameId, uint256 scorecardId) external returns (uint256 weight)`
 
-**Who can call:** Anyone. However, attestation weight is zero unless the caller (or their delegate) held NFTs at the `attestationsBegin` snapshot timestamp.
+**Who can call:** Anyone. However, attestation weight is zero unless the caller (or their delegate) held NFTs at the `attestationsBegin - 1` checkpoint timestamp (one second before the attestation window opens).
 
 **Actor:** Attestor (NFT holder or delegate)
 **Phase:** SCORING
@@ -408,7 +409,7 @@ uint256 weight = governor.attestToScorecardFrom(gameId, scorecardId);
 - `DefifaGovernor_NotAllowed` -- Game not in SCORING phase, or scorecard not in ACTIVE/SUCCEEDED state.
 - `DefifaGovernor_AlreadyAttested` -- Account already attested to this scorecard.
 - `DefifaGovernor_UnknownProposal` -- Scorecard ID has no submission record.
-- Attestation weight is computed at `attestationsBegin` timestamp using checkpointed values (snapshot, not live).
+- Attestation weight is computed at `attestationsBegin - 1` timestamp using checkpointed values (snapshot, not live). This prevents same-block transfer manipulation.
 - Each tier caps at `MAX_ATTESTATION_POWER_TIER` (1e9) regardless of how many tokens exist in that tier.
 
 ---

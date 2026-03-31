@@ -150,7 +150,7 @@ NO_CONTEST (safety mechanism triggered)
 **Attest (DefifaGovernor.attestToScorecardFrom):**
 1. Require SCORING phase, scorecard ACTIVE or SUCCEEDED.
 2. Prevent double attestation per account per scorecard.
-3. Compute weight via `getAttestationWeight()` at `attestationsBegin` timestamp.
+3. Compute weight via `getBWAAttestationWeight()` at `attestationsBegin - 1` timestamp, using pending reserve snapshot from submission time.
 4. Increment `_scorecardAttestationsOf[gameId][scorecardId].count += weight`.
 
 **Ratify (DefifaGovernor.ratifyScorecardFrom):**
@@ -188,7 +188,7 @@ tierPower = MAX_ATTESTATION_POWER_TIER * (account's attestation units / tier's t
 
 Where:
 - `MAX_ATTESTATION_POWER_TIER = 1,000,000,000` (1e9)
-- Account's units come from `getPastTierAttestationUnitsOf()` (checkpoint at `attestationsBegin` timestamp)
+- Account's units come from `getPastTierAttestationUnitsOf()` (checkpoint at `attestationsBegin - 1` timestamp)
 - Total tier units from `getPastTierTotalAttestationUnitsOf()`
 
 Total attestation power = sum of per-tier powers across all tiers.
@@ -296,9 +296,9 @@ Start with the money: follow ETH from payment to cash-out.
 
 6. **Quorum manipulation via live supply**: `quorum()` reads `currentSupplyOfTier()` at call time (not snapshotted). Verify that burning tokens during SCORING is prevented by `DefifaHook_NothingToClaim` (cash-out weights not set yet). Check if any other burn path exists that could reduce quorum after attestations have begun.
 
-7. **Attestation snapshotting**: Attestation weight is computed at the `attestationsBegin` timestamp via `getPastTierAttestationUnitsOf()`. Verify that the `Checkpoints.Trace208.upperLookup()` correctly captures the state at that exact timestamp, and that minting or transferring NFTs after `attestationsBegin` does not retroactively affect attestation power.
+7. **Attestation snapshotting**: Attestation weight is computed at the `attestationsBegin - 1` timestamp via `getPastTierAttestationUnitsOf()`. Pending reserves are snapshotted at submission time (`_pendingReservesSnapshotOf`). Verify that the `Checkpoints.Trace208.upperLookup()` correctly captures the state at that timestamp, that minting or transferring NFTs after `attestationsBegin - 1` does not retroactively affect attestation power, and that minting reserves after submission does not change the snapshotted pending reserve counts.
 
-8. **Double attestation prevention**: `_attestations.hasAttested[msg.sender]` prevents double voting. But verify that an attacker cannot attest, transfer NFTs to another address, and have that address attest with the same attestation power (the snapshot at `attestationsBegin` should prevent this, but verify the checkpoint resolution).
+8. **Double attestation prevention**: `_attestations.attestedWeightOf[msg.sender]` prevents double voting. Verify that an attacker cannot attest, transfer NFTs to another address, and have that address attest with the same attestation power (the checkpoint at `attestationsBegin - 1` should prevent this because same-block transfers are invisible at `attestationsBegin - 1`).
 
 9. **Grace period anchoring**: `gracePeriodEnds = attestationsBegin + attestationGracePeriod`. Verify that early scorecard submission (before `attestationStartTime`) correctly delays the grace period start, preventing instant ratification.
 
@@ -344,7 +344,7 @@ These properties should hold for all games in all states. The test suite validat
 
 ### Governance
 - Each account can attest to a given scorecard at most once
-- Attestation power is snapshotted at `attestationsBegin` (not live)
+- Attestation power is checkpointed at `attestationsBegin - 1` (not live); pending reserves snapshotted at submission time
 - Quorum threshold: 50% of minted tiers' total max attestation power (live at call time)
 - Only one scorecard can be ratified per game
 - Minimum grace period: 1 day (enforced in `initializeGame`)

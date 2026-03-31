@@ -209,7 +209,7 @@ During COMPLETE phase cash outs, players also receive proportional $DEFIFA and $
 
 - **Per-tier power**: `mulDiv(MAX_ATTESTATION_POWER_TIER, accountTierUnits, totalTierUnits)`. Each tier contributes equal weight regardless of supply -- a tier with 1 NFT has the same governance weight as a tier with 100.
 - **Quorum**: `50% of (MAX_ATTESTATION_POWER_TIER * numberOfMintedTiers)`. Only tiers with at least one minted token count.
-- Snapshots taken at the scorecard's `attestationsBegin` timestamp, locking voting power to prevent post-submission manipulation.
+- Attestation weight checkpointed at `attestationsBegin - 1` (one second before the attestation window opens), preventing same-block transfer manipulation. Pending reserve counts are snapshotted at submission time to prevent reserve minting from inflating attestation power.
 - Each address can only attest once per scorecard.
 - Grace period (minimum 1 day) prevents instant ratification after quorum is reached.
 
@@ -223,7 +223,8 @@ During COMPLETE phase cash outs, players also receive proportional $DEFIFA and $
 - **Delegation only during MINT phase**. Other phases revert with `DefifaHook_DelegateChangesUnavailableInThisPhase`.
 - If `totalTierUnits` is 0 for a tier (no delegations), that tier contributes no attestation power.
 - **Quorum stability via pending reserves**: `quorum()` counts tiers with either minted supply (`currentSupplyOfTier > 0`) OR pending reserves (`numberOfPendingReservesFor > 0`). No snapshot is needed because during SCORING, supply is frozen (no new paid mints, no burns) and reserve minting doesn't change which tiers are counted — tiers with pending reserves are already included. The pending reserves check matters when all paid tokens in a tier were burned during REFUND: `currentSupplyOfTier` drops to 0 but pending reserves persist.
-- **Pending reserves dilute attestation power**: `getAttestationWeight` includes pending reserves in the denominator (total attestation units) but NOT the numerator (individual account units). Every token holder's voting power already accounts for reserves that will eventually be minted. When the reserve beneficiary later mints, their new NFTs add to the numerator while pending reserves decrease — no voting power shift for anyone. Consistent with the cash-out path (`computeCashOutWeight`) which also includes pending reserves in `totalTokensForCashoutInTier`.
+- **Pending reserves dilute attestation power (snapshotted)**: `getBWAAttestationWeight` includes pending reserves in the denominator (total attestation units) but NOT the numerator (individual account units). These pending reserve counts are **snapshotted at scorecard submission time** (`_pendingReservesSnapshotOf`), so minting reserves after submission does not inflate attestation power. The live `getAttestationWeight` still reads live pending reserves. Consistent with the cash-out path (`computeCashOutWeight`) which also includes pending reserves in `totalTokensForCashoutInTier`.
+- **Fee token claim includes pending reserve cost**: During COMPLETE cash-outs, fee token distribution uses `_totalMintCost + _pendingReserveMintCost()` as the denominator. This prevents paid holders from claiming a disproportionate share of $DEFIFA/$NANA tokens before reserves are minted.
 - `ratifyScorecardFrom` uses **low-level `.call`** to execute the scorecard on the hook (necessary because `setTierCashOutWeightsTo` is `onlyOwner`).
 - `fulfillCommitmentsOf` uses `max(amount, 1)` as a reentrancy sentinel. `sendPayoutsOf` is wrapped in try-catch: on failure, resets to sentinel (1) and emits `CommitmentPayoutFailed`.
 - `_buildSplits` normalizes split percentages. Rounding remainder absorbed by the protocol fee split (last in array).
