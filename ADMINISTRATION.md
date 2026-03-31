@@ -2,6 +2,33 @@
 
 Admin privileges and their scope in defifa-collection-deployer-v6.
 
+## At A Glance
+
+| Item | Details |
+|------|---------|
+| Scope | Defifa game launch, scorecard ratification, lifecycle progression, and fee-project ownership locking. |
+| Operators | Permissionless game creators and scorecard participants, plus the protocol contracts `DefifaDeployer`, `DefifaGovernor`, `DefifaHook`, and optional `DefifaProjectOwner`. |
+| Highest-risk actions | Launching a game with bad immutable parameters, ratifying the winning scorecard, or transferring a fee-project NFT into `DefifaProjectOwner`. |
+| Recovery posture | Game parameters are intentionally immutable after launch. A bad game setup usually means launching a new game or falling back to the no-contest path if available. |
+
+## Routine Operations
+
+- Validate game timings, tier setup, fee routing, and attestation settings before calling `launchGameWith()`.
+- During scoring, rely on the documented submission, attestation, and ratification flow rather than looking for discretionary admin overrides that do not exist.
+- Use `triggerNoContestFor()` when the game has entered the documented no-contest condition and refunds need to be unlocked.
+- Treat the fee-project ownership proxy as a burn-lock mechanism, not a recoverable custody tool.
+
+## One-Way Or High-Risk Actions
+
+- `launchGameWith()` fixes the game's core configuration.
+- `setTierCashOutWeightsTo()` is irreversible once weights are set for a game.
+- `DefifaProjectOwner` permanently locks the project NFT it receives.
+
+## Recovery Notes
+
+- If a scorecard never reaches a valid ratification path and timeout conditions are met, use the documented no-contest recovery flow.
+- If the game launched with the wrong immutable economics or timing, recovery is a replacement game deployment rather than an admin patch.
+
 ## Roles
 
 | Role | Who | How Assigned |
@@ -30,10 +57,10 @@ Admin privileges and their scope in defifa-collection-deployer-v6.
 
 | Function | Required Role | Permission Check | What It Does |
 |----------|--------------|-----------------|-------------|
-| `initializeGame()` | DefifaDeployer (owner) | `onlyOwner` | Sets attestation start time and grace period for a game. Enforces minimum 1-day grace period. Called automatically during `launchGameWith()`. |
+| `initializeGame()` | DefifaDeployer (owner) | `onlyOwner` | Sets the attestation start time, attestation grace period, and optional post-quorum `timelockDuration` for a game. Enforces a minimum 1-day grace period. Called automatically during `launchGameWith()`. |
 | `submitScorecardFor()` | Anyone | Must be in SCORING phase; no ratified scorecard yet; no duplicate scorecard hash; weighted tiers must have nonzero supply | Submits a scorecard for attestation. Sets `attestationsBegin` and `gracePeriodEnds` timestamps. Snapshots pending reserves per tier for BWA computation. |
-| `attestToScorecardFrom()` | Any NFT holder | Must be in SCORING phase; scorecard must be ACTIVE or SUCCEEDED; caller cannot have already attested | Records attestation weight based on tier holdings at the `attestationsBegin - 1` checkpoint timestamp. Uses pending reserve snapshot from submission time. |
-| `ratifyScorecardFrom()` | Anyone | Scorecard must be in SUCCEEDED state (quorum met + grace period elapsed); no scorecard already ratified | Executes the scorecard via low-level call to `setTierCashOutWeightsTo` on the hook, then calls `fulfillCommitmentsOf`. |
+| `attestToScorecardFrom()` | Any NFT holder | Must be in SCORING phase; scorecard must be `ACTIVE`, `QUEUED`, or `SUCCEEDED`; caller cannot have already attested | Records attestation weight based on tier holdings at the `attestationsBegin - 1` checkpoint timestamp. Uses pending reserve snapshot from submission time. |
+| `ratifyScorecardFrom()` | Anyone | Scorecard must be in SUCCEEDED state (quorum met, grace period elapsed, and any configured `timelockDuration` elapsed); no scorecard already ratified | Executes the scorecard via low-level call to `setTierCashOutWeightsTo` on the hook, then calls `fulfillCommitmentsOf`. |
 
 ### DefifaHook
 
@@ -73,7 +100,7 @@ COUNTDOWN --> MINT --> REFUND (optional) --> SCORING --> COMPLETE or NO_CONTEST
 **Who controls scoring:**
 1. Anyone submits a scorecard during SCORING (`submitScorecardFor`)
 2. NFT holders attest based on their per-tier voting weight (`attestToScorecardFrom`)
-3. Once quorum (50% of minted tiers' attestation power) is met and grace period passes, anyone ratifies (`ratifyScorecardFrom`)
+3. Once quorum (50% of minted tiers' attestation power) is met, the grace period has elapsed, and any configured `timelockDuration` has elapsed, the scorecard reaches `SUCCEEDED` and anyone can ratify it with `ratifyScorecardFrom`
 4. The governor calls `setTierCashOutWeightsTo` on the hook via low-level call
 5. `fulfillCommitmentsOf` sends fee payouts (try-catch) and queues the final ruleset
 
@@ -84,8 +111,8 @@ The quorum threshold is 50% of the total attestation power across all tiers with
 **Edge cases:**
 - **Tiers with zero mints:** Tiers with `currentSupplyOfTier(tierId) == 0` are excluded from the quorum calculation. They have no attestation power and cannot influence scoring.
 - **All mints in a single tier:** If all participation concentrates in one tier, that tier's holders control the quorum. The 50% threshold still applies -- holders of 50% of that tier's supply can ratify a scorecard.
-- **Grace period:** After a scorecard reaches quorum (SUCCEEDED state), a grace period (`attestationsGracePeriod`, minimum 1 day) must elapse before ratification. This gives dissenters time to attest to a competing scorecard that could overtake the first.
-- **Competing scorecards:** Multiple scorecards can be submitted. Each tracks attestations independently. Only the first to be ratified (quorum met + grace period elapsed + `ratifyScorecardFrom()` called) takes effect. Once ratified, no other scorecard can be ratified for the same game.
+- **Grace period and timelock:** After submission, a scorecard stays `ACTIVE` until its grace period ends. If it has quorum at that point, it becomes `QUEUED` when `timelockDuration > 0`, or `SUCCEEDED` immediately when `timelockDuration == 0`. Attestations remain allowed while the scorecard is `ACTIVE`, `QUEUED`, or `SUCCEEDED`, but revocations are only allowed while it is `ACTIVE`. Ratification is only allowed from `SUCCEEDED`.
+- **Competing scorecards:** Multiple scorecards can be submitted. Each tracks attestations independently. Only the first to be ratified after meeting quorum, clearing the grace period, and clearing any configured timelock takes effect. Once ratified, no other scorecard can be ratified for the same game.
 - **Scorecard timeout:** If `scorecardTimeout` is nonzero and elapses without ratification, the game enters NO_CONTEST state, enabling full refunds via `triggerNoContestFor()`.
 
 **No single entity controls scoring.** The process requires collective attestation from NFT holders across tiers.
@@ -103,6 +130,7 @@ The following are set at game creation and cannot be changed:
 | Fee structure | Constructor constants | `DEFIFA_FEE_DIVISOR = 20` (5%), `BASE_PROTOCOL_FEE_DIVISOR = 40` (2.5%) |
 | Attestation start time | `launchGameWith()` | Stored in governor via `initializeGame()` |
 | Attestation grace period | `launchGameWith()` | Minimum 1 day enforced in `initializeGame()` |
+| Timelock duration | `launchGameWith()` | Optional cooling period after quorum before a scorecard becomes ratifiable |
 | Default attestation delegate | `launchGameWith()` | Stored in hook |
 | `minParticipation` threshold | `launchGameWith()` | 0 = disabled |
 | `scorecardTimeout` | `launchGameWith()` | 0 = disabled |

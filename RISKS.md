@@ -1,4 +1,21 @@
-# RISKS.md -- defifa-collection-deployer-v6
+# Defifa Risk Register
+
+This file focuses on the game-theoretic, governance, and settlement risks in Defifa's prediction-game flow: minting, attestation, scorecard ratification, and final cash out.
+
+## How to use this file
+
+- Read `Priority risks` first; they identify the main ways a game can settle unfairly or get stuck.
+- Use the detailed sections below to reason about governor power, live supply assumptions, and downstream hook dependencies.
+- Treat `Accepted Behaviors` and `Invariants to Verify` as explicit boundaries for audit scope.
+
+## Priority risks
+
+| Priority | Risk | Why it matters | Primary controls |
+|----------|------|----------------|------------------|
+| P0 | Scorecard capture at quorum | An actor that assembles 50%+ of attestation power can ratify an arbitrary scorecard and redirect the pot. | Tier-level attestation caps, grace period, and governance review of delegate concentration. |
+| P1 | Shared 721 hook store blast radius | Defifa inherits the same shared `JB721TiersHookStore` surface as the general 721 hook ecosystem. A store bug hits every game. | Reuse of audited 721-hook invariants, store-focused testing, and ecosystem-level monitoring. |
+| P1 | Supply and reserve accounting drift | Game fairness depends on attestation power, fee-token dilution, and cash-out weights tracking real mint/reserve state. | Explicit invariants on supply, reserve inclusion, and tier-weight arithmetic. |
+
 
 ## 1. Trust Assumptions
 
@@ -7,7 +24,7 @@
 - **DefifaProjectOwner Irrecoverability.** Once the Defifa project NFT is transferred to DefifaProjectOwner, it cannot be recovered. This is intentional but irreversible.
 - **External Dependencies.** Relies on JB721TiersHookStore, JBController, JBMultiTerminal, JBRulesets, and JBPrices. Bugs in any upstream contract affect all Defifa games.
 - **Default Attestation Delegate.** If set, the default attestation delegate receives delegated attestation power for all new minters who do not specify a delegate. This entity accumulates significant governance power.
-- **721 hook store shared with nana-721-hook-v6.** DefifaHook extends `JB721TiersHook`, sharing the same `JB721TiersHookStore`. All store-level risks from [nana-721-hook-v6 RISKS.md](../nana-721-hook-v6/RISKS.md) apply — including the `totalCashOutWeight` tier iteration cost and the category sort order enforcement. Store bugs affect all Defifa games simultaneously.
+- **721 hook store shared with nana-721-hook-v6.** `DefifaHook` uses the same `JB721TiersHookStore` dependency as the broader 721-hook ecosystem even though it has its own hook implementation. All store-level risks from [nana-721-hook-v6 RISKS.md](../nana-721-hook-v6/RISKS.md) still apply wherever Defifa relies on shared tier-store semantics. Store bugs affect all Defifa games simultaneously.
 
 ## 2. Economic Risks
 
