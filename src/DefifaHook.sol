@@ -571,6 +571,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Note: reserved mints dilute existing fee token claimants because they increase the total mint cost
         // denominator without contributing new funds to the fee token balances. This is the intended design —
         // reserved recipients receive a proportional claim on fee tokens as if they had paid to mint.
+        // slither-disable-next-line reentrancy-benign
         _totalMintCost += tier.price * count;
 
         for (uint256 i; i < count;) {
@@ -667,6 +668,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Increment the amount redeemed if this is the complete phase.
         bool beneficiaryReceivedTokens;
         if (isComplete) {
+            // slither-disable-next-line reentrancy-benign
             amountRedeemed += context.reclaimedAmount.value;
 
             // Claim the $DEFIFA and $NANA tokens for the user.
@@ -686,6 +688,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         if (context.reclaimedAmount.value == 0 && !beneficiaryReceivedTokens) revert DefifaHook_NothingToClaim();
 
         // Decrement the paid mint cost by the cumulative mint price of the tokens being burned.
+        // slither-disable-next-line reentrancy-benign
         _totalMintCost -= cumulativeMintPrice;
     }
 

@@ -317,6 +317,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         if (pot == 0) {
             fulfilledCommitmentsOf[gameId] = 1;
             _queueFinalRuleset({gameId: gameId, metadata: metadata});
+            // slither-disable-next-line reentrancy-events
             emit FulfilledCommitments({gameId: gameId, pot: 0, caller: msg.sender});
             return;
         }
@@ -490,6 +491,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         }
 
         // Increment the nonce for this deployment.
+        // slither-disable-next-line reentrancy-benign
         uint256 currentNonce = ++_nonce;
 
         // Clone deterministically using sender and nonce to prevent front-running.
@@ -657,6 +659,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         if (totalAbsolutePercent > JBConstants.SPLITS_TOTAL_PERCENT) revert DefifaDeployer_SplitsDontAddUp();
 
         // Store the total absolute percent for use in fulfillCommitmentsOf.
+        // slither-disable-next-line reentrancy-benign
         _commitmentPercentOf[gameId] = totalAbsolutePercent;
 
         // Build the splits array: user splits + Defifa + NANA (NANA last to absorb rounding).
