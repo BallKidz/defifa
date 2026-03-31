@@ -53,10 +53,11 @@ COMPLETE Phase:
 Scorer → DefifaGovernor.submitScorecard(tierWeights[])
   → Validate: correct phase, valid tier order, weights sum correctly
   → Create proposal hash
+  → Snapshot pending reserves per tier for BWA computation
 
 Attestor → DefifaGovernor.attestToScorecard(proposalId)
-  → Must hold NFT tier tokens
-  → Attestation weight = voting power from held tiers
+  → Must hold NFT tier tokens at attestationsBegin - 1 checkpoint
+  → Attestation weight = voting power from held tiers (diluted by snapshotted pending reserves)
   → When quorum reached → scorecard ratified
   → DefifaHook.setScorecard() called
 ```

@@ -379,11 +379,11 @@ where $n_i^{\text{holder}}$ is the number of tier-$i$ tokens delegated to (or he
 
 $$v^{\text{holder}} = \sum_{i : n_i^{\text{holder}} > 0} V_{\text{max}} \cdot \frac{n_i^{\text{holder}}}{n_i^{\text{total}}} \tag{25}$$
 
-**Checkpoint-based snapshots.** Attestation power is measured at the scorecard's `attestationsBegin` timestamp, which is always a past timestamp set during `submitScorecardFor`. This prevents same-block transfer manipulation: acquiring tokens after the snapshot provides zero additional voting power. All attestors' weights are measured at the same point in time, ensuring fairness.
+**Checkpoint-based snapshots.** Attestation power is measured at the scorecard's `attestationsBegin - 1` timestamp (one second before the attestation window opens). This prevents same-block transfer manipulation: acquiring tokens at or after `attestationsBegin` provides zero additional voting power. Additionally, pending reserve counts are snapshotted per tier at submission time (`_pendingReservesSnapshotOf`), so minting reserves after submission cannot inflate attestation power by removing the pending-reserve dilution. All attestors' weights are measured at the same point in time with a fixed pending reserve baseline, ensuring fairness.
 
 **Delegation.** During the mint phase only, holders may delegate their attestation units to a chosen delegate address per tier. Delegation is:
 - Per-tier (a holder can delegate different tiers to different delegates),
-- Snapshot-locked (only the delegation state at `attestationsBegin` counts),
+- Snapshot-locked (only the delegation state at `attestationsBegin - 1` counts),
 - Mint-phase-only (no delegation changes after minting closes — the `_update` function enforces `DELEGATE_CHANGES_UNAVAILABLE_IN_THIS_PHASE`).
 
 **World Cup example.** Argentina (Tier 1) has 2,000 NFTs. A fan holding 100 Argentina NFTs has attestation power: $10^9 \times 100/2{,}000 = 50{,}000{,}000$ from Tier 1. If they also hold 50 France NFTs (out of 1,800): $10^9 \times 50/1{,}800 \approx 27{,}778{,}000$ from Tier 2. Total: $\sim 77.8$ million attestation units. Note that despite Argentina having more total mints, each *tier* contributes equally to governance weight — the per-tier cap ensures that Argentina's 2,000 holders collectively have the same maximum power ($10^9$) as Saudi Arabia's 10 holders.
@@ -431,7 +431,7 @@ The attestation model incorporates several defenses against strategic manipulati
 
 **Defense 1: Per-tier cap.** No single tier's holders can contribute more than $V_{\text{max}}$ attestation units, regardless of how many tokens they hold. A whale who buys the entire supply of one tier has exactly $V_{\text{max}}$ power — the same as if any single holder held the tier.
 
-**Defense 2: Checkpoint snapshots.** Attestation power is computed at a fixed historical timestamp (`attestationsBegin`). Acquiring tokens after the snapshot provides zero additional voting power for that scorecard.
+**Defense 2: Checkpoint snapshots.** Attestation power is computed at a fixed historical timestamp (`attestationsBegin - 1`). Acquiring tokens after the snapshot provides zero additional voting power for that scorecard. Pending reserve counts are snapshotted at submission time, preventing reserve minting from inflating attestation power.
 
 **Defense 3: Mint-phase-only delegation.** Delegation is locked after the mint phase, preventing last-minute delegation changes during the scoring phase.
 
@@ -1147,7 +1147,7 @@ The scorecard weight system ($\sum w_i = 10^{18}$) provides a flexible framework
 
 ### Governance Security
 
-The attestation model (Section 3) achieves a balance between decentralization and efficiency. The per-tier cap on attestation power ($V_{\text{max}} = 10^9$) prevents any single tier from dominating governance, while the 50% quorum across minted tiers ensures broad participation. The checkpoint-based snapshot (at `attestationsBegin`) prevents vote-buying, mint-phase-only delegation prevents last-minute manipulation, and scoring-phase-only submission prevents pre-accumulation of attestations.
+The attestation model (Section 3) achieves a balance between decentralization and efficiency. The per-tier cap on attestation power ($V_{\text{max}} = 10^9$) prevents any single tier from dominating governance, while the 50% quorum across minted tiers ensures broad participation. The checkpoint-based snapshot (at `attestationsBegin - 1`, with pending reserves snapshotted at submission time) prevents vote-buying and reserve-minting manipulation, mint-phase-only delegation prevents last-minute manipulation, and scoring-phase-only submission prevents pre-accumulation of attestations.
 
 Section 9.2 introduces **benefit-weighted attestation** (BWA): the "perfect proportion" where a tier's governance power for a given scorecard equals $V_{\text{max}} \times (1 - w_i / W_{\text{total}})$. This structural mechanism makes self-serving scorecards unratifiable regardless of attacker capital — the beneficiaries of a scorecard cannot be the coalition that pushes it through. The dead token economics prove that even attacks overcoming BWA are unprofitable: tokens purchased for governance power in non-winning tiers return \$0 under the fraudulent scorecard, creating a guaranteed loss when combined with fee extraction. Section 9.3 formalizes the Uniform Participation Theorem, proving that games with equal tier supply are impervious to profitable governance attacks.
 

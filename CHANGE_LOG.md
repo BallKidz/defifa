@@ -145,18 +145,20 @@ Key runtime errors now exposed by the v6 contracts include:
 
 ## 6. Post-Audit Fixes (Codex R2)
 
-### 6.1 H-1: Prevent same-block double attestation via timestamp snapshot
+### 6.1 H-1: Prevent same-block double attestation via checkpoint snapshot
 
 **File:** `DefifaGovernor.sol` -- `attestToScorecardFrom()`
 
 Previously, attestation weight was snapshot at `_scorecard.attestationsBegin`, which could equal `block.timestamp` during the same block as a transfer. This allowed a holder to attest, transfer the NFT, and have the recipient also attest in the same block -- both counting because `upperLookup(block.timestamp)` includes same-block checkpoints.
 
-**Fix:** Changed the snapshot to `block.timestamp - 1`, ensuring only state from before the current block is visible. Same-block transfer recipients now receive zero attestation weight.
+**Fix:** Changed the checkpoint timestamp to `attestationsBegin - 1`, ensuring only state from before the attestation window opens is visible. Same-block transfer recipients now receive zero attestation weight. Note: NFTs minted in the same block as `attestationsBegin` have zero weight for attestation -- a negligible trade-off since attestation typically happens well after minting.
 
-### 6.2 H-2: Include pending reserve NFTs in cash-out weight denominator
+### 6.2 H-2: Snapshot pending reserves at scorecard submission and include in denominators
 
-**File:** `DefifaHookLib.sol` -- `computeCashOutWeight()`
+**Files:** `DefifaGovernor.sol` -- `submitScorecardFor()`, `getBWAAttestationWeight()`; `DefifaHook.sol` -- `afterCashOutRecordedWith()`
 
-Previously, the cash-out weight denominator only counted actually minted tokens. Pending (unminted) reserve NFTs were excluded, allowing paid holders to cash out before reserves were minted and extract more than their fair share of the surplus.
+Two related fixes to prevent gaming via pending reserve manipulation:
 
-**Fix:** Added `hookStore.numberOfPendingReservesFor()` to the denominator in `computeCashOutWeight()`. Each token's share of the tier weight is now computed against the full eventual supply (minted + pending reserves), protecting reserve holders' shares.
+**Governance (attestation weight):** Previously, `getBWAAttestationWeight()` read pending reserve counts live from the store. Minting reserves between scorecard submission and attestation could inflate a holder's BWA power by removing the pending-reserve dilution. **Fix:** `submitScorecardFor()` now snapshots `numberOfPendingReservesFor()` for every tier into `_pendingReservesSnapshotOf[gameId][scorecardId][tierId]`. `getBWAAttestationWeight()` reads from this snapshot instead of live state, locking the dilution in place regardless of subsequent reserve minting.
+
+**Cash-out (fee token distribution):** Previously, the fee token claim denominator (`_totalMintCost`) only counted minted tokens. Pending (unminted) reserve NFTs were excluded, allowing paid holders to cash out before reserves were minted and claim a disproportionate share of fee tokens ($DEFIFA/$NANA). **Fix:** `afterCashOutRecordedWith()` now passes `_totalMintCost + _pendingReserveMintCost()` as the denominator when distributing fee tokens. The new `_pendingReserveMintCost()` function iterates all tiers and sums `pendingReserves * tier.price`, ensuring pending reserves are accounted for in fee token distribution.

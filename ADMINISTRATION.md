@@ -31,8 +31,8 @@ Admin privileges and their scope in defifa-collection-deployer-v6.
 | Function | Required Role | Permission Check | What It Does |
 |----------|--------------|-----------------|-------------|
 | `initializeGame()` | DefifaDeployer (owner) | `onlyOwner` | Sets attestation start time and grace period for a game. Enforces minimum 1-day grace period. Called automatically during `launchGameWith()`. |
-| `submitScorecardFor()` | Anyone | Must be in SCORING phase; no ratified scorecard yet; no duplicate scorecard hash; weighted tiers must have nonzero supply | Submits a scorecard for attestation. Sets `attestationsBegin` and `gracePeriodEnds` timestamps. |
-| `attestToScorecardFrom()` | Any NFT holder | Must be in SCORING phase; scorecard must be ACTIVE or SUCCEEDED; caller cannot have already attested | Records attestation weight based on tier holdings at the scorecard's `attestationsBegin` timestamp. |
+| `submitScorecardFor()` | Anyone | Must be in SCORING phase; no ratified scorecard yet; no duplicate scorecard hash; weighted tiers must have nonzero supply | Submits a scorecard for attestation. Sets `attestationsBegin` and `gracePeriodEnds` timestamps. Snapshots pending reserves per tier for BWA computation. |
+| `attestToScorecardFrom()` | Any NFT holder | Must be in SCORING phase; scorecard must be ACTIVE or SUCCEEDED; caller cannot have already attested | Records attestation weight based on tier holdings at the `attestationsBegin - 1` checkpoint timestamp. Uses pending reserve snapshot from submission time. |
 | `ratifyScorecardFrom()` | Anyone | Scorecard must be in SUCCEEDED state (quorum met + grace period elapsed); no scorecard already ratified | Executes the scorecard via low-level call to `setTierCashOutWeightsTo` on the hook, then calls `fulfillCommitmentsOf`. |
 
 ### DefifaHook
@@ -79,7 +79,7 @@ COUNTDOWN --> MINT --> REFUND (optional) --> SCORING --> COMPLETE or NO_CONTEST
 
 ### Attestation Quorum Details
 
-The quorum threshold is 50% of the total attestation power across all tiers with nonzero mint supply. Attestation power per tier is proportional to the tier's minted supply at the `attestationsBegin` snapshot timestamp.
+The quorum threshold is 50% of the total attestation power across all tiers with nonzero mint supply. Attestation power per tier is proportional to the tier's minted supply at the `attestationsBegin - 1` checkpoint timestamp, with pending reserves snapshotted at scorecard submission time to prevent reserve minting from inflating attestation power.
 
 **Edge cases:**
 - **Tiers with zero mints:** Tiers with `currentSupplyOfTier(tierId) == 0` are excluded from the quorum calculation. They have no attestation power and cannot influence scoring.
