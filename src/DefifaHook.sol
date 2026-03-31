@@ -1083,7 +1083,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Transfers must not be paused (when not minting or burning).
         if (from != address(0)) {
             // If transfers are pausable, check if they're paused.
-            if (tier.transfersPausable) {
+            if (tier.flags.transfersPausable) {
                 // Get a reference to the project's current ruleset.
                 JBRuleset memory ruleset = rulesets.currentOf(PROJECT_ID);
 
