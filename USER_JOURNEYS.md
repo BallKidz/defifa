@@ -2,50 +2,68 @@
 
 ## Who This Repo Serves
 
-- organizers launching prediction or tournament-style games
-- players minting, refunding, attesting, and cashing out game pieces
-- operators settling scorecards and fee commitments after a game ends
+- teams launching Defifa prediction games
+- players minting outcome pieces and later redeeming winning positions
+- participants submitting, attesting to, and ratifying scorecards
+- operators handling refund, no-contest, and fee-settlement edges
 
 ## Journey 1: Launch A Defifa Game
 
-**Starting state:** you know the teams or outcomes, mint price, timing windows, and whether the game should allow refunds or safety fallbacks.
+**Starting state:** the team knows the countdown, mint window, scoring mechanics, and payout assumptions for a new game.
 
-**Success:** a Juicebox project exists with phased rulesets, a Defifa hook, and a governor ready for scorecard voting.
-
-**Flow**
-1. Configure the game through the deployer with the intended phase timings and tier setup.
-2. `DefifaDeployer` launches the project, clones the hook, and initializes the governor.
-3. The game enters `COUNTDOWN`, then `MINT` when minting opens.
-4. Players can then buy the outcome NFTs that represent their positions once minting is open.
-
-## Journey 2: Participate As A Player
-
-**Starting state:** the game is in `MINT` or `REFUND`.
-
-**Success:** you either keep a live position into scoring or exit at refund value before the game locks.
+**Success:** the game launches as a staged Juicebox project with hook, governor, and metadata surfaces all aligned.
 
 **Flow**
-1. Pay the game's terminal during `MINT` to receive an NFT tied to a team or outcome.
-2. Optionally delegate attestation power to yourself or another address.
-3. If the deployer configured a refund phase and you want out, burn the NFT during `REFUND` to reclaim the mint price.
-4. Once `SCORING` begins, refunds stop and delegation freezes into the governance phase.
+1. Use `DefifaDeployer` with launch config, tier params, governance settings, and fee commitments.
+2. The deployer launches the project, clones or wires the game hook, and initializes governance through `DefifaGovernor`.
+3. The game now has a defined lifecycle instead of being a plain NFT sale.
 
-## Journey 3: Submit, Ratify, And Settle The Winning Scorecard
+## Journey 2: Participate As A Player During The Mint Phase
 
-**Starting state:** the game has reached `SCORING`, and the result needs to be encoded into payout weights.
+**Starting state:** the game is in its countdown or live mint window and players want to buy outcome pieces.
 
-**Success:** a scorecard is ratified, the game enters `COMPLETE`, and winners can cash out their share of the pot.
+**Success:** the player mints the intended game pieces and their payment becomes part of the prize pot.
 
 **Flow**
-1. Anyone submits a scorecard describing how the pot should be distributed across tiers.
-2. NFT holders attest with voting power derived from their delegated tier positions.
-3. Once a scorecard reaches quorum and the grace period passes, it can be ratified.
-4. Ratification sets the hook's cash-out weights and fulfills fee commitments.
-5. Holders burn winning NFTs through terminal cash outs to claim pot share and fee-token exposure.
+1. Wait until the lifecycle enters the mintable phase.
+2. Pay into the game to mint the chosen outcome NFTs through `DefifaHook`.
+3. The treasury accumulates the prize pot and the player's position is now represented by the minted pieces.
 
-**Fallbacks:** if minimum participation is not reached or no scorecard ratifies before timeout, the game can resolve to `NO_CONTEST`, where players recover mint value instead of prize weighting.
+## Journey 3: Handle Refund Or No-Contest Outcomes
+
+**Starting state:** the game cannot settle normally, either because the refund window is triggered or because governance fails to reach a contestable result.
+
+**Success:** participants can exit under the repo's explicit failure-mode rules instead of ad hoc admin intervention.
+
+**Flow**
+1. Observe the current game phase and whether it has entered refund or no-contest handling.
+2. Use the game-defined exit path for participants rather than assuming the winning-scorecard path will eventually resolve.
+3. Keep treasury and piece-state assumptions aligned with the phase actually reached.
+
+## Journey 4: Submit, Attest To, And Ratify A Scorecard
+
+**Starting state:** minting is over and the game is in its scoring phase.
+
+**Success:** a valid scorecard reaches quorum, survives any grace period, and becomes the game's settled result.
+
+**Flow**
+1. A participant submits a scorecard through `DefifaGovernor`.
+2. Holders attest, delegate where permitted, and push the preferred scorecard toward quorum.
+3. After the grace period, the governor ratifies the winning scorecard if it still satisfies the game's rules.
+4. `DefifaHook` updates the relevant cash-out weights for settlement.
+
+## Journey 5: Redeem Winning Pieces And Settle The Pot
+
+**Starting state:** the game has a ratified result and winning positions are now known.
+
+**Success:** holders of winning pieces burn or cash out them for their share of the prize pot.
+
+**Flow**
+1. Holders use the game's redemption path after settlement.
+2. The hook applies the now-final weights associated with the winning scorecard.
+3. Winners receive their proportional share while losers no longer have equivalent claim on the pot.
 
 ## Hand-Offs
 
-- Use [nana-core-v6](../nana-core-v6/USER_JOURNEYS.md) for the underlying payment and cash-out primitives.
-- Use [nana-721-hook-v6](../nana-721-hook-v6/USER_JOURNEYS.md) if you need the baseline tiered NFT mental model first.
+- Use [nana-721-hook-v6](../nana-721-hook-v6/USER_JOURNEYS.md) for the standard tiered NFT mechanics underneath the game-specific logic.
+- Use [nana-core-v6](../nana-core-v6/USER_JOURNEYS.md) for base project accounting once the question is no longer Defifa-specific lifecycle or governance behavior.
