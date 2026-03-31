@@ -82,16 +82,18 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @custom:param scorecardId The ID of the scorecard that has been attested to.
     mapping(uint256 => mapping(uint256 => DefifaAttestations)) internal _scorecardAttestationsOf;
 
-    /// @notice Tier weights per scorecard for BWA computation.
-    /// @dev Maps gameId => scorecardId => tierId (0-indexed) => cashOutWeight.
-    mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) internal _scorecardTierWeightsOf;
-
     /// @notice Snapshot of pending reserves per tier at scorecard submission time.
     /// @dev Prevents reserve dilution between submission and attestation.
     /// @custom:param gameId The ID of the game.
     /// @custom:param scorecardId The ID of the scorecard.
     /// @custom:param tierId The tier ID (1-indexed).
     mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) internal _pendingReservesSnapshotOf;
+
+    /// @notice Tier weights per scorecard for BWA computation.
+    /// @custom:param gameId The ID of the game.
+    /// @custom:param scorecardId The ID of the scorecard.
+    /// @custom:param tierId The tier ID (0-indexed).
+    mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) internal _scorecardTierWeightsOf;
 
     //*********************************************************************//
     // -------------------------- constructor ---------------------------- //
