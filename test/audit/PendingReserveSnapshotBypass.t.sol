@@ -259,6 +259,7 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
     function _mint(address user, uint256 tierId) internal {
         vm.deal(user, 1 ether);
         uint16[] memory tiers = new uint16[](1);
+        // forge-lint: disable-next-line(unsafe-typecast)
         tiers[0] = uint16(tierId);
         bytes[] memory data = new bytes[](1);
         data[0] = abi.encode(user, tiers);

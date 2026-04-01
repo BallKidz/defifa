@@ -18,6 +18,7 @@ import {IDefifaHook} from "./interfaces/IDefifaHook.sol";
 import {DefifaAttestations} from "./structs/DefifaAttestations.sol";
 import {DefifaScorecard} from "./structs/DefifaScorecard.sol";
 import {DefifaTierCashOutWeight} from "./structs/DefifaTierCashOutWeight.sol";
+import {DefifaHookLib} from "./libraries/DefifaHookLib.sol";
 
 /// @notice Manages the ratification of Defifa scorecards.
 contract DefifaGovernor is Ownable, IDefifaGovernor {
@@ -260,14 +261,21 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         }
 
         // If there's a weight assigned to the tier, make sure there is a token backed by it.
+        // slither-disable-next-line calls-loop
         for (uint256 i; i < numberOfTierWeights; i++) {
-            if (
-                tierWeights[i].cashOutWeight > 0
-                    && IDefifaHook(metadata.dataHook).currentSupplyOfTier(tierWeights[i].id) == 0
-            ) {
+            // slither-disable-next-line calls-loop
+            uint256 currentTierSupply = IDefifaHook(metadata.dataHook).currentSupplyOfTier(tierWeights[i].id);
+            if (tierWeights[i].cashOutWeight > 0 && currentTierSupply == 0) {
                 revert DefifaGovernor_UnownedProposedCashoutValue();
             }
         }
+
+        // Run the same structural validation the hook will apply at ratification time so malformed
+        // scorecards fail on submission instead of reaching a misleading SUCCEEDED state first.
+        uint256[128] memory validatedWeights = DefifaHookLib.validateAndBuildWeights({
+            tierWeights: tierWeights, hookStore: IDefifaHook(metadata.dataHook).store(), hook: metadata.dataHook
+        });
+        validatedWeights;
 
         // Hash the scorecard.
         scorecardId =
@@ -300,8 +308,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         {
             IJB721TiersHookStore _store = IDefifaHook(metadata.dataHook).store();
             uint256 _numberOfTiers = _store.maxTierIdOf(metadata.dataHook);
+            // slither-disable-next-line calls-loop
             for (uint256 i; i < _numberOfTiers; i++) {
                 uint256 tierId = i + 1;
+                // slither-disable-next-line calls-loop
                 _pendingReservesSnapshotOf[gameId][scorecardId][tierId] =
                     _store.numberOfPendingReservesFor(metadata.dataHook, tierId);
             }
@@ -490,16 +500,17 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Get a reference to the number of tiers.
         uint256 numberOfTiers = store.maxTierIdOf(metadata.dataHook);
 
-        // slither-disable-next-line calls-inside-a-loop
         for (uint256 i; i < numberOfTiers; i++) {
             // Tiers are 1-indexed.
             uint256 tierId = i + 1;
 
             // Get this account's attestation units within the tier (snapshot at timestamp).
+            // slither-disable-next-line calls-loop
             uint256 tierAttestationUnitsForAccount =
                 hook.getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
 
             // Get the total attestation units for this tier (snapshot at timestamp).
+            // slither-disable-next-line calls-loop
             uint256 tierTotalAttestationUnits =
                 hook.getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp});
 
@@ -508,8 +519,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             // When the reserve beneficiary later mints, their new NFTs add to the numerator while
             // pending reserves decrease by the same amount — so no one's voting power shifts.
             {
+                // slither-disable-next-line calls-loop
                 uint256 pendingReserves = store.numberOfPendingReservesFor(metadata.dataHook, tierId);
                 if (pendingReserves != 0) {
+                    // slither-disable-next-line calls-loop
                     JB721Tier memory tier =
                         store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
                     tierTotalAttestationUnits += pendingReserves * tier.votingUnits;
@@ -567,17 +580,18 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Cache the total cashout weight denominator from the hook.
         uint256 totalCashOutWeight = hook.TOTAL_CASHOUT_WEIGHT();
 
-        // slither-disable-next-line calls-inside-a-loop
         for (uint256 i; i < numberOfTiers; i++) {
             // Tiers are 1-indexed.
             uint256 tierId = i + 1;
 
             // Get this account's attestation units within the tier (snapshot at timestamp).
+            // slither-disable-next-line calls-loop
             uint256 tierAttestationUnitsForAccount =
                 hook.getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
 
             if (tierAttestationUnitsForAccount != 0) {
                 // Get the total attestation units for this tier (snapshot at timestamp).
+                // slither-disable-next-line calls-loop
                 uint256 tierTotalAttestationUnits =
                     hook.getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp});
 
@@ -587,6 +601,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                 {
                     uint256 pendingReserves = _pendingReservesSnapshotOf[gameId][scorecardId][tierId];
                     if (pendingReserves != 0) {
+                        // slither-disable-next-line calls-loop
                         JB721Tier memory tier =
                             store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
                         tierTotalAttestationUnits += pendingReserves * tier.votingUnits;
@@ -630,7 +645,6 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Keep a reference to the total eligible tier weight.
         uint256 eligibleTierWeights;
 
-        // slither-disable-next-line calls-inside-a-loop
         for (uint256 i; i < numberOfTiers; i++) {
             uint256 tierId = i + 1;
 
@@ -638,10 +652,11 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             // Pending reserves exist when participation occurred (mints triggered reserve accrual),
             // even if all paid tokens were later burned during REFUND. The reserve beneficiary still
             // has a stake in that tier's outcome, so the tier should count toward governance quorum.
-            if (
-                hook.currentSupplyOfTier(tierId) != 0
-                    || store.numberOfPendingReservesFor(metadata.dataHook, tierId) != 0
-            ) {
+            // slither-disable-next-line calls-loop
+            uint256 currentTierSupply = hook.currentSupplyOfTier(tierId);
+            // slither-disable-next-line calls-loop
+            uint256 pendingReserves = store.numberOfPendingReservesFor(metadata.dataHook, tierId);
+            if (currentTierSupply != 0 || pendingReserves != 0) {
                 eligibleTierWeights += MAX_ATTESTATION_POWER_TIER;
             }
         }

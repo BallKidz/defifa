@@ -62,6 +62,7 @@ library DefifaHookLib {
             lastTierId = tierWeights[i].id;
 
             // Get the tier.
+            // slither-disable-next-line calls-loop
             tier = hookStore.tierOf({hook: hook, id: tierWeights[i].id, includeResolvedUri: false});
 
             // Can't set a cashOut weight for tiers not in category 0.
@@ -104,9 +105,11 @@ library DefifaHookLib {
         returns (uint256)
     {
         // Keep a reference to the token's tier ID.
+        // slither-disable-next-line calls-loop
         uint256 tierId = hookStore.tierIdOfToken(tokenId);
 
         // Keep a reference to the tier.
+        // slither-disable-next-line calls-loop
         JB721Tier memory tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
 
         // Get the tier's weight.
@@ -116,6 +119,7 @@ library DefifaHookLib {
         if (weight == 0) return 0;
 
         // Get the amount of tokens that have already been burned.
+        // slither-disable-next-line calls-loop
         uint256 burnedTokens = hookStore.numberOfBurnedFor({hook: hook, tierId: tierId});
 
         // If no tiers were minted, nothing to redeem.
@@ -129,6 +133,7 @@ library DefifaHookLib {
         // could cash out before reserves are minted and extract value that should be diluted across
         // both paid and reserved holders. By counting pending reserves, each token's share of the
         // tier weight is computed against the full eventual supply.
+        // slither-disable-next-line calls-loop
         uint256 pendingReserves = hookStore.numberOfPendingReservesFor({hook: hook, tierId: tierId});
         totalTokensForCashoutInTier += pendingReserves;
 
@@ -202,6 +207,7 @@ library DefifaHookLib {
         // Calculate the amount paid to mint the tokens that are being burned.
         uint256 cumulativeMintPrice;
         for (uint256 i; i < numberOfTokens; i++) {
+            // slither-disable-next-line calls-loop
             cumulativeMintPrice += hookStore.tierOfTokenId({
                 hook: hook, tokenId: tokenIds[i], includeResolvedUri: false
             })
@@ -229,6 +235,7 @@ library DefifaHookLib {
     {
         uint256 numberOfTokenIds = tokenIds.length;
         for (uint256 i; i < numberOfTokenIds; i++) {
+            // slither-disable-next-line calls-loop
             cumulativeMintPrice += hookStore.tierOfTokenId({
                 hook: hook, tokenId: tokenIds[i], includeResolvedUri: false
             })
@@ -323,6 +330,7 @@ library DefifaHookLib {
                 }
                 if (tierIdsToMint[i] < currentTierId) revert DefifaHook_BadTierOrder();
                 currentTierId = tierIdsToMint[i];
+                // slither-disable-next-line calls-loop
                 attestationUnits =
                 hookStore.tierOf({hook: hook, id: currentTierId, includeResolvedUri: false}).votingUnits;
                 accumulated = attestationUnits;

@@ -275,6 +275,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         uint256 _defifaProjectId,
         uint256 _baseProtocolProjectId
     ) {
+        // slither-disable-next-line missing-zero-check
         HOOK_CODE_ORIGIN = _hookCodeOrigin;
         TOKEN_URI_RESOLVER = _tokenUriResolver;
         GOVERNOR = _governor;
@@ -549,8 +550,13 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Transfer ownership to the specified owner.
         hook.transferOwnership(address(GOVERNOR));
 
-        // Add the hook to the registry, contract nonce starts at 1
-        REGISTRY.registerAddress({deployer: address(this), nonce: currentNonce});
+        // Register the actual CREATE2 clone address using the same salt and minimal-proxy init code
+        // that produced the deployed hook.
+        REGISTRY.registerAddress({
+            deployer: address(this),
+            salt: keccak256(abi.encodePacked(msg.sender, currentNonce)),
+            bytecode: _cloneCreationCodeFor(address(HOOK_CODE_ORIGIN))
+        });
 
         // slither-disable-next-line reentrancy-events
         emit LaunchGame(gameId, hook, GOVERNOR, uriResolver, msg.sender);
@@ -938,5 +944,11 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         CONTROLLER.queueRulesetsOf({
             projectId: gameId, rulesetConfigurations: rulesetConfigs, memo: "Defifa game has finished."
         });
+    }
+
+    function _cloneCreationCodeFor(address implementation) internal pure returns (bytes memory) {
+        return abi.encodePacked(
+            hex"3d602d80600a3d3981f3363d3d373d3d3d363d73", bytes20(implementation), hex"5af43d82803e903d91602b57fd5bf3"
+        );
     }
 }
