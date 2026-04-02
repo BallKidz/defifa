@@ -84,11 +84,19 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     mapping(uint256 => mapping(uint256 => DefifaAttestations)) internal _scorecardAttestationsOf;
 
     /// @notice Snapshot of pending reserves per tier at scorecard submission time.
-    /// @dev Prevents reserve dilution between submission and attestation.
+    /// @dev Used to keep unminted reserve units in the BWA denominator.
     /// @custom:param gameId The ID of the game.
     /// @custom:param scorecardId The ID of the scorecard.
     /// @custom:param tierId The tier ID (1-indexed).
     mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) internal _pendingReservesSnapshotOf;
+
+    /// @notice Snapshot of each tier's minted attestation units at scorecard submission time.
+    /// @dev Caps later checkpoint reads so reserve mints after submission can't increase the denominator
+    /// before the pending-reserve snapshot is added back in.
+    /// @custom:param gameId The ID of the game.
+    /// @custom:param scorecardId The ID of the scorecard.
+    /// @custom:param tierId The tier ID (1-indexed).
+    mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) internal _submittedTierAttestationUnitsOf;
 
     /// @notice Tier weights per scorecard for BWA computation.
     /// @custom:param gameId The ID of the game.
@@ -304,8 +312,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             _scorecardTierWeightsOf[gameId][scorecardId][tierWeights[i].id - 1] = tierWeights[i].cashOutWeight;
         }
 
-        // Snapshot pending reserves for each tier at submission time.
-        // This prevents reserve minting between submission and attestation from diluting votes.
+        // Snapshot each tier's pending reserves and minted attestation units at submission time.
+        // BWA later reads an account checkpoint at `attestationsBegin - 1`. If reserve mints happen
+        // after submission but before that checkpoint, clamp the live total back down to the minted
+        // units that existed at submission and only then add the snapshotted pending reserves.
         {
             IJB721TiersHookStore _store = IDefifaHook(metadata.dataHook).store();
             uint256 _numberOfTiers = _store.maxTierIdOf(metadata.dataHook);
@@ -313,8 +323,14 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             for (uint256 i; i < _numberOfTiers; i++) {
                 uint256 tierId = i + 1;
                 // slither-disable-next-line calls-loop
-                _pendingReservesSnapshotOf[gameId][scorecardId][tierId] =
-                    _store.numberOfPendingReservesFor(metadata.dataHook, tierId);
+                JB721Tier memory tier = _store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
+                // slither-disable-next-line calls-loop
+                uint256 pendingReserves = _store.numberOfPendingReservesFor(metadata.dataHook, tierId);
+                // slither-disable-next-line calls-loop
+                uint256 submittedTierAttestationUnits =
+                    IDefifaHook(metadata.dataHook).currentSupplyOfTier(tierId) * tier.votingUnits;
+                _pendingReservesSnapshotOf[gameId][scorecardId][tierId] = pendingReserves;
+                _submittedTierAttestationUnitsOf[gameId][scorecardId][tierId] = submittedTierAttestationUnits;
             }
         }
 
@@ -591,22 +607,23 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                 hook.getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
 
             if (tierAttestationUnitsForAccount != 0) {
-                // Get the total attestation units for this tier (snapshot at timestamp).
+                // Start from the checkpointed tier total at the requested timestamp.
+                // If reserve mints happened after submission, clamp them out before adding the
+                // pending-reserve snapshot back in so each reserve unit is counted exactly once.
                 // slither-disable-next-line calls-loop
                 uint256 tierTotalAttestationUnits =
                     hook.getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp});
+                uint256 submittedTierAttestationUnits = _submittedTierAttestationUnitsOf[gameId][scorecardId][tierId];
+                if (tierTotalAttestationUnits > submittedTierAttestationUnits) {
+                    tierTotalAttestationUnits = submittedTierAttestationUnits;
+                }
 
-                // Include unminted pending reserves in the total (denominator only).
-                // Uses the snapshot taken at scorecard submission time to prevent reserve
-                // minting between submission and attestation from diluting votes.
-                {
-                    uint256 pendingReserves = _pendingReservesSnapshotOf[gameId][scorecardId][tierId];
-                    if (pendingReserves != 0) {
-                        // slither-disable-next-line calls-loop
-                        JB721Tier memory tier =
-                            store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
-                        tierTotalAttestationUnits += pendingReserves * tier.votingUnits;
-                    }
+                uint256 pendingReserves = _pendingReservesSnapshotOf[gameId][scorecardId][tierId];
+                if (pendingReserves != 0) {
+                    // slither-disable-next-line calls-loop
+                    JB721Tier memory tier =
+                        store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
+                    tierTotalAttestationUnits += pendingReserves * tier.votingUnits;
                 }
 
                 // Raw power for this tier.

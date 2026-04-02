@@ -193,6 +193,45 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         );
     }
 
+    /// @notice Pending reserve mints in the delayed-attestation window must not change BWA power.
+    function test_mintingPendingReserveBeforeDelayedAttestationDoesNotChangeBWA() external {
+        DefifaLaunchProjectData memory data = _launchData();
+        data.attestationStartTime = uint48(block.timestamp + 5 days);
+
+        (_pid, _nft, _gov) = _launch(data);
+
+        vm.warp(block.timestamp + 1 days + 1);
+        _mint(_player0, 1);
+        _mint(_player1, 2);
+        _mint(_player2, 3);
+        _mint(_player3, 4);
+        _delegateSelf(_player0, 1);
+        _delegateSelf(_player1, 2);
+        _delegateSelf(_player2, 3);
+        _delegateSelf(_player3, 4);
+
+        vm.warp(block.timestamp + 2 days);
+
+        DefifaTierCashOutWeight[] memory scorecard = _evenScorecard();
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, scorecard);
+        uint48 futureSnapshotTime = uint48(_gov.attestationStartTimeOf(_gameId) - 1);
+
+        uint256 preRaw = _gov.getAttestationWeight(_gameId, _player0, futureSnapshotTime);
+        uint256 preBwa = _gov.getBWAAttestationWeight(_gameId, scorecardId, _player0, futureSnapshotTime);
+
+        JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
+        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
+        _nft.mintReservesFor(reserveConfigs);
+
+        uint256 postRaw = _gov.getAttestationWeight(_gameId, _player0, futureSnapshotTime);
+        uint256 postBwa = _gov.getBWAAttestationWeight(_gameId, scorecardId, _player0, futureSnapshotTime);
+
+        assertEq(preRaw, 500_000_000, "future raw snapshot includes the pending reserve exactly once");
+        assertEq(preBwa, 375_000_000, "future BWA starts from the reserve-adjusted submission denominator");
+        assertEq(postRaw, preRaw, "future raw power stays frozen before attestation begins");
+        assertEq(postBwa, preBwa, "reserve mint in delayed window must not change BWA power");
+    }
+
     function _evenScorecard() internal view returns (DefifaTierCashOutWeight[] memory scorecard) {
         scorecard = new DefifaTierCashOutWeight[](4);
         uint256 totalWeight = _nft.TOTAL_CASHOUT_WEIGHT();

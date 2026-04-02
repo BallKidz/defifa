@@ -946,8 +946,15 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         });
     }
 
-    function _cloneCreationCodeFor(address implementation) internal pure returns (bytes memory) {
-        return abi.encodePacked(
+    /// @notice Returns the minimal-proxy init code used to deploy a clone for the provided implementation.
+    /// @dev Defifa deploys hooks with `Clones.cloneDeterministic`, which uses `CREATE2`.
+    /// The address registry's CREATE2 path must be given the exact init code hash that was used at deployment time,
+    /// not the runtime bytecode and not a CREATE nonce. This helper reconstructs the standard EIP-1167 creation code
+    /// by inserting the implementation address into OpenZeppelin's minimal-proxy init-code template.
+    /// @param implementation The contract address the clone will delegate all calls to.
+    /// @return bytecode The full EIP-1167 creation bytecode hashed by CREATE2 to derive the clone address.
+    function _cloneCreationCodeFor(address implementation) internal pure returns (bytes memory bytecode) {
+        bytecode = abi.encodePacked(
             hex"3d602d80600a3d3981f3363d3d373d3d3d363d73", bytes20(implementation), hex"5af43d82803e903d91602b57fd5bf3"
         );
     }
