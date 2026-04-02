@@ -8,6 +8,7 @@ lib/forge-std/
 out/
 .claude/
 docs/
+assets/
 
 # Audit/nemesis output
 .audit/

@@ -612,7 +612,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// `context.beneficiary`. Part of `IJBCashOutHook`.
     /// @dev Reverts if the calling contract is not one of the project's terminals.
     /// @param context The cash out context passed in by the terminal.
-    // slither-disable-next-line locked-ether,reentrancy-no-eth,calls-loop
     function afterCashOutRecordedWith(JBAfterCashOutRecordedContext calldata context)
         external
         payable
@@ -1008,7 +1007,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
             // If there's either a new delegate or old delegate, set delegation and transfer units.
             if (attestationDelegate != address(0) || oldDelegate != address(0)) {
-                // Switch delegates if needed.
+                // Delegation is beneficiary-owned state. A third-party payer can fund this mint, but
+                // cannot overwrite the beneficiary's long-lived delegate preference through metadata.
                 if (
                     context.payer == context.beneficiary && attestationDelegate != address(0)
                         && attestationDelegate != oldDelegate

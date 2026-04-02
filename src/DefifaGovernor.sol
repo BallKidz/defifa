@@ -263,6 +263,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // If there's a weight assigned to the tier, make sure there is a token backed by it.
         // slither-disable-next-line calls-loop
         for (uint256 i; i < numberOfTierWeights; i++) {
+            // A nonzero cashout weight is only valid once that tier has live ownership.
             // slither-disable-next-line calls-loop
             uint256 currentTierSupply = IDefifaHook(metadata.dataHook).currentSupplyOfTier(tierWeights[i].id);
             if (tierWeights[i].cashOutWeight > 0 && currentTierSupply == 0) {
@@ -272,10 +273,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Run the same structural validation the hook will apply at ratification time so malformed
         // scorecards fail on submission instead of reaching a misleading SUCCEEDED state first.
-        uint256[128] memory validatedWeights = DefifaHookLib.validateAndBuildWeights({
+        // slither-disable-next-line unused-return
+        DefifaHookLib.validateAndBuildWeights({
             tierWeights: tierWeights, hookStore: IDefifaHook(metadata.dataHook).store(), hook: metadata.dataHook
         });
-        validatedWeights;
 
         // Hash the scorecard.
         scorecardId =
@@ -649,9 +650,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             uint256 tierId = i + 1;
 
             // A tier contributes to quorum if it has circulating tokens OR unminted pending reserves.
-            // Pending reserves exist when participation occurred (mints triggered reserve accrual),
-            // even if all paid tokens were later burned during REFUND. The reserve beneficiary still
-            // has a stake in that tier's outcome, so the tier should count toward governance quorum.
+            // Pending reserves still belong economically to the reserve beneficiary, even after the
+            // last paid token in the tier is burned during REFUND, so excluding them would let a
+            // burner erase another participant's quorum contribution without erasing their claim.
             // slither-disable-next-line calls-loop
             uint256 currentTierSupply = hook.currentSupplyOfTier(tierId);
             // slither-disable-next-line calls-loop
