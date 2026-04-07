@@ -59,6 +59,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     error DefifaHook_TransfersPaused();
     error DefifaHook_Unauthorized(uint256 tokenId, address owner, address caller);
 
+    event PricingCurrencySet(uint256 currency, address caller);
+
     //*********************************************************************//
     // --------------------- public constant properties ------------------ //
     //*********************************************************************//
@@ -497,6 +499,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         pricingCurrency = _currency;
         gamePhaseReporter = _gamePhaseReporter;
         gamePotReporter = _gamePotReporter;
+        // slither-disable-next-line missing-zero-check
         defaultAttestationDelegate = _defaultAttestationDelegate;
 
         // Store the base URI if provided.
@@ -529,19 +532,22 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Transfer ownership to the initializer.
         _transferOwnership(msg.sender);
+
+        emit PricingCurrencySet(_currency, msg.sender);
     }
 
     /// @notice Mint reserved tokens within the tier for the provided value.
     /// @param tierId The ID of the tier to mint within.
     /// @param count The number of reserved tokens to mint.
-    // slither-disable-next-line reentrancy-no-eth
     function mintReservesFor(uint256 tierId, uint256 count) public override {
         // Minting reserves must not be paused.
+        // slither-disable-next-line calls-loop
         if (JB721TiersRulesetMetadataResolver.mintPendingReservesPaused(
                 (JBRulesetMetadataResolver.metadata(rulesets.currentOf(PROJECT_ID)))
             )) revert DefifaHook_ReservedTokenMintingPaused();
 
         // Keep a reference to the reserved token beneficiary.
+        // slither-disable-next-line calls-loop
         address reservedTokenBeneficiary = store.reserveBeneficiaryOf({hook: address(this), tierId: tierId});
 
         // Get a reference to the old delegate.
@@ -559,12 +565,14 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         }
 
         // Record the minted reserves for the tier.
+        // slither-disable-next-line calls-loop
         uint256[] memory tokenIds = store.recordMintReservesFor({tierId: tierId, count: count});
 
         // Keep a reference to the token ID being iterated on.
         uint256 tokenId;
 
         // Fetch the tier details (needed for votingUnits below).
+        // slither-disable-next-line calls-loop
         JB721Tier memory tier = store.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
 
         // Increment _totalMintCost so reserved recipients can claim their share of fee tokens ($DEFIFA/$NANA).
@@ -579,6 +587,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             tokenId = tokenIds[i];
 
             // Mint the token.
+            // slither-disable-next-line reentrancy-no-eth
             _mint({to: reservedTokenBeneficiary, tokenId: tokenId});
 
             emit MintReservedToken(tokenId, tierId, reservedTokenBeneficiary, msg.sender);
@@ -589,6 +598,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         }
 
         // Transfer the attestation units to the delegate.
+        // slither-disable-next-line reentrancy-no-eth
         _transferTierAttestationUnits({
             from: address(0), to: reservedTokenBeneficiary, tierId: tierId, amount: tier.votingUnits * tokenIds.length
         });
@@ -602,7 +612,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// `context.beneficiary`. Part of `IJBCashOutHook`.
     /// @dev Reverts if the calling contract is not one of the project's terminals.
     /// @param context The cash out context passed in by the terminal.
-    // slither-disable-next-line locked-ether,reentrancy-no-eth
     function afterCashOutRecordedWith(JBAfterCashOutRecordedContext calldata context)
         external
         payable
@@ -654,6 +663,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
             if (isComplete) {
                 unchecked {
+                    // slither-disable-next-line reentrancy-no-eth,calls-loop
                     ++tokensRedeemedFrom[store.tierIdOfToken(tokenId)];
                 }
             }
@@ -674,6 +684,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             // Claim the $DEFIFA and $NANA tokens for the user.
             // Include pending reserve mint cost in the denominator so that unminted reserves
             // are accounted for, preventing paid holders from claiming a disproportionate share.
+            // slither-disable-next-line reentrancy-events
             beneficiaryReceivedTokens = _claimTokensFor({
                 beneficiary: context.holder,
                 shareToBeneficiary: cumulativeMintPrice,
@@ -795,8 +806,10 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         for (uint256 i; i < numberOfTiers;) {
             uint256 tierId = i + 1;
+            // slither-disable-next-line calls-loop
             uint256 pendingReserves = _store.numberOfPendingReservesFor({hook: hook, tierId: tierId});
             if (pendingReserves != 0) {
+                // slither-disable-next-line calls-loop
                 JB721Tier memory tier = _store.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
                 cost += pendingReserves * tier.price;
             }
@@ -862,6 +875,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @param tierId The ID of the tier to get attestation units for.
     /// @return The attestation units.
     function _getTierAttestationUnits(address account, uint256 tierId) internal view virtual returns (uint256) {
+        // slither-disable-next-line calls-loop
         return store.tierVotingUnitsOf({hook: address(this), account: account, tierId: tierId});
     }
 
@@ -994,8 +1008,12 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
             // If there's either a new delegate or old delegate, set delegation and transfer units.
             if (attestationDelegate != address(0) || oldDelegate != address(0)) {
-                // Switch delegates if needed.
-                if (attestationDelegate != address(0) && attestationDelegate != oldDelegate) {
+                // Delegation is beneficiary-owned state. A third-party payer can fund this mint, but
+                // cannot overwrite the beneficiary's long-lived delegate preference through metadata.
+                if (
+                    context.payer == context.beneficiary && attestationDelegate != address(0)
+                        && attestationDelegate != oldDelegate
+                ) {
                     _delegateTier({account: context.beneficiary, delegatee: attestationDelegate, tierId: tierId});
                 }
 
@@ -1085,6 +1103,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             // If transfers are pausable, check if they're paused.
             if (tier.flags.transfersPausable) {
                 // Get a reference to the project's current ruleset.
+                // slither-disable-next-line calls-loop
                 JBRuleset memory ruleset = rulesets.currentOf(PROJECT_ID);
 
                 // If transfers are paused and the NFT isn't being transferred to the zero address, revert.
@@ -1101,14 +1120,15 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             if (_firstOwnerOf[tokenId] == address(0)) _firstOwnerOf[tokenId] = from;
         }
 
-        // Record the transfer.
-        // slither-disable-next-line reentrancy-events,calls-loop
+        // Dont transfer on mint since the delegation will be transferred more efficiently in _processPayment.
+        if (from != address(0)) {
+            _transferTierAttestationUnits({from: from, to: to, tierId: tier.id, amount: tier.votingUnits});
+        }
+
+        // Record the transfer after local delegation state has been finalized.
+        // slither-disable-next-line calls-loop
         store.recordTransferForTier({tierId: tier.id, from: from, to: to});
 
-        // Dont transfer on mint since the delegation will be transferred more efficiently in _processPayment.
-        if (from == address(0)) return from;
-
-        // Transfer the attestation units.
-        _transferTierAttestationUnits({from: from, to: to, tierId: tier.id, amount: tier.votingUnits});
+        return from;
     }
 }

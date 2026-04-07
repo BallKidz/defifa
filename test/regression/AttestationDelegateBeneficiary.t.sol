@@ -178,8 +178,8 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
         assertEq(delegate, user, "Default delegate should be self when payer == beneficiary");
     }
 
-    /// @notice When an explicit delegate is set, it should be used regardless of payer/beneficiary.
-    function test_explicitDelegateOverridesDefault() public {
+    /// @notice A third-party payer cannot override the beneficiary's delegate.
+    function test_explicitDelegateFromThirdPartyDoesNotOverrideBeneficiaryDefault() public {
         address payer = address(bytes20(keccak256("payer2")));
         address beneficiary = address(bytes20(keccak256("beneficiary2")));
         address explicitDelegate = address(bytes20(keccak256("explicitDelegate")));
@@ -204,10 +204,8 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
             metadata: metadata
         });
 
-        // With the fix, delegation is stored on the beneficiary's account, not the payer's.
         address beneficiaryDelegate = _nft.getTierDelegateOf(beneficiary, 1);
-        assertEq(beneficiaryDelegate, explicitDelegate, "Explicit delegate should override default on beneficiary");
-        // Payer should have no delegation.
+        assertEq(beneficiaryDelegate, beneficiary, "third-party payer cannot overwrite beneficiary delegation");
         address payerDelegate = _nft.getTierDelegateOf(payer, 1);
         assertEq(payerDelegate, address(0), "Payer should have no delegation when payer != beneficiary");
     }

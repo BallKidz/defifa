@@ -22,9 +22,8 @@ contract DeployMainnet is Script, Sphinx {
     /// @notice tracks the deployment of the address registry for the chain we are deploying to.
     AddressRegistryDeployment registry;
 
-    // NOTE: This id is revnet, this is temporary until we have a defifa revnet.
-    uint256 _defifaProjectId = 3;
-    uint256 _baseProtocolProjectId = 1;
+    uint256 _defifaProjectId;
+    uint256 _baseProtocolProjectId;
 
     bytes32 _salt = bytes32(keccak256("0.0.2"));
 
@@ -52,6 +51,9 @@ contract DeployMainnet is Script, Sphinx {
                 string("node_modules/@bananapus/address-registry-v6/deployments/")
             )
         );
+
+        _defifaProjectId = vm.envUint("DEFIFA_PROJECT_ID");
+        _baseProtocolProjectId = vm.envUint("BASE_PROTOCOL_PROJECT_ID");
 
         defifaToken = IERC20(address(core.tokens.tokenOf(_defifaProjectId)));
         baseProtocolToken = IERC20(address(core.tokens.tokenOf(_baseProtocolProjectId)));

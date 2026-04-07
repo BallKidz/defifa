@@ -253,10 +253,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             sc[i].cashOutWeight = (_nft.TOTAL_CASHOUT_WEIGHT() * 30) / 100; // 120% total
         }
 
-        uint256 pid = _gov.submitScorecardFor(_gameId, sc);
-        _attestAllFor(pid);
         vm.expectRevert(DefifaHook.DefifaHook_InvalidCashoutWeights.selector);
-        _gov.ratifyScorecardFrom(_gameId, sc);
+        _gov.submitScorecardFor(_gameId, sc);
     }
 
     // =========================================================================

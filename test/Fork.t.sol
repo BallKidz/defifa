@@ -339,10 +339,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             sc[i].cashOutWeight = (_nft.TOTAL_CASHOUT_WEIGHT() * 30) / 100; // 120% total
         }
 
-        uint256 pid = _gov.submitScorecardFor(_gameId, sc);
-        _attestAllFor(pid);
         vm.expectRevert(DefifaHook.DefifaHook_InvalidCashoutWeights.selector);
-        _gov.ratifyScorecardFrom(_gameId, sc);
+        _gov.submitScorecardFor(_gameId, sc);
     }
 
     // =========================================================================
@@ -358,10 +356,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             sc[i].cashOutWeight = (_nft.TOTAL_CASHOUT_WEIGHT() * 20) / 100; // 80% total
         }
 
-        uint256 pid = _gov.submitScorecardFor(_gameId, sc);
-        _attestAllFor(pid);
         vm.expectRevert(DefifaHook.DefifaHook_InvalidCashoutWeights.selector);
-        _gov.ratifyScorecardFrom(_gameId, sc);
+        _gov.submitScorecardFor(_gameId, sc);
     }
 
     // =========================================================================
@@ -2010,10 +2006,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         sc[2] = DefifaTierCashOutWeight({id: 2, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT() / 4});
         sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT() / 4});
 
-        uint256 pid = _gov.submitScorecardFor(_gameId, sc);
-        _attestAllFor(pid);
         vm.expectRevert(DefifaHookLib.DefifaHook_BadTierOrder.selector);
-        _gov.ratifyScorecardFrom(_gameId, sc);
+        _gov.submitScorecardFor(_gameId, sc);
     }
 
     // =========================================================================
