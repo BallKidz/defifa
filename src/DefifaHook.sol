@@ -663,6 +663,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
             if (isComplete) {
                 unchecked {
+                    // slither-disable-next-line reentrancy-no-eth,calls-loop
                     ++tokensRedeemedFrom[store.tierIdOfToken(tokenId)];
                 }
             }

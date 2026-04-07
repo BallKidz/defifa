@@ -954,6 +954,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @param implementation The contract address the clone will delegate all calls to.
     /// @return bytecode The full EIP-1167 creation bytecode hashed by CREATE2 to derive the clone address.
     function _cloneCreationCodeFor(address implementation) internal pure returns (bytes memory bytecode) {
+        // EIP-1167 minimal proxy init code, mirroring OpenZeppelin's Clones.sol layout:
+        // [prefix (20 bytes)] [implementation address (20 bytes)] [suffix (15 bytes)]
         bytecode = abi.encodePacked(
             hex"3d602d80600a3d3981f3363d3d373d3d3d363d73", bytes20(implementation), hex"5af43d82803e903d91602b57fd5bf3"
         );

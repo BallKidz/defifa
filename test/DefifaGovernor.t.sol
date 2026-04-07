@@ -433,7 +433,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // We can't have a neutral outcome, so we only give shares to tiers that are an even number (in our array)
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
-            scorecards[i].cashOutWeight = i % 2 == 0 ? 1_000_000_000 / (scorecards.length / 2) : 0;
+            scorecards[i].cashOutWeight = i % 2 == 0 ? 1e18 / (scorecards.length / 2) : 0;
         }
         // Forward time so proposals can be created
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
@@ -1019,7 +1019,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // We can't have a neutral outcome, so we only give shares to tiers that are an even number (in our array)
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
-            scorecards[i].cashOutWeight = i % 2 == 0 ? 1_000_000_000 / (scorecards.length / 2) : 0;
+            scorecards[i].cashOutWeight = i % 2 == 0 ? 1e18 / (scorecards.length / 2) : 0;
         }
 
         vm.expectRevert(abi.encodeWithSignature("DefifaGovernor_UnownedProposedCashoutValue()"));
@@ -1111,7 +1111,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // We can't have a neutral outcome, so we only give shares to tiers that are an even number (in our array)
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
-            scorecards[i].cashOutWeight = i % 2 == 0 ? 1_000_000_000 / (scorecards.length / 2) : 0;
+            scorecards[i].cashOutWeight = i % 2 == 0 ? 1e18 / (scorecards.length / 2) : 0;
         }
         // Forward time so proposals can be created
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
@@ -1132,80 +1132,103 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // As a sanity check we let it also run for less than 10 to see if it does not error in that case.
         nTiers = uint8(bound(nTiers, 2, 20));
 
+        // With exact-weight validation, only nTiers == 10 produces weights that sum to TOTAL_CASHOUT_WEIGHT.
+        // Delegate to separate helpers to avoid stack-too-deep.
+        if (nTiers == 10) {
+            _testCashOutWeightExact(nTiers);
+        } else {
+            _testCashOutWeightInvalid(nTiers);
+        }
+    }
+
+    /// @dev nTiers == 10: all weights valid, full flow (submit → vote → ratify).
+    function _testCashOutWeightExact(uint8 nTiers) internal {
         address[] memory _users = new address[](nTiers);
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(nTiers);
         (uint256 _projectId, DefifaHook _nft, DefifaGovernor _governor) = createDefifaProject(defifaData);
 
         uint256 cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT() / 10;
 
-        // Phase 1: Mint
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
-        //deployer.queueNextPhaseOf(_projectId);
         for (uint256 i = 0; i < nTiers; i++) {
-            // Generate a new address for each tier
             _users[i] = address(bytes20(keccak256(abi.encode("user", Strings.toString(i)))));
-            // fund user
             vm.deal(_users[i], 1 ether);
-            // Build metadata to buy specific NFT
             uint16[] memory rawMetadata = new uint16[](1);
             // forge-lint: disable-next-line(unsafe-typecast)
-            rawMetadata[0] = uint16(i + 1); // reward tier, 1 indexed
+            rawMetadata[0] = uint16(i + 1);
             bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
-            // Pay to the project and mint an NFT
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(
                 _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
             );
-            // Set the delegate as the user themselves
             DefifaDelegation[] memory tiered721SetDelegatesData = new DefifaDelegation[](1);
             tiered721SetDelegatesData[0] = DefifaDelegation({delegatee: _users[i], tierId: uint256(i + 1)});
             vm.prank(_users[i]);
             _nft.setTierDelegatesTo(tiered721SetDelegatesData);
-            // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
             assertEq(
                 _governor.MAX_ATTESTATION_POWER_TIER(),
                 // forge-lint: disable-next-line(unsafe-typecast)
                 _governor.getAttestationWeight(_gameId, _users[i], uint48(block.timestamp))
             );
         }
-        // Warp to scoring phase (past start time)
         vm.warp(defifaData.start + 1);
 
-        // Generate the scorecards
         DefifaTierCashOutWeight[] memory scorecards = new DefifaTierCashOutWeight[](nTiers);
-
-        // We can't have a neutral outcome, so we only give shares to tiers that are an even number (in our array)
         for (uint256 i = 0; i < scorecards.length; i++) {
             scorecards[i].id = i + 1;
             scorecards[i].cashOutWeight = cashOutWeight;
         }
 
-        // Forward time so proposals can be created
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
-        // Forward time so voting becomes active
         vm.warp(block.timestamp + _governor.attestationStartTimeOf(_gameId));
-        // No voting delay after the initial voting delay has passed in
-        // assertEq(_governor.attestationStartTimeOf(_gameId), 0);
-        // All the users vote
-        // 0 = Against
-        // 1 = For
-        // 2 = Abstain
         for (uint256 i = 0; i < _users.length; i++) {
             vm.prank(_users[i]);
             _governor.attestToScorecardFrom(_gameId, _proposalId);
         }
-
-        // Forward the amount of blocks needed to reach the end (and round up)
         vm.warp(block.timestamp + _governor.attestationGracePeriodOf(_gameId) + 1);
+        _governor.ratifyScorecardFrom(_gameId, scorecards);
+    }
 
-        // With exact-weight validation, only nTiers == 10 produces an exact sum.
-        // Any other count (under or over) triggers INVALID_CASHOUT_WEIGHTS.
-        if (nTiers != 10) {
-            vm.expectRevert(DefifaHook.DefifaHook_InvalidCashoutWeights.selector);
+    /// @dev nTiers != 10: weights don't sum to TOTAL_CASHOUT_WEIGHT, submitScorecardFor reverts.
+    function _testCashOutWeightInvalid(uint8 nTiers) internal {
+        address[] memory _users = new address[](nTiers);
+        DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(nTiers);
+        (uint256 _projectId, DefifaHook _nft, DefifaGovernor _governor) = createDefifaProject(defifaData);
+
+        uint256 cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT() / 10;
+
+        vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
+        for (uint256 i = 0; i < nTiers; i++) {
+            _users[i] = address(bytes20(keccak256(abi.encode("user", Strings.toString(i)))));
+            vm.deal(_users[i], 1 ether);
+            uint16[] memory rawMetadata = new uint16[](1);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            rawMetadata[0] = uint16(i + 1);
+            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
+            vm.prank(_users[i]);
+            jbMultiTerminal().pay{value: 1 ether}(
+                _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
+            );
+            DefifaDelegation[] memory tiered721SetDelegatesData = new DefifaDelegation[](1);
+            tiered721SetDelegatesData[0] = DefifaDelegation({delegatee: _users[i], tierId: uint256(i + 1)});
+            vm.prank(_users[i]);
+            _nft.setTierDelegatesTo(tiered721SetDelegatesData);
+            assertEq(
+                _governor.MAX_ATTESTATION_POWER_TIER(),
+                // forge-lint: disable-next-line(unsafe-typecast)
+                _governor.getAttestationWeight(_gameId, _users[i], uint48(block.timestamp))
+            );
+        }
+        vm.warp(defifaData.start + 1);
+
+        DefifaTierCashOutWeight[] memory scorecards = new DefifaTierCashOutWeight[](nTiers);
+        for (uint256 i = 0; i < scorecards.length; i++) {
+            scorecards[i].id = i + 1;
+            scorecards[i].cashOutWeight = cashOutWeight;
         }
 
-        // Execute the proposal
-        _governor.ratifyScorecardFrom(_gameId, scorecards);
+        vm.expectRevert(DefifaHook.DefifaHook_InvalidCashoutWeights.selector);
+        _governor.submitScorecardFor(_gameId, scorecards);
     }
 
     function getBasicDefifaLaunchData(uint8 nTiers) internal returns (DefifaLaunchProjectData memory) {
