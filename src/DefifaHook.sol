@@ -282,12 +282,10 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Cache the store reference in a local variable to avoid repeated SLOAD.
         IJB721TiersHookStore hookStore = store;
 
-        // Cache the hook address to avoid repeated address(this) calls.
-        address hook = address(this);
-
         // Calculate the amount paid to mint the tokens that are being burned.
-        uint256 cumulativeMintPrice =
-            DefifaHookLib.computeCumulativeMintPrice({tokenIds: decodedTokenIds, hookStore: hookStore, hook: hook});
+        uint256 cumulativeMintPrice = DefifaHookLib.computeCumulativeMintPrice({
+            tokenIds: decodedTokenIds, hookStore: hookStore, hook: address(this)
+        });
 
         // Use this contract as the only cash out hook.
         hookSpecifications = new JBCashOutHookSpecification[](1);
@@ -390,17 +388,14 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // If the game isn't complete, we do not have any tokens to claim.
         if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.COMPLETE) return (0, 0);
 
-        // Cache the hook address to avoid repeated address(this) calls.
-        address hook = address(this);
-
         // slither-disable-next-line unused-return
         return DefifaHookLib.computeTokensClaim({
             tokenIds: tokenIds,
             hookStore: store,
-            hook: hook,
+            hook: address(this),
             totalMintCost: _totalMintCost,
-            defifaBalance: DEFIFA_TOKEN.balanceOf(hook),
-            baseProtocolBalance: BASE_PROTOCOL_TOKEN.balanceOf(hook)
+            defifaBalance: DEFIFA_TOKEN.balanceOf(address(this)),
+            baseProtocolBalance: BASE_PROTOCOL_TOKEN.balanceOf(address(this))
         });
     }
 
@@ -559,12 +554,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Cache the store reference in a local variable to avoid repeated SLOAD.
         IJB721TiersHookStore hookStore = store;
 
-        // Cache the hook address to avoid repeated address(this) calls.
-        address hook = address(this);
-
         // Keep a reference to the reserved token beneficiary.
         // slither-disable-next-line calls-loop
-        address reservedTokenBeneficiary = hookStore.reserveBeneficiaryOf({hook: hook, tierId: tierId});
+        address reservedTokenBeneficiary = hookStore.reserveBeneficiaryOf({hook: address(this), tierId: tierId});
 
         // Get a reference to the old delegate.
         address oldDelegate = _tierDelegation[reservedTokenBeneficiary][tierId];
@@ -589,7 +581,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Fetch the tier details (needed for votingUnits below).
         // slither-disable-next-line calls-loop
-        JB721Tier memory tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
+        JB721Tier memory tier = hookStore.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
 
         // Increment _totalMintCost so reserved recipients can claim their share of fee tokens ($DEFIFA/$NANA).
         // Note: reserved mints dilute existing fee token claimants because they increase the total mint cost
@@ -825,16 +817,15 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @return cost The total mint cost of pending reserves.
     function _pendingReserveMintCost() internal view returns (uint256 cost) {
         IJB721TiersHookStore hookStore = store;
-        address hook = address(this);
-        uint256 numberOfTiers = hookStore.maxTierIdOf(hook);
+        uint256 numberOfTiers = hookStore.maxTierIdOf(address(this));
 
         for (uint256 i; i < numberOfTiers;) {
             uint256 tierId = i + 1;
             // slither-disable-next-line calls-loop
-            uint256 pendingReserves = hookStore.numberOfPendingReservesFor({hook: hook, tierId: tierId});
+            uint256 pendingReserves = hookStore.numberOfPendingReservesFor({hook: address(this), tierId: tierId});
             if (pendingReserves != 0) {
                 // slither-disable-next-line calls-loop
-                JB721Tier memory tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
+                JB721Tier memory tier = hookStore.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
                 cost += pendingReserves * tier.price;
             }
             unchecked {
