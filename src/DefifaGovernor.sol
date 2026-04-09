@@ -336,9 +336,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // units that existed at submission and only then add the snapshotted pending reserves.
         {
             // Cache the number of tiers to avoid re-reading from storage.
-            uint256 _numberOfTiers = hookStore.maxTierIdOf(dataHook);
+            uint256 numberOfTiers = hookStore.maxTierIdOf(dataHook);
             // slither-disable-next-line calls-loop
-            for (uint256 i; i < _numberOfTiers;) {
+            for (uint256 i; i < numberOfTiers;) {
                 uint256 tierId = i + 1;
                 // slither-disable-next-line calls-loop
                 JB721Tier memory tier = hookStore.tierOf({hook: dataHook, id: tierId, includeResolvedUri: false});
@@ -769,8 +769,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // If quorum has been reached (using the concentration-adjusted snapshot), check timelock.
         if (scorecard.quorumSnapshot <= _scorecardAttestationsOf[gameId][scorecardId].count) {
-            uint256 _timelockDuration = timelockDurationOf(gameId);
-            if (_timelockDuration > 0 && block.timestamp < uint256(scorecard.gracePeriodEnds) + _timelockDuration) {
+            uint256 timelockDur = timelockDurationOf(gameId);
+            if (timelockDur > 0 && block.timestamp < uint256(scorecard.gracePeriodEnds) + timelockDur) {
                 return DefifaScorecardState.QUEUED;
             }
             return DefifaScorecardState.SUCCEEDED;

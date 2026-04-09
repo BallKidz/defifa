@@ -280,14 +280,14 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         DefifaGamePhase gamePhase = gamePhaseReporter.currentGamePhaseOf(context.projectId);
 
         // Cache the store reference in a local variable to avoid repeated SLOAD.
-        IJB721TiersHookStore _store = store;
+        IJB721TiersHookStore hookStore = store;
 
         // Cache the hook address to avoid repeated address(this) calls.
         address hook = address(this);
 
         // Calculate the amount paid to mint the tokens that are being burned.
         uint256 cumulativeMintPrice =
-            DefifaHookLib.computeCumulativeMintPrice({tokenIds: decodedTokenIds, hookStore: _store, hook: hook});
+            DefifaHookLib.computeCumulativeMintPrice({tokenIds: decodedTokenIds, hookStore: hookStore, hook: hook});
 
         // Use this contract as the only cash out hook.
         hookSpecifications = new JBCashOutHookSpecification[](1);
@@ -557,14 +557,14 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             )) revert DefifaHook_ReservedTokenMintingPaused();
 
         // Cache the store reference in a local variable to avoid repeated SLOAD.
-        IJB721TiersHookStore _store = store;
+        IJB721TiersHookStore hookStore = store;
 
         // Cache the hook address to avoid repeated address(this) calls.
         address hook = address(this);
 
         // Keep a reference to the reserved token beneficiary.
         // slither-disable-next-line calls-loop
-        address reservedTokenBeneficiary = _store.reserveBeneficiaryOf({hook: hook, tierId: tierId});
+        address reservedTokenBeneficiary = hookStore.reserveBeneficiaryOf({hook: hook, tierId: tierId});
 
         // Get a reference to the old delegate.
         address oldDelegate = _tierDelegation[reservedTokenBeneficiary][tierId];
@@ -582,14 +582,14 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Record the minted reserves for the tier.
         // slither-disable-next-line calls-loop
-        uint256[] memory tokenIds = _store.recordMintReservesFor({tierId: tierId, count: count});
+        uint256[] memory tokenIds = hookStore.recordMintReservesFor({tierId: tierId, count: count});
 
         // Keep a reference to the token ID being iterated on.
         uint256 tokenId;
 
         // Fetch the tier details (needed for votingUnits below).
         // slither-disable-next-line calls-loop
-        JB721Tier memory tier = _store.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
+        JB721Tier memory tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
 
         // Increment _totalMintCost so reserved recipients can claim their share of fee tokens ($DEFIFA/$NANA).
         // Note: reserved mints dilute existing fee token claimants because they increase the total mint cost
@@ -664,7 +664,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         bool isComplete = gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) == DefifaGamePhase.COMPLETE;
 
         // Cache the store reference in a local variable to avoid repeated SLOAD in the loop.
-        IJB721TiersHookStore _store = store;
+        IJB721TiersHookStore hookStore = store;
 
         // Iterate through all tokens, burning them if the owner is correct.
         for (uint256 i; i < numberOfTokenIds;) {
@@ -684,7 +684,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             if (isComplete) {
                 unchecked {
                     // slither-disable-next-line reentrancy-no-eth,calls-loop
-                    ++tokensRedeemedFrom[_store.tierIdOfToken(tokenId)];
+                    ++tokensRedeemedFrom[hookStore.tierIdOfToken(tokenId)];
                 }
             }
 
@@ -824,17 +824,17 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// cannot claim a disproportionate share before reserves are minted.
     /// @return cost The total mint cost of pending reserves.
     function _pendingReserveMintCost() internal view returns (uint256 cost) {
-        IJB721TiersHookStore _store = store;
+        IJB721TiersHookStore hookStore = store;
         address hook = address(this);
-        uint256 numberOfTiers = _store.maxTierIdOf(hook);
+        uint256 numberOfTiers = hookStore.maxTierIdOf(hook);
 
         for (uint256 i; i < numberOfTiers;) {
             uint256 tierId = i + 1;
             // slither-disable-next-line calls-loop
-            uint256 pendingReserves = _store.numberOfPendingReservesFor({hook: hook, tierId: tierId});
+            uint256 pendingReserves = hookStore.numberOfPendingReservesFor({hook: hook, tierId: tierId});
             if (pendingReserves != 0) {
                 // slither-disable-next-line calls-loop
-                JB721Tier memory tier = _store.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
+                JB721Tier memory tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
                 cost += pendingReserves * tier.price;
             }
             unchecked {
@@ -1118,11 +1118,12 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @return from The address the token was transferred from.
     function _update(address to, uint256 tokenId, address auth) internal virtual override returns (address from) {
         // Cache the store reference in a local variable to avoid repeated SLOAD.
-        IJB721TiersHookStore _store = store;
+        IJB721TiersHookStore hookStore = store;
 
         // Get a reference to the tier.
         // slither-disable-next-line calls-loop
-        JB721Tier memory tier = _store.tierOfTokenId({hook: address(this), tokenId: tokenId, includeResolvedUri: false});
+        JB721Tier memory tier =
+            hookStore.tierOfTokenId({hook: address(this), tokenId: tokenId, includeResolvedUri: false});
 
         // Record the transfers and keep a reference to where the token is coming from.
         from = super._update(to, tokenId, auth);
@@ -1156,7 +1157,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Record the transfer after local delegation state has been finalized.
         // slither-disable-next-line calls-loop
-        _store.recordTransferForTier({tierId: tier.id, from: from, to: to});
+        hookStore.recordTransferForTier({tierId: tier.id, from: from, to: to});
 
         return from;
     }
