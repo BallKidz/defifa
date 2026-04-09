@@ -279,10 +279,15 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Get the current game phase.
         DefifaGamePhase gamePhase = gamePhaseReporter.currentGamePhaseOf(context.projectId);
 
+        // Cache the store reference in a local variable to avoid repeated SLOAD.
+        IJB721TiersHookStore _store = store;
+
+        // Cache the hook address to avoid repeated address(this) calls.
+        address hook = address(this);
+
         // Calculate the amount paid to mint the tokens that are being burned.
-        uint256 cumulativeMintPrice = DefifaHookLib.computeCumulativeMintPrice({
-            tokenIds: decodedTokenIds, hookStore: store, hook: address(this)
-        });
+        uint256 cumulativeMintPrice =
+            DefifaHookLib.computeCumulativeMintPrice({tokenIds: decodedTokenIds, hookStore: _store, hook: hook});
 
         // Use this contract as the only cash out hook.
         hookSpecifications = new JBCashOutHookSpecification[](1);
@@ -315,6 +320,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         override
         returns (uint256 cumulativeWeight)
     {
+        // Cache the store in a local variable to avoid repeated SLOAD.
         cumulativeWeight = DefifaHookLib.computeCashOutWeightBatch({
             tokenIds: tokenIds,
             hookStore: store,
@@ -339,6 +345,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
     /// @notice The amount of tokens of a tier that are currently in circulation.
     /// @param tierId The ID of the tier to get the current supply of.
+    /// @return The current supply count.
     function currentSupplyOfTier(uint256 tierId) public view returns (uint256) {
         return DefifaHookLib.computeCurrentSupply({hookStore: store, hook: address(this), tierId: tierId});
     }
@@ -383,14 +390,17 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // If the game isn't complete, we do not have any tokens to claim.
         if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.COMPLETE) return (0, 0);
 
+        // Cache this contract's address to avoid repeated address(this) calls.
+        address self = address(this);
+
         // slither-disable-next-line unused-return
         return DefifaHookLib.computeTokensClaim({
             tokenIds: tokenIds,
             hookStore: store,
-            hook: address(this),
+            hook: self,
             totalMintCost: _totalMintCost,
-            defifaBalance: DEFIFA_TOKEN.balanceOf(address(this)),
-            baseProtocolBalance: BASE_PROTOCOL_TOKEN.balanceOf(address(this))
+            defifaBalance: DEFIFA_TOKEN.balanceOf(self),
+            baseProtocolBalance: BASE_PROTOCOL_TOKEN.balanceOf(self)
         });
     }
 
@@ -546,9 +556,15 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
                 (JBRulesetMetadataResolver.metadata(rulesets.currentOf(PROJECT_ID)))
             )) revert DefifaHook_ReservedTokenMintingPaused();
 
+        // Cache the store reference in a local variable to avoid repeated SLOAD.
+        IJB721TiersHookStore _store = store;
+
+        // Cache the hook address to avoid repeated address(this) calls.
+        address hook = address(this);
+
         // Keep a reference to the reserved token beneficiary.
         // slither-disable-next-line calls-loop
-        address reservedTokenBeneficiary = store.reserveBeneficiaryOf({hook: address(this), tierId: tierId});
+        address reservedTokenBeneficiary = _store.reserveBeneficiaryOf({hook: hook, tierId: tierId});
 
         // Get a reference to the old delegate.
         address oldDelegate = _tierDelegation[reservedTokenBeneficiary][tierId];
@@ -566,14 +582,14 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Record the minted reserves for the tier.
         // slither-disable-next-line calls-loop
-        uint256[] memory tokenIds = store.recordMintReservesFor({tierId: tierId, count: count});
+        uint256[] memory tokenIds = _store.recordMintReservesFor({tierId: tierId, count: count});
 
         // Keep a reference to the token ID being iterated on.
         uint256 tokenId;
 
         // Fetch the tier details (needed for votingUnits below).
         // slither-disable-next-line calls-loop
-        JB721Tier memory tier = store.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
+        JB721Tier memory tier = _store.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
 
         // Increment _totalMintCost so reserved recipients can claim their share of fee tokens ($DEFIFA/$NANA).
         // Note: reserved mints dilute existing fee token claimants because they increase the total mint cost
@@ -586,7 +602,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             // Set the token ID.
             tokenId = tokenIds[i];
 
-            // Mint the token.
+            // Mint the token to the reserve beneficiary.
             // slither-disable-next-line reentrancy-no-eth
             _mint({to: reservedTokenBeneficiary, tokenId: tokenId});
 
@@ -647,25 +663,33 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Keep track of whether the cashOut is happening during the complete phase.
         bool isComplete = gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) == DefifaGamePhase.COMPLETE;
 
+        // Cache the store reference in a local variable to avoid repeated SLOAD in the loop.
+        IJB721TiersHookStore _store = store;
+
         // Iterate through all tokens, burning them if the owner is correct.
-        for (uint256 i; i < numberOfTokenIds; i++) {
+        for (uint256 i; i < numberOfTokenIds;) {
             // Set the token's ID.
             tokenId = decodedTokenIds[i];
 
             // Make sure the token's owner is correct.
             address tokenOwner = _ownerOf(tokenId);
             if (tokenOwner != context.holder) {
-                revert DefifaHook_Unauthorized(tokenId, tokenOwner, context.holder);
+                revert DefifaHook_Unauthorized({tokenId: tokenId, owner: tokenOwner, caller: context.holder});
             }
 
             // Burn the token.
             _burn(tokenId);
 
+            // Track per-tier redemptions during the complete phase.
             if (isComplete) {
                 unchecked {
                     // slither-disable-next-line reentrancy-no-eth,calls-loop
-                    ++tokensRedeemedFrom[store.tierIdOfToken(tokenId)];
+                    ++tokensRedeemedFrom[_store.tierIdOfToken(tokenId)];
                 }
+            }
+
+            unchecked {
+                ++i;
             }
         }
 
@@ -1090,10 +1114,15 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice Before transferring an NFT, register its first owner (if necessary).
     /// @param to The address the NFT is being transferred to.
     /// @param tokenId The token ID of the NFT being transferred.
+    /// @param auth The address authorizing the transfer.
+    /// @return from The address the token was transferred from.
     function _update(address to, uint256 tokenId, address auth) internal virtual override returns (address from) {
+        // Cache the store reference in a local variable to avoid repeated SLOAD.
+        IJB721TiersHookStore _store = store;
+
         // Get a reference to the tier.
         // slither-disable-next-line calls-loop
-        JB721Tier memory tier = store.tierOfTokenId({hook: address(this), tokenId: tokenId, includeResolvedUri: false});
+        JB721Tier memory tier = _store.tierOfTokenId({hook: address(this), tokenId: tokenId, includeResolvedUri: false});
 
         // Record the transfers and keep a reference to where the token is coming from.
         from = super._update(to, tokenId, auth);
@@ -1127,7 +1156,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Record the transfer after local delegation state has been finalized.
         // slither-disable-next-line calls-loop
-        store.recordTransferForTier({tierId: tier.id, from: from, to: to});
+        _store.recordTransferForTier({tierId: tier.id, from: from, to: to});
 
         return from;
     }

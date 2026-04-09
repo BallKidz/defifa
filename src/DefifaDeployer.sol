@@ -146,15 +146,18 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Get a reference to the token being used by the project.
         address token = _opsOf[gameId].token;
 
-        // Get a reference to the terminal.
+        // Get a reference to the terminal via the directory.
         IJBTerminal terminal = CONTROLLER.DIRECTORY().primaryTerminalOf({projectId: gameId, token: token});
+
+        // Cache the terminal address to avoid repeated casting.
+        address terminalAddr = address(terminal);
 
         // Get the accounting context for the project.
         JBAccountingContext memory context = terminal.accountingContextForTokenOf({projectId: gameId, token: token});
 
-        // Get the current balance.
-        uint256 pot = IJBMultiTerminal(address(terminal)).STORE()
-            .balanceOf({terminal: address(terminal), projectId: gameId, token: token});
+        // Get the current balance from the terminal's store.
+        uint256 pot =
+            IJBMultiTerminal(terminalAddr).STORE().balanceOf({terminal: terminalAddr, projectId: gameId, token: token});
 
         // Add any fulfilled commitments.
         if (includeCommitments) pot += fulfilledCommitmentsOf[gameId];
@@ -221,9 +224,13 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Get the game's current funding cycle along with its metadata.
         (JBRuleset memory currentRuleset, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
-        if (currentRuleset.cycleNumber == 0) return DefifaGamePhase.COUNTDOWN;
-        if (currentRuleset.cycleNumber == 1) return DefifaGamePhase.MINT;
-        if (currentRuleset.cycleNumber == 2 && _opsOf[gameId].refundPeriodDuration != 0) {
+        // Cache the cycle number to avoid repeated memory reads.
+        uint256 cycleNumber = currentRuleset.cycleNumber;
+
+        // Return early for the first three phases based on cycle number.
+        if (cycleNumber == 0) return DefifaGamePhase.COUNTDOWN;
+        if (cycleNumber == 1) return DefifaGamePhase.MINT;
+        if (cycleNumber == 2 && _opsOf[gameId].refundPeriodDuration != 0) {
             return DefifaGamePhase.REFUND;
         }
 
@@ -234,15 +241,17 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // If no-contest has already been triggered, stay in NO_CONTEST.
         if (noContestTriggeredFor[gameId]) return DefifaGamePhase.NO_CONTEST;
 
-        // Get the game's ops data for the safety mechanism checks.
+        // Get the game's ops data for the safety mechanism checks. Cache to avoid repeated SLOAD.
         DefifaOpsData memory ops = _opsOf[gameId];
 
         // Check minimum participation threshold: if the treasury balance is below the threshold, the game is
         // NO_CONTEST.
         if (ops.minParticipation > 0) {
             IJBTerminal terminal = CONTROLLER.DIRECTORY().primaryTerminalOf({projectId: gameId, token: ops.token});
-            uint256 balance = IJBMultiTerminal(address(terminal)).STORE()
-                .balanceOf({terminal: address(terminal), projectId: gameId, token: ops.token});
+            // Cache the terminal address to avoid repeated casting.
+            address terminalAddr = address(terminal);
+            uint256 balance = IJBMultiTerminal(terminalAddr).STORE()
+                .balanceOf({terminal: terminalAddr, projectId: gameId, token: ops.token});
             if (balance < ops.minParticipation) return DefifaGamePhase.NO_CONTEST;
         }
 
@@ -311,8 +320,11 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         IJBMultiTerminal terminal =
             IJBMultiTerminal(address(CONTROLLER.DIRECTORY().primaryTerminalOf({projectId: gameId, token: token})));
 
+        // Cache the terminal address to avoid repeated casting.
+        address terminalAddr = address(terminal);
+
         // Get the current pot and store it. This also prevents re-entrance since the check above will return early.
-        uint256 pot = terminal.STORE().balanceOf({terminal: address(terminal), projectId: gameId, token: token});
+        uint256 pot = terminal.STORE().balanceOf({terminal: terminalAddr, projectId: gameId, token: token});
 
         // If the pot is empty, set the sentinel and queue the final ruleset without attempting payouts.
         // slither-disable-next-line incorrect-equality
@@ -660,8 +672,11 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         // Sum all absolute percents.
         uint256 totalAbsolutePercent = nanaAbsolutePercent + defifaAbsolutePercent;
-        for (uint256 i; i < numberOfUserSplits; i++) {
+        for (uint256 i; i < numberOfUserSplits;) {
             totalAbsolutePercent += initialSplits[i].percent;
+            unchecked {
+                ++i;
+            }
         }
 
         // Validate that total fee splits don't exceed 100%.
@@ -677,7 +692,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         // Normalize user splits and copy them over.
         uint256 normalizedTotal;
-        for (uint256 i; i < numberOfUserSplits; i++) {
+        for (uint256 i; i < numberOfUserSplits;) {
             splits[i] = initialSplits[i];
             splits[i].percent = uint32(
                 mulDiv({
@@ -685,6 +700,9 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 })
             );
             normalizedTotal += splits[i].percent;
+            unchecked {
+                ++i;
+            }
         }
 
         // Add Defifa fee split (normalized).
