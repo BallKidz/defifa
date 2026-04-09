@@ -390,17 +390,17 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // If the game isn't complete, we do not have any tokens to claim.
         if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.COMPLETE) return (0, 0);
 
-        // Cache this contract's address to avoid repeated address(this) calls.
-        address self = address(this);
+        // Cache the hook address to avoid repeated address(this) calls.
+        address hook = address(this);
 
         // slither-disable-next-line unused-return
         return DefifaHookLib.computeTokensClaim({
             tokenIds: tokenIds,
             hookStore: store,
-            hook: self,
+            hook: hook,
             totalMintCost: _totalMintCost,
-            defifaBalance: DEFIFA_TOKEN.balanceOf(self),
-            baseProtocolBalance: BASE_PROTOCOL_TOKEN.balanceOf(self)
+            defifaBalance: DEFIFA_TOKEN.balanceOf(hook),
+            baseProtocolBalance: BASE_PROTOCOL_TOKEN.balanceOf(hook)
         });
     }
 
