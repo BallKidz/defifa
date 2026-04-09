@@ -149,15 +149,12 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Get a reference to the terminal via the directory.
         IJBTerminal terminal = CONTROLLER.DIRECTORY().primaryTerminalOf({projectId: gameId, token: token});
 
-        // Cache the terminal address to avoid repeated casting.
-        address terminalAddr = address(terminal);
-
         // Get the accounting context for the project.
         JBAccountingContext memory context = terminal.accountingContextForTokenOf({projectId: gameId, token: token});
 
         // Get the current balance from the terminal's store.
-        uint256 pot =
-            IJBMultiTerminal(terminalAddr).STORE().balanceOf({terminal: terminalAddr, projectId: gameId, token: token});
+        uint256 pot = IJBMultiTerminal(address(terminal)).STORE()
+            .balanceOf({terminal: address(terminal), projectId: gameId, token: token});
 
         // Add any fulfilled commitments.
         if (includeCommitments) pot += fulfilledCommitmentsOf[gameId];
@@ -248,10 +245,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // NO_CONTEST.
         if (ops.minParticipation > 0) {
             IJBTerminal terminal = CONTROLLER.DIRECTORY().primaryTerminalOf({projectId: gameId, token: ops.token});
-            // Cache the terminal address to avoid repeated casting.
-            address terminalAddr = address(terminal);
-            uint256 balance = IJBMultiTerminal(terminalAddr).STORE()
-                .balanceOf({terminal: terminalAddr, projectId: gameId, token: ops.token});
+            uint256 balance = IJBMultiTerminal(address(terminal)).STORE()
+                .balanceOf({terminal: address(terminal), projectId: gameId, token: ops.token});
             if (balance < ops.minParticipation) return DefifaGamePhase.NO_CONTEST;
         }
 
@@ -320,11 +315,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         IJBMultiTerminal terminal =
             IJBMultiTerminal(address(CONTROLLER.DIRECTORY().primaryTerminalOf({projectId: gameId, token: token})));
 
-        // Cache the terminal address to avoid repeated casting.
-        address terminalAddr = address(terminal);
-
         // Get the current pot and store it. This also prevents re-entrance since the check above will return early.
-        uint256 pot = terminal.STORE().balanceOf({terminal: terminalAddr, projectId: gameId, token: token});
+        uint256 pot = terminal.STORE().balanceOf({terminal: address(terminal), projectId: gameId, token: token});
 
         // If the pot is empty, set the sentinel and queue the final ruleset without attempting payouts.
         // slither-disable-next-line incorrect-equality

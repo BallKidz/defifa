@@ -125,11 +125,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
-        // Cache the data hook address to avoid repeated memory reads.
-        address dataHook = metadata.dataHook;
-
         // Make sure the game is in its scoring phase.
-        if (IDefifaHook(dataHook).gamePhaseReporter().currentGamePhaseOf(gameId) != DefifaGamePhase.SCORING) {
+        if (IDefifaHook(metadata.dataHook).gamePhaseReporter().currentGamePhaseOf(gameId) != DefifaGamePhase.SCORING) {
             revert DefifaGovernor_NotAllowed();
         }
 
@@ -192,14 +189,11 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
-        // Cache the data hook address to avoid repeated memory reads.
-        address dataHook = metadata.dataHook;
-
         // Build the calldata to the target.
         bytes memory scorecardCalldata = _buildScorecardCalldataFor(tierWeights);
 
         // Hash the scorecard to derive its ID.
-        scorecardId = _hashScorecardOf({gameHook: dataHook, calldataBytes: scorecardCalldata});
+        scorecardId = _hashScorecardOf({gameHook: metadata.dataHook, calldataBytes: scorecardCalldata});
 
         // Make sure the proposal being ratified has succeeded.
         if (stateOf({gameId: gameId, scorecardId: scorecardId}) != DefifaScorecardState.SUCCEEDED) {
@@ -210,7 +204,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         ratifiedScorecardIdOf[gameId] = scorecardId;
 
         // Execute the scorecard via low-level call since the governor is the delegate's owner.
-        (bool success, bytes memory returndata) = dataHook.call(scorecardCalldata);
+        (bool success, bytes memory returndata) = metadata.dataHook.call(scorecardCalldata);
         // slither-disable-next-line unused-return
         Address.verifyCallResult({success: success, returndata: returndata});
 
@@ -272,11 +266,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
-        // Cache the data hook address to avoid repeated memory reads.
-        address dataHook = metadata.dataHook;
-
         // Make sure the game is in its scoring phase.
-        if (IDefifaHook(dataHook).gamePhaseReporter().currentGamePhaseOf(gameId) != DefifaGamePhase.SCORING) {
+        if (IDefifaHook(metadata.dataHook).gamePhaseReporter().currentGamePhaseOf(gameId) != DefifaGamePhase.SCORING) {
             revert DefifaGovernor_NotAllowed();
         }
 
@@ -285,7 +276,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         for (uint256 i; i < numberOfTierWeights;) {
             // A nonzero cashout weight is only valid once that tier has live ownership.
             // slither-disable-next-line calls-loop
-            uint256 currentTierSupply = IDefifaHook(dataHook).currentSupplyOfTier(tierWeights[i].id);
+            uint256 currentTierSupply = IDefifaHook(metadata.dataHook).currentSupplyOfTier(tierWeights[i].id);
             if (tierWeights[i].cashOutWeight > 0 && currentTierSupply == 0) {
                 revert DefifaGovernor_UnownedProposedCashoutValue();
             }
@@ -295,15 +286,16 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         }
 
         // Cache the hook store to avoid repeated external calls.
-        IJB721TiersHookStore hookStore = IDefifaHook(dataHook).store();
+        IJB721TiersHookStore hookStore = IDefifaHook(metadata.dataHook).store();
 
         // Run the same structural validation the hook will apply at ratification time so malformed
         // scorecards fail on submission instead of reaching a misleading SUCCEEDED state first.
         // slither-disable-next-line unused-return
-        DefifaHookLib.validateAndBuildWeights({tierWeights: tierWeights, hookStore: hookStore, hook: dataHook});
+        DefifaHookLib.validateAndBuildWeights({tierWeights: tierWeights, hookStore: hookStore, hook: metadata.dataHook});
 
         // Hash the scorecard.
-        scorecardId = _hashScorecardOf({gameHook: dataHook, calldataBytes: _buildScorecardCalldataFor(tierWeights)});
+        scorecardId =
+            _hashScorecardOf({gameHook: metadata.dataHook, calldataBytes: _buildScorecardCalldataFor(tierWeights)});
 
         // Store the scorecard.
         DefifaScorecard storage scorecard = _scorecardOf[gameId][scorecardId];
@@ -336,17 +328,19 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // units that existed at submission and only then add the snapshotted pending reserves.
         {
             // Cache the number of tiers to avoid re-reading from storage.
-            uint256 numberOfTiers = hookStore.maxTierIdOf(dataHook);
+            uint256 numberOfTiers = hookStore.maxTierIdOf(metadata.dataHook);
             // slither-disable-next-line calls-loop
             for (uint256 i; i < numberOfTiers;) {
                 uint256 tierId = i + 1;
                 // slither-disable-next-line calls-loop
-                JB721Tier memory tier = hookStore.tierOf({hook: dataHook, id: tierId, includeResolvedUri: false});
+                JB721Tier memory tier =
+                    hookStore.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
                 // slither-disable-next-line calls-loop
-                uint256 pendingReserves = hookStore.numberOfPendingReservesFor({hook: dataHook, tierId: tierId});
+                uint256 pendingReserves =
+                    hookStore.numberOfPendingReservesFor({hook: metadata.dataHook, tierId: tierId});
                 // slither-disable-next-line calls-loop
                 uint256 submittedTierAttestationUnits =
-                    IDefifaHook(dataHook).currentSupplyOfTier(tierId) * tier.votingUnits;
+                    IDefifaHook(metadata.dataHook).currentSupplyOfTier(tierId) * tier.votingUnits;
                 _pendingReservesSnapshotOf[gameId][scorecardId][tierId] = pendingReserves;
                 _submittedTierAttestationUnitsOf[gameId][scorecardId][tierId] = submittedTierAttestationUnits;
                 unchecked {
@@ -370,7 +364,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             if (headroom > numberOfTierWeights) headroom -= numberOfTierWeights;
 
             // Find the largest tier weight.
-            uint256 totalCashOutWeight = IDefifaHook(dataHook).TOTAL_CASHOUT_WEIGHT();
+            uint256 totalCashOutWeight = IDefifaHook(metadata.dataHook).TOTAL_CASHOUT_WEIGHT();
             uint256 maxWeight;
             for (uint256 i; i < numberOfTierWeights;) {
                 if (tierWeights[i].cashOutWeight > maxWeight) maxWeight = tierWeights[i].cashOutWeight;
@@ -389,7 +383,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         scorecard.quorumSnapshot = adjustedQuorum;
 
         // Keep a reference to the default attestation delegate.
-        address defaultAttestationDelegate = IDefifaHook(dataHook).defaultAttestationDelegate();
+        address defaultAttestationDelegate = IDefifaHook(metadata.dataHook).defaultAttestationDelegate();
 
         // If the scorecard is being sent from the default attestation delegate, store it.
         if (msg.sender == defaultAttestationDelegate) {
@@ -534,15 +528,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
-        // Cache the data hook address to avoid repeated memory reads.
-        address dataHook = metadata.dataHook;
-
         // Get a reference to the hook and its store.
-        IDefifaHook hook = IDefifaHook(dataHook);
+        IDefifaHook hook = IDefifaHook(metadata.dataHook);
         IJB721TiersHookStore store = hook.store();
 
         // Get a reference to the number of tiers.
-        uint256 numberOfTiers = store.maxTierIdOf(dataHook);
+        uint256 numberOfTiers = store.maxTierIdOf(metadata.dataHook);
 
         for (uint256 i; i < numberOfTiers;) {
             // Tiers are 1-indexed.
@@ -564,10 +555,11 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             // pending reserves decrease by the same amount — so no one's voting power shifts.
             {
                 // slither-disable-next-line calls-loop
-                uint256 pendingReserves = store.numberOfPendingReservesFor({hook: dataHook, tierId: tierId});
+                uint256 pendingReserves = store.numberOfPendingReservesFor({hook: metadata.dataHook, tierId: tierId});
                 if (pendingReserves != 0) {
                     // slither-disable-next-line calls-loop
-                    JB721Tier memory tier = store.tierOf({hook: dataHook, id: tierId, includeResolvedUri: false});
+                    JB721Tier memory tier =
+                        store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
                     tierTotalAttestationUnits += pendingReserves * tier.votingUnits;
                 }
             }
@@ -614,15 +606,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
-        // Cache the data hook address to avoid repeated memory reads.
-        address dataHook = metadata.dataHook;
-
         // Get a reference to the hook and its store.
-        IDefifaHook hook = IDefifaHook(dataHook);
+        IDefifaHook hook = IDefifaHook(metadata.dataHook);
         IJB721TiersHookStore store = hook.store();
 
         // Get a reference to the number of tiers.
-        uint256 numberOfTiers = store.maxTierIdOf(dataHook);
+        uint256 numberOfTiers = store.maxTierIdOf(metadata.dataHook);
 
         // Cache the total cashout weight denominator from the hook.
         uint256 totalCashOutWeight = hook.TOTAL_CASHOUT_WEIGHT();
@@ -653,7 +642,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                 uint256 pendingReserves = _pendingReservesSnapshotOf[gameId][scorecardId][tierId];
                 if (pendingReserves != 0) {
                     // slither-disable-next-line calls-loop
-                    JB721Tier memory tier = store.tierOf({hook: dataHook, id: tierId, includeResolvedUri: false});
+                    JB721Tier memory tier =
+                        store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
                     tierTotalAttestationUnits += pendingReserves * tier.votingUnits;
                 }
 
@@ -691,15 +681,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
-        // Cache the data hook address to avoid repeated memory reads.
-        address dataHook = metadata.dataHook;
-
         // Get a reference to the hook and its store.
-        IDefifaHook hook = IDefifaHook(dataHook);
+        IDefifaHook hook = IDefifaHook(metadata.dataHook);
         IJB721TiersHookStore store = hook.store();
 
         // Get a reference to the number of tiers.
-        uint256 numberOfTiers = store.maxTierIdOf(dataHook);
+        uint256 numberOfTiers = store.maxTierIdOf(metadata.dataHook);
 
         // Keep a reference to the total eligible tier weight.
         uint256 eligibleTierWeights;
@@ -714,7 +701,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             // slither-disable-next-line calls-loop
             uint256 currentTierSupply = hook.currentSupplyOfTier(tierId);
             // slither-disable-next-line calls-loop
-            uint256 pendingReserves = store.numberOfPendingReservesFor({hook: dataHook, tierId: tierId});
+            uint256 pendingReserves = store.numberOfPendingReservesFor({hook: metadata.dataHook, tierId: tierId});
             if (currentTierSupply != 0 || pendingReserves != 0) {
                 eligibleTierWeights += MAX_ATTESTATION_POWER_TIER;
             }
