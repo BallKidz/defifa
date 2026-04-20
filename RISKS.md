@@ -4,7 +4,7 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 
 ## How to use this file
 
-- Read `Priority risks` first; they identify the main ways a game can settle unfairly or get stuck.
+- Read `Priority risks` first.
 - Use the detailed sections below to reason about governor power, live supply assumptions, and downstream hook dependencies.
 - Treat `Accepted Behaviors` and `Invariants to Verify` as explicit boundaries for audit scope.
 
@@ -12,92 +12,78 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 
 | Priority | Risk | Why it matters | Primary controls |
 |----------|------|----------------|------------------|
-| P0 | Scorecard capture at quorum | An actor that assembles 50%+ of attestation power can ratify an arbitrary scorecard and redirect the pot. | Tier-level attestation caps, grace period, and governance review of delegate concentration. |
-| P1 | Shared 721 hook store blast radius | Defifa inherits the same shared `JB721TiersHookStore` surface as the general 721 hook ecosystem. A store bug hits every game. | Reuse of audited 721-hook invariants, store-focused testing, and ecosystem-level monitoring. |
-| P1 | Supply and reserve accounting drift | Game fairness depends on attestation power, fee-token dilution, and cash-out weights tracking real mint/reserve state. | Explicit invariants on supply, reserve inclusion, and tier-weight arithmetic. |
-
+| P0 | Scorecard capture at quorum | An actor that assembles enough attestation power can ratify an arbitrary scorecard and redirect the pot. | Tier-level attestation caps, grace period, and governance review of delegate concentration. |
+| P1 | Shared 721-hook store blast radius | Defifa inherits the same shared `JB721TiersHookStore` surface as the general 721-hook ecosystem. | Reuse of 721-hook invariants, store-focused testing, and ecosystem-level monitoring. |
+| P1 | Supply and reserve accounting drift | Game fairness depends on attestation power, fee-token dilution, and cash-out weights tracking real mint and reserve state. | Explicit invariants on supply, reserve inclusion, and tier-weight arithmetic. |
 
 ## 1. Trust Assumptions
 
-- **Governor as Hook Owner.** The DefifaGovernor owns each DefifaHook clone. The governor can set tier cash-out weights via `ratifyScorecardFrom`, which executes an arbitrary call to the hook. If the governor is compromised, the hook's cash-out weights can be set to any values.
-- **Deployer as Project Owner.** The DefifaDeployer contract owns all game projects. It controls ruleset queuing, payout sending, and split configuration. Its logic is immutable (no upgradability), so the trust boundary is the contract code itself.
-- **DefifaProjectOwner Irrecoverability.** Once the Defifa project NFT is transferred to DefifaProjectOwner, it cannot be recovered. This is intentional but irreversible.
-- **External Dependencies.** Relies on JB721TiersHookStore, JBController, JBMultiTerminal, JBRulesets, and JBPrices. Bugs in any upstream contract affect all Defifa games.
-- **Default Attestation Delegate.** If set, the default attestation delegate receives delegated attestation power for all new minters who do not specify a delegate. This entity accumulates significant governance power.
-- **721 hook store shared with nana-721-hook-v6.** `DefifaHook` uses the same `JB721TiersHookStore` dependency as the broader 721-hook ecosystem even though it has its own hook implementation. All store-level risks from [nana-721-hook-v6 RISKS.md](../nana-721-hook-v6/RISKS.md) still apply wherever Defifa relies on shared tier-store semantics. Store bugs affect all Defifa games simultaneously.
+- **Governor as hook owner.** The governor can set tier cash-out weights through ratification.
+- **Deployer as project owner.** The deployer owns game projects and controls ruleset queuing and commitment fulfillment.
+- **DefifaProjectOwner irrecoverability.** Once the project NFT is transferred there, it cannot be recovered.
+- **External dependencies.** Core protocol and shared 721-store behavior remain upstream trust boundaries.
+- **Default attestation delegate.** If set, it can accumulate meaningful governance power across new minters.
 
 ## 2. Economic Risks
 
-- **Scorecard manipulation via 50% quorum.** A single entity that acquires 50%+ of attestation power across tiers can unilaterally ratify any scorecard, directing the entire pot to chosen tiers. Per-tier cap at `MAX_ATTESTATION_POWER_TIER` limits single-tier dominance. 1-day minimum grace period gives counter-attestors time to respond.
-- **Dynamic quorum from live supply (mitigated).** `quorum()` counts tiers with circulating supply (`currentSupplyOfTier > 0`) OR pending reserves (`numberOfPendingReservesFor > 0`). No snapshot is needed because during SCORING, supply is frozen (no new paid mints, no burns) and reserve minting doesn't change which tiers are counted — tiers with pending reserves are already included. Pending reserves also dilute attestation power — `getAttestationWeight` includes them in the denominator so every token holder's voting power already accounts for reserves that will eventually be minted. When the reserve beneficiary mints later, power redistributes smoothly (no shift). Consistent with the cash-out path which also dilutes by pending reserves.
-- **Cash-out weight integer division truncation.** `_weight / _totalTokensForCashoutInTier` rounds down, permanently locking dust in the contract. Maximum loss: 1 wei per tier per game (128 wei max with 128 tiers).
-- **Fee token dilution from reserved mints.** Reserved mints increment `_totalMintCost` by `tier.price * count` even though no ETH was paid. This dilutes paid minters' share of fee tokens (`$DEFIFA` / `$NANA`). Example: if 1000 NFTs are minted by payers (paying 1 ETH each = 1000 ETH total), and 100 reserved NFTs are minted (adding 100 ETH to `_totalMintCost` with no ETH deposited), fee token claims are diluted by ~9.1% (100/1100). The dilution is bounded by the reserve frequency — at `reserveFrequency=10`, every 10th mint is a reserve, capping dilution at ~10%.
-- **128-tier settlement ceiling.** Defifa cash-out weights are stored in a fixed 128-slot structure on the hook side. Games that create tiers above 128 can still mint those NFTs, but any scorecard that tries to assign weights to those tiers will revert during validation/storage instead of settling partially. In practice, scored games should stay at or below 128 tiers.
+- **Scorecard manipulation via quorum.** Enough attestation power can redirect the whole pot.
+- **Supply and pending-reserve drift.** Governance and settlement both depend on correct reserve-aware denominators.
+- **Cash-out-weight truncation.** Integer division can lock small dust amounts.
+- **Fee-token dilution from reserved mints.** Reserved mints can dilute fee-token shares even though no ETH was paid for them.
+- **128-tier settlement ceiling.** Games that rely on more than 128 scored tiers can fail settlement.
 
 ## 3. Governance Risks
 
-- **Single governor instance across all games.** All games share one DefifaGovernor. A bug in `ratifyScorecardFrom`, `attestToScorecardFrom`, or `submitScorecardFor` affects every game simultaneously.
-- **Scorecard timeout can block legitimate ratification.** If `scorecardTimeout` elapses before ratification, the game permanently enters NO_CONTEST. Even a scorecard that has reached quorum cannot be ratified. `triggerNoContestFor()` is permissionless and allows fund recovery.
-- **Delegation locked after MINT phase.** `setTierDelegateTo` only works during MINT phase. After MINT, NFT transfers auto-delegate to the recipient, but holders cannot explicitly re-delegate to a third party.
-- **No-contest requires explicit trigger.** In NO_CONTEST, users cannot immediately cash out -- someone must call `triggerNoContestFor()` to queue a refund ruleset. Without this trigger, the SCORING ruleset allocates the entire balance as payouts, leaving surplus at 0.
-- **No-contest trigger is not the same as refund activation.** `triggerNoContestFor()` flips `noContestTriggeredFor[gameId]` immediately, but the refund ruleset it queues only becomes active once the current ruleset rolls over. During that gap, the game reports `NO_CONTEST` while the active ruleset can still retain the old payout-limited reclaim semantics. Integrators should not assume same-transaction full refunds.
+- **Single governor instance across games.** A bug in the governor affects every game that uses it.
+- **Scorecard timeout can block legitimate ratification.** Once timeout is reached, the game may have to fall into no-contest even if a scorecard was close to success.
+- **Delegation is phase-sensitive.** Some delegation behavior freezes after mint phase.
+- **No-contest requires an explicit trigger.** The fallback path does not activate itself just because the timeout happened.
+- **No-contest trigger is not the same as active refund state.** Integrators must distinguish queued recovery from currently active refund rules.
 
 ## 4. Reentrancy Surface
 
-- **afterCashOutRecordedWith.** Burns tokens before external calls. `_claimTokensFor` then calls `safeTransfer` on ERC-20 fee tokens (DEFIFA_TOKEN, BASE_PROTOCOL_TOKEN). Preceding burn and state updates prevent meaningful reentrancy profit, but transfer compatibility still matters: if either fee token reverts when sending to the beneficiary, the whole cash-out reverts instead of silently skipping the fee-token claim.
+- **`afterCashOutRecordedWith`.** Burns happen before external fee-token transfers, which narrows the surface, but transfer compatibility still matters.
+- **Ratification uses a low-level call into the hook.** Double-set protections must hold.
 
 ## 5. DoS Vectors
 
-- **Unbounded tier iteration in governance.** `getAttestationWeight` and `quorum` iterate over all tiers (`maxTierIdOf`). Gas cost: ~3-5k per tier (storage read + bitmap check). At 128 tiers (the hard cap), ~400-650k gas for a single `quorum()` call. At the block gas limit (30M), this is safe, but composing `quorum()` inside a larger transaction (e.g., `ratifyScorecardFrom`) adds the iteration cost on top of the ratification logic. Games should target <64 tiers for comfortable gas headroom.
-- **_buildSplits iteration.** Iterates over user-provided splits array. No explicit cap, but total percent constraint limits practical count.
+- **Tier iteration in governance.** Quorum and attestation-weight calculations scale with tier count.
+- **Large split arrays.** User-provided split arrays can increase gas and complexity even if practical counts stay bounded.
 
 ## 6. Integration Risks
 
-- **Immutable phase timing.** Game rulesets are queued at launch and progress automatically based on duration. Once deployed, phase timing cannot be changed.
-- **Permanent cash-out weights.** Cash-out weights are set once via the governor. There is no mechanism to correct a ratified scorecard.
-- **No deployer upgrade.** The deployer contract has no upgrade mechanism. Bugs require deploying a new deployer.
-- **Clone initialization.** Clones use `cloneDeterministic` with `msg.sender` + nonce in the salt. Salt includes `msg.sender`, preventing cross-caller collision. `initialize()` has a re-initialization guard.
+- **Immutable phase timing.** Once deployed, the game timeline cannot be edited.
+- **Permanent cash-out weights.** A ratified scorecard is final.
+- **No deployer upgrade path.** Bugs require a new deployer, not an in-place fix.
+- **Clone initialization assumptions matter.** Per-game clone setup must stay correct.
 
 ## 7. Invariants to Verify
 
-- `_totalMintCost == tierPrice * liveTokenCount` after every mint and burn.
-- Total cash-outs + remaining surplus == pre-fulfillment pot minus fees.
-- Scorecard weights sum to exactly `TOTAL_CASHOUT_WEIGHT` (1e18).
-- Attestation units are conserved across all transfers (no units lost to `address(0)`).
-- `fulfilledCommitmentsOf[gameId]` is set at most once per game.
+- `_totalMintCost` stays consistent with live tier state and burns.
+- Total cash-outs plus remaining surplus match the pre-fulfillment pot minus intended fees.
+- Scorecard weights sum to `TOTAL_CASHOUT_WEIGHT`.
+- Attestation units are conserved across transfers and delegation.
+- `fulfilledCommitmentsOf[gameId]` is set at most once.
 - Per-tier supply never exceeds `initialSupply`.
-- Sum of all delegate attestation units equals total attestation supply.
 
 ## 8. Accepted Behaviors
 
 ### 8.1 Scorecard timeout is intentionally irreversible
 
-If `scorecardTimeout` elapses before ratification, the game permanently enters NO_CONTEST. Even a scorecard that has reached quorum cannot be ratified after timeout. This is accepted because: (1) allowing late ratification would keep player funds locked indefinitely while governance debates, (2) NO_CONTEST triggers a refund path (`triggerNoContestFor`) that returns funds pro-rata, and (3) the timeout creates a credible commitment to resolve the game within a bounded time. The timeout duration is set at deployment and cannot be changed.
+If timeout elapses before ratification, the game can permanently move toward `NO_CONTEST`. This bounds how long funds can remain locked in unresolved governance.
 
-Operational nuance: entering the `NO_CONTEST` phase and activating the refund ruleset are separate steps. Someone must still call `triggerNoContestFor()`, and the queued refund ruleset may not be active until the current ruleset rolls over.
+### 8.2 Permanent cash-out weights
 
-### 8.2 Permanent cash-out weights (no correction mechanism)
+Once cash-out weights are installed through a valid ratification path, they cannot be corrected in place. The design prefers determinism over mutable post-hoc fixes.
 
-Cash-out weights set via `ratifyScorecardFrom` cannot be updated or corrected. This is accepted because: (1) allowing weight changes would introduce governance attack surfaces where a quorum re-ratifies to steal from other tiers, (2) the attestation process provides a dispute window (grace period) before ratification finalizes, and (3) the alternative (upgradeable weights) would undermine the trust-minimized game design. If a scorecard is wrong, the game should be allowed to timeout into NO_CONTEST for refunds.
+### 8.3 `fulfillCommitmentsOf` and ratification are deliberately guarded
 
-### 8.3 fulfillCommitmentsOf reentrancy is guarded
+Completion and ratification paths use one-way state to prevent replay or double-finalization.
 
-`fulfillCommitmentsOf` uses `fulfilledCommitmentsOf[gameId]` as a reentrancy guard (set before `sendPayoutsOf`). Returns early if already non-zero. Uses `max(feeAmount, 1)` to ensure the guard works even when pot rounds to 0. `sendPayoutsOf` is wrapped in try-catch: on failure, resets to sentinel (1) and emits `CommitmentPayoutFailed`, ensuring the final ruleset is always queued.
+### 8.4 Pending reserves are intentionally included in governance and fee-accounting logic
 
-### 8.4 ratifyScorecardFrom reentrancy is double-guarded
+This is conservative, but it prevents users from front-running reserve dilution out of governance power or fee-token distribution.
 
-`ratifyScorecardFrom` executes arbitrary calldata on the hook via low-level call. The hook's `setTierCashOutWeightsTo` has an `onlyOwner` guard and a `cashOutWeightIsSet` check preventing double-set. Both guards prevent reentrancy exploitation.
+### 8.5 One-tier games always resolve via no-contest
 
-### 8.5 Attestation snapshot uses attestationsBegin - 1 (Codex R2 fix)
-
-`attestToScorecardFrom` snapshots attestation weight at `attestationsBegin - 1` instead of `attestationsBegin`. This prevents same-block transfer manipulation where a holder attests, transfers the NFT, and the recipient also attests in the same block. The trade-off is that NFTs minted in the same block as `attestationsBegin` have zero weight for that attestation call. This is acceptable because attestation typically happens well after minting, and the delay is negligible.
-
-### 8.6 Pending reserves snapshotted at submission and included in denominators (Codex R2 fix)
-
-Two related protections:
-
-**Governance:** `submitScorecardFor` snapshots `numberOfPendingReservesFor()` per tier into `_pendingReservesSnapshotOf`. `getBWAAttestationWeight` reads from this snapshot instead of live state. This prevents reserve minting between submission and attestation from inflating a holder's voting power by removing pending-reserve dilution. The trade-off is that if reserves are minted after submission, the dilution persists even though the reserves are no longer pending. This is conservative but correct -- it locks governance power at submission time.
-
-**Cash-out (fee tokens):** `afterCashOutRecordedWith` includes `_pendingReserveMintCost()` (sum of `pendingReserves * tier.price` across all tiers) in the fee token claim denominator. This prevents paid holders from claiming a disproportionate share of $DEFIFA/$NANA tokens before reserves are minted. The trade-off is that if reserve NFTs are never minted (e.g., the reserve beneficiary is set to address(0) and minting reverts), those shares of fee tokens remain locked in the contract. This is acceptable because: (1) it prevents paid holders from front-running reserve minting to extract the reserves' share, and (2) reserve beneficiaries are set at deployment and should always be valid.
-
-Additional integration nuance: fee-token distribution itself is not try-catch wrapped. If either fee token reverts on transfer to the beneficiary, the cash-out reverts instead of silently skipping the token claim.
+A single-tier game cannot complete normal governance because the governance attestation model gives zero weight to holders of a tier that receives 100% of the scorecard, making quorum unreachable. This is expected: the game falls through to `NO_CONTEST` once `scorecardTimeout` elapses, and players recover their mint price via the permissionless `triggerNoContestFor()` refund path that queues a refund ruleset. This only works when `scorecardTimeout > 0`. A one-tier game launched with `scorecardTimeout = 0` disables the timeout path entirely, and funds become permanently locked with no exit. Game deployers must ensure `scorecardTimeout > 0` for single-tier configurations.
