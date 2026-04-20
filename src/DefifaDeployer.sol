@@ -394,6 +394,9 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                     < block.timestamp + launchProjectData.refundPeriodDuration + launchProjectData.mintPeriodDuration
         ) revert DefifaDeployer_InvalidGameConfiguration();
 
+        // The hook and governor hardcode uint256[128] tier-weight tables, so reject games with more than 128 tiers.
+        if (launchProjectData.tiers.length > 128) revert DefifaDeployer_InvalidGameConfiguration();
+
         // Get the game ID, optimistically knowing it will be one greater than the current count.
         // Note: this prediction can race with other concurrent project deployments. If another project is
         // created between reading count() and launchProjectFor(), the actual ID will differ. This is
