@@ -106,28 +106,12 @@ contract CodexTierCapMismatchTest is JBTest, TestBaseWorkflow {
         governor.transferOwnership(address(deployer));
     }
 
-    function test_launchAllows129TiersButWinningTier129ScorecardCannotBeSubmitted() external {
+    function test_launchRevertsFor129Tiers() external {
         DefifaLaunchProjectData memory data = _launchData(129);
-        uint256 gameId = deployer.launchGameWith(data);
 
-        JBRuleset memory currentRuleset = jbRulesets().currentOf(gameId);
-        if (currentRuleset.dataHook() == address(0)) {
-            (currentRuleset,) = jbRulesets().latestQueuedOf(gameId);
-        }
-        DefifaHook gameHook = DefifaHook(currentRuleset.dataHook());
-
-        vm.warp(data.start - data.mintPeriodDuration - data.refundPeriodDuration);
-        _mintTier(gameId, 129, 1 ether);
-
-        vm.warp(data.start + 1);
-        assertEq(uint256(deployer.currentGamePhaseOf(gameId)), uint256(DefifaGamePhase.SCORING), "game should score");
-        assertEq(gameHook.currentSupplyOfTier(129), 1, "tier 129 can be minted normally");
-
-        DefifaTierCashOutWeight[] memory scorecard = new DefifaTierCashOutWeight[](1);
-        scorecard[0] = DefifaTierCashOutWeight({id: 129, cashOutWeight: gameHook.TOTAL_CASHOUT_WEIGHT()});
-
-        vm.expectRevert();
-        governor.submitScorecardFor(gameId, scorecard);
+        // H-5 fix: the deployer now caps tiers at 128, so launching with 129 reverts.
+        vm.expectRevert(DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector);
+        deployer.launchGameWith(data);
     }
 
     function _launchData(uint256 tierCount) internal returns (DefifaLaunchProjectData memory) {
