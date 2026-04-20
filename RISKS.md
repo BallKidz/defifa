@@ -32,7 +32,7 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 - **Dynamic quorum from live supply (mitigated).** `quorum()` counts tiers with circulating supply (`currentSupplyOfTier > 0`) OR pending reserves (`numberOfPendingReservesFor > 0`). No snapshot is needed because during SCORING, supply is frozen (no new paid mints, no burns) and reserve minting doesn't change which tiers are counted — tiers with pending reserves are already included. Pending reserves also dilute attestation power — `getAttestationWeight` includes them in the denominator so every token holder's voting power already accounts for reserves that will eventually be minted. When the reserve beneficiary mints later, power redistributes smoothly (no shift). Consistent with the cash-out path which also dilutes by pending reserves.
 - **Cash-out weight integer division truncation.** `_weight / _totalTokensForCashoutInTier` rounds down, permanently locking dust in the contract. Maximum loss: 1 wei per tier per game (128 wei max with 128 tiers).
 - **Fee token dilution from reserved mints.** Reserved mints increment `_totalMintCost` by `tier.price * count` even though no ETH was paid. This dilutes paid minters' share of fee tokens (`$DEFIFA` / `$NANA`). Example: if 1000 NFTs are minted by payers (paying 1 ETH each = 1000 ETH total), and 100 reserved NFTs are minted (adding 100 ETH to `_totalMintCost` with no ETH deposited), fee token claims are diluted by ~9.1% (100/1100). The dilution is bounded by the reserve frequency — at `reserveFrequency=10`, every 10th mint is a reserve, capping dilution at ~10%.
-- **128-tier limit hard-coded.** `_tierCashOutWeights` is a fixed `uint256[128]` array. Games with more than 128 tiers have tiers beyond index 128 unable to receive cash-out weights.
+- **128-tier settlement ceiling.** Defifa cash-out weights are stored in a fixed 128-slot structure on the hook side. Games that create tiers above 128 can still mint those NFTs, but any scorecard that tries to assign weights to those tiers will revert during validation/storage instead of settling partially. In practice, scored games should stay at or below 128 tiers.
 
 ## 3. Governance Risks
 
@@ -40,10 +40,11 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 - **Scorecard timeout can block legitimate ratification.** If `scorecardTimeout` elapses before ratification, the game permanently enters NO_CONTEST. Even a scorecard that has reached quorum cannot be ratified. `triggerNoContestFor()` is permissionless and allows fund recovery.
 - **Delegation locked after MINT phase.** `setTierDelegateTo` only works during MINT phase. After MINT, NFT transfers auto-delegate to the recipient, but holders cannot explicitly re-delegate to a third party.
 - **No-contest requires explicit trigger.** In NO_CONTEST, users cannot immediately cash out -- someone must call `triggerNoContestFor()` to queue a refund ruleset. Without this trigger, the SCORING ruleset allocates the entire balance as payouts, leaving surplus at 0.
+- **No-contest trigger is not the same as refund activation.** `triggerNoContestFor()` flips `noContestTriggeredFor[gameId]` immediately, but the refund ruleset it queues only becomes active once the current ruleset rolls over. During that gap, the game reports `NO_CONTEST` while the active ruleset can still retain the old payout-limited reclaim semantics. Integrators should not assume same-transaction full refunds.
 
 ## 4. Reentrancy Surface
 
-- **afterCashOutRecordedWith.** Burns tokens before external calls. `_claimTokensFor` calls `safeTransfer` on ERC-20 tokens (DEFIFA_TOKEN, BASE_PROTOCOL_TOKEN). Preceding burn and state updates prevent meaningful reentrancy profit.
+- **afterCashOutRecordedWith.** Burns tokens before external calls. `_claimTokensFor` then calls `safeTransfer` on ERC-20 fee tokens (DEFIFA_TOKEN, BASE_PROTOCOL_TOKEN). Preceding burn and state updates prevent meaningful reentrancy profit, but transfer compatibility still matters: if either fee token reverts when sending to the beneficiary, the whole cash-out reverts instead of silently skipping the fee-token claim.
 
 ## 5. DoS Vectors
 
@@ -73,6 +74,8 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 
 If `scorecardTimeout` elapses before ratification, the game permanently enters NO_CONTEST. Even a scorecard that has reached quorum cannot be ratified after timeout. This is accepted because: (1) allowing late ratification would keep player funds locked indefinitely while governance debates, (2) NO_CONTEST triggers a refund path (`triggerNoContestFor`) that returns funds pro-rata, and (3) the timeout creates a credible commitment to resolve the game within a bounded time. The timeout duration is set at deployment and cannot be changed.
 
+Operational nuance: entering the `NO_CONTEST` phase and activating the refund ruleset are separate steps. Someone must still call `triggerNoContestFor()`, and the queued refund ruleset may not be active until the current ruleset rolls over.
+
 ### 8.2 Permanent cash-out weights (no correction mechanism)
 
 Cash-out weights set via `ratifyScorecardFrom` cannot be updated or corrected. This is accepted because: (1) allowing weight changes would introduce governance attack surfaces where a quorum re-ratifies to steal from other tiers, (2) the attestation process provides a dispute window (grace period) before ratification finalizes, and (3) the alternative (upgradeable weights) would undermine the trust-minimized game design. If a scorecard is wrong, the game should be allowed to timeout into NO_CONTEST for refunds.
@@ -96,3 +99,5 @@ Two related protections:
 **Governance:** `submitScorecardFor` snapshots `numberOfPendingReservesFor()` per tier into `_pendingReservesSnapshotOf`. `getBWAAttestationWeight` reads from this snapshot instead of live state. This prevents reserve minting between submission and attestation from inflating a holder's voting power by removing pending-reserve dilution. The trade-off is that if reserves are minted after submission, the dilution persists even though the reserves are no longer pending. This is conservative but correct -- it locks governance power at submission time.
 
 **Cash-out (fee tokens):** `afterCashOutRecordedWith` includes `_pendingReserveMintCost()` (sum of `pendingReserves * tier.price` across all tiers) in the fee token claim denominator. This prevents paid holders from claiming a disproportionate share of $DEFIFA/$NANA tokens before reserves are minted. The trade-off is that if reserve NFTs are never minted (e.g., the reserve beneficiary is set to address(0) and minting reverts), those shares of fee tokens remain locked in the contract. This is acceptable because: (1) it prevents paid holders from front-running reserve minting to extract the reserves' share, and (2) reserve beneficiaries are set at deployment and should always be valid.
+
+Additional integration nuance: fee-token distribution itself is not try-catch wrapped. If either fee token reverts on transfer to the beneficiary, the cash-out reverts instead of silently skipping the token claim.

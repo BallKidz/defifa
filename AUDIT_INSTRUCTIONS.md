@@ -1,15 +1,15 @@
 # Audit Instructions
 
-Defifa is a staged prediction-game system built on Juicebox and the 721 hook stack. The main risks are governance correctness, treasury settlement, and cash-out weight integrity.
+Defifa is a staged prediction-game system built on Juicebox and the tiered 721 stack. Audit it as a governance-and-settlement protocol, not just an NFT game.
 
-## Objective
+## Audit Objective
 
 Find issues that:
 - let players extract more than their fair share of the game pot
-- break the game-phase lifecycle or let actions occur in the wrong phase
-- corrupt scorecard submission, attestation, quorum, grace-period, or ratification logic
+- break the game-phase lifecycle or allow actions in the wrong phase
+- corrupt scorecard submission, attestation, quorum, delegation, grace-period, or ratification logic
 - miscompute tier cash-out weights or fee-token distribution
-- let deployment or ownership helpers leave a game misconfigured
+- leave a deployed game misconfigured through deployer or owner-helper mistakes
 
 ## Scope
 
@@ -20,77 +20,90 @@ In scope:
 - `src/DefifaProjectOwner.sol`
 - `src/DefifaTokenUriResolver.sol`
 - `src/libraries/DefifaHookLib.sol`
-- `src/interfaces/`, `src/structs/`, and `src/enums/`
-- deployment scripts in `script/`
+- all enums in `src/enums/`
+- all interfaces in `src/interfaces/`
+- all structs in `src/structs/`
+- deployment helpers in `script/`
 
-Key integrations:
-- `nana-core-v6`
-- `nana-721-hook-v6`
-- deployer and ownership helper patterns shared across the ecosystem
+## Start Here
 
-## System Model
+1. `src/DefifaGovernor.sol`
+2. `src/DefifaHook.sol`
+3. `src/DefifaDeployer.sol`
+4. `src/DefifaProjectOwner.sol`
+
+## Security Model
 
 High-level lifecycle:
 - deploy a game as a Juicebox project
-- sell outcome NFTs during mint phase
+- sell outcome NFTs during the mint phase
 - optionally allow refunds or no-contest handling
 - run scorecard governance through submissions and attestations
-- ratify a scorecard
+- ratify one scorecard
 - update cash-out weights so winning pieces can redeem the treasury
 
 The contracts split responsibility as follows:
-- `DefifaDeployer`: project launch and lifecycle orchestration
-- `DefifaHook`: minting, burning, and game-specific cash-out accounting
-- `DefifaGovernor`: scorecard governance and ratification
-- `DefifaTokenUriResolver`: game NFT metadata
+- `DefifaDeployer` launches the project and wires lifecycle configuration
+- `DefifaHook` handles minting, burning, fee accounting, and game-specific cash-out math
+- `DefifaGovernor` owns scorecard governance and ratification
+- `DefifaProjectOwner` acts as a project-owner helper where governance needs a stable admin surface
+- `DefifaTokenUriResolver` handles game NFT metadata
+
+## Roles And Privileges
+
+| Role | Powers | How constrained |
+|------|--------|-----------------|
+| Game deployer or owner | Configure a game's initial lifecycle and helper wiring | Must not retain hidden post-launch powers |
+| Governor participants | Submit, attest to, and ratify scorecards | Must remain bounded by phase, quorum, and delegation rules |
+| `DefifaHook` | Determine mint and final redeem economics | Must not over-credit players or under-account fees |
+| Project owner helper | Stand in for project ownership where configured | Must not diverge from the intended governance authority |
+
+## Integration Assumptions
+
+| Dependency | Assumption | What breaks if wrong |
+|------------|------------|----------------------|
+| `nana-core-v6` | Treasury accounting, rulesets, and cash-out surfaces stay coherent | Pot settlement and redeem math become unsound |
+| `nana-721-hook-v6` | Tier issuance and reserve behavior match Defifa’s game logic | Voting power, supply, and cash-out weights drift |
+| Owner-helper and deployer patterns | Launch-time authority fully converges to the intended game authority | Games remain misconfigured or over-privileged |
 
 ## Critical Invariants
 
 1. Pot conservation
-Total redeemable value across all settled tiers must not exceed the game treasury after applying intended fees.
+Total redeemable value across settled tiers must not exceed the final treasury after intended fees and reserve behavior.
 
 2. Governance phase safety
-Submission, attestation, ratification, no-contest, and refund paths must be reachable only in the intended lifecycle windows.
+Submission, attestation, ratification, no-contest, and refund paths must only be reachable during the intended lifecycle windows.
 
 3. Quorum and grace-period correctness
-Attestation power, delegation, quorum thresholds, and grace-period timing must not be manipulable to ratify an invalid scorecard early or indefinitely block a valid one.
+Attestation power, delegation, quorum thresholds, and grace-period timing must not ratify an invalid scorecard early or indefinitely block a valid one.
 
 4. Settlement determinism
-Once the winning scorecard is finalized, the resulting cash-out weights must match the intended outcome and remain internally consistent.
+Once a scorecard is finalized, resulting cash-out weights must match the intended outcome and remain internally consistent.
 
-5. No fee-token dilution bugs
+5. Fee-token and reserve correctness
 Fee accounting and reserve-related side effects must not dilute players or over-credit non-paying participants.
 
-## Threat Model
+## Attack Surfaces
 
-Prioritize:
-- whale participants trying to dominate attestation power
-- players exploiting pending reserves, delegation, or snapshot timing
-- callers trying to ratify with partially completed commitments
-- phase-boundary and timestamp races
-- settlement paths that assume external payout success
-
-## Hotspots
-
-- `DefifaGovernor` scorecard state transitions
+- `DefifaGovernor` scorecard state transitions and ratification gating
+- delegation, attestation, and quorum calculations
 - `DefifaHook` cash-out weight and fee-token accounting
 - reserve-related denominators during governance and settlement
 - deployer logic that queues or fulfills lifecycle rulesets
-- any low-level call used during ratification or fulfillment
-- token URI or metadata logic only insofar as it can desync governance or settlement assumptions
+- low-level calls used during ratification, no-contest handling, or fulfillment
 
-## Build And Verification
+Replay these sequences:
+1. mint heavily into multiple outcomes, then inspect attestation and ratification at a phase boundary
+2. exploit pending reserves or delegation changes around quorum calculation
+3. ratify, then immediately cash out winning and losing pieces to test weight determinism
+4. no-contest or refund path after partial governance progress
 
-Standard workflow:
+## Accepted Risks Or Behaviors
+
+- Governance and settlement are intentionally phase-heavy, so timestamp and lifecycle transitions are core audit targets rather than edge cases.
+
+## Verification
+
 - `npm install`
 - `forge build`
 - `forge test`
-
-The current tests focus on:
-- quorum hardening
-- no-contest and refund handling
-- pending reserve dilution
-- fee accounting
-- regressions around attestation delegation and grace-period bypass
-
-The best findings in this repo usually demonstrate either treasury over-redemption or a governance state transition that should be impossible.

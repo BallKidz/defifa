@@ -11,7 +11,6 @@ struct DefifaTierParams {
     string name;
     uint16 reservedRate;
     address reservedTokenBeneficiary;
-    // forge-lint: disable-next-line(mixed-case-variable)
     bytes32 encodedIPFSUri;
     bool shouldUseReservedTokenBeneficiaryAsDefault;
 }
