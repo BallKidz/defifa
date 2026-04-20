@@ -249,6 +249,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @return cashOutTaxRate The cash out tax rate influencing the reclaim amount.
     /// @return cashOutCount The amount of tokens that should be considered cashed out.
     /// @return totalSupply The total amount of tokens that are considered to be existing.
+    /// @return effectiveSurplusValue The effective surplus value to use for the cash out.
     /// @return hookSpecifications The amount and data to send to cash out hooks (this contract) instead of returning to
     /// the beneficiary.
     function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
@@ -260,6 +261,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             uint256 cashOutTaxRate,
             uint256 cashOutCount,
             uint256 totalSupply,
+            uint256 effectiveSurplusValue,
             JBCashOutHookSpecification[] memory hookSpecifications
         )
     {
@@ -303,6 +305,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Use the surplus as the total supply.
         totalSupply = context.surplus.value;
+
+        // Use the surplus as the effective surplus value.
+        effectiveSurplusValue = context.surplus.value;
 
         // Use the cash out tax rate from the context.
         cashOutTaxRate = context.cashOutTaxRate;
