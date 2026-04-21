@@ -53,6 +53,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     error DefifaDeployer_InvalidFeePercent();
     error DefifaDeployer_InvalidGameConfiguration();
     error DefifaDeployer_IncorrectDecimalAmount();
+    error DefifaDeployer_InvalidCurrency();
     error DefifaDeployer_NotNoContest();
     error DefifaDeployer_NoContestAlreadyTriggered();
     error DefifaDeployer_TerminalNotFound();
@@ -337,16 +338,12 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         fulfilledCommitmentsOf[gameId] = feeAmount > 0 ? feeAmount : 1;
 
         // Send only the fee portion as payouts. The remaining balance stays as surplus for cash-outs.
+        // Use the ruleset's baseCurrency — this matches the currency under which payout limits were stored
+        // at launch time, regardless of whether the token is native ETH or an ERC-20.
         // Wrapped in try-catch so the final ruleset is always queued even if payout fails.
         // slither-disable-next-line unused-return,reentrancy-no-eth
         try terminal.sendPayoutsOf({
-            projectId: gameId,
-            token: token,
-            amount: feeAmount,
-            // Casting address to uint32 via uint160 is the standard Juicebox token-to-currency conversion.
-            // forge-lint: disable-next-line(unsafe-typecast)
-            currency: token == JBConstants.NATIVE_TOKEN ? metadata.baseCurrency : uint32(uint160(token)),
-            minTokensPaidOut: 0
+            projectId: gameId, token: token, amount: feeAmount, currency: metadata.baseCurrency, minTokensPaidOut: 0
         }) {}
         catch (bytes memory reason) {
             // Payout failed — fee stays in pot. Reset to sentinel (1) so currentGamePotOf
@@ -396,6 +393,13 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         // The hook and governor hardcode uint256[128] tier-weight tables, so reject games with more than 128 tiers.
         if (launchProjectData.tiers.length > 128) revert DefifaDeployer_InvalidGameConfiguration();
+
+        // Reject ERC-20 games with a zero currency — a zero baseCurrency would cause payout limit lookups
+        // in fulfillCommitmentsOf to silently fail, skipping all commitment payouts.
+        // slither-disable-next-line incorrect-equality
+        if (launchProjectData.token.token != JBConstants.NATIVE_TOKEN && launchProjectData.token.currency == 0) {
+            revert DefifaDeployer_InvalidCurrency();
+        }
 
         // Get the game ID, optimistically knowing it will be one greater than the current count.
         // Note: this prediction can race with other concurrent project deployments. If another project is
