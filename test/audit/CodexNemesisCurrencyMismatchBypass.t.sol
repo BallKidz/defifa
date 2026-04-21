@@ -11,8 +11,8 @@ import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingCo
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 
-/// @notice Regression test for H-16: ERC-20 games now correctly resolve payout limits via baseCurrency.
-/// Before the fix, using a non-canonical currency (e.g. currency=1 for USDC) caused sendPayoutsOf to use
+/// @notice Regression test for the currency mismatch fix: ERC-20 games now correctly resolve payout limits via
+/// baseCurrency. Before the fix, using a non-canonical currency (e.g. currency=1 for USDC) caused sendPayoutsOf to use
 /// uint32(uint160(token)) which didn't match the stored payout limit currency, silently skipping payouts.
 /// After the fix, fulfillCommitmentsOf uses metadata.baseCurrency which always matches the stored limit.
 contract CodexNemesisCurrencyMismatchBypassTest is DefifaUSDCTest {

@@ -32,11 +32,11 @@ import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
-/// @title H16CurrencyMismatchFixTest
-/// @notice Adversarial tests for H-16: verifies that fulfillCommitmentsOf correctly resolves payout limits
-/// for both ETH and ERC-20 games, and that launch-time validation rejects zero-currency ERC-20 configurations.
-/// Inherits DefifaUSDCTest for USDC helpers and fee project setup.
-contract H16CurrencyMismatchFixTest is DefifaUSDCTest {
+/// @title CurrencyMismatchFixTest
+/// @notice Adversarial tests for the currency mismatch fix: verifies that fulfillCommitmentsOf correctly resolves
+/// payout limits for both ETH and ERC-20 games, and that launch-time validation rejects zero-currency ERC-20
+/// configurations. Inherits DefifaUSDCTest for USDC helpers and fee project setup.
+contract CurrencyMismatchFixTest is DefifaUSDCTest {
     // =========================================================================
     // HELPERS
     // =========================================================================
@@ -55,7 +55,7 @@ contract H16CurrencyMismatchFixTest is DefifaUSDCTest {
 
         // Non-canonical currency (1) for a USDC token.
         return DefifaLaunchProjectData({
-            name: "H16_NONCANONICAL",
+            name: "DEFIFA_NONCANONICAL",
             projectUri: "",
             contractUri: "",
             baseUri: "",
@@ -97,7 +97,7 @@ contract H16CurrencyMismatchFixTest is DefifaUSDCTest {
 
     /// @notice An ERC-20 game launched with currency=1 (non-canonical) now correctly sends commitment payouts
     /// because fulfillCommitmentsOf uses metadata.baseCurrency instead of uint32(uint160(token)).
-    function test_h16_erc20NonCanonicalCurrencyFulfillsCorrectly() external {
+    function test_currencyMismatchFix_erc20NonCanonicalCurrencyFulfillsCorrectly() external {
         uint104 tierPrice = 100e6;
         _setupNonCanonicalGame(4, tierPrice);
 
@@ -125,7 +125,7 @@ contract H16CurrencyMismatchFixTest is DefifaUSDCTest {
 
     /// @notice ETH game (canonical currency) continues to work after the fix.
     /// Covered by DefifaFeeAccountingTest; this verifies no regression from the baseCurrency change.
-    function test_h16_ethGameFeeAccountingUnchanged() external {
+    function test_currencyMismatchFix_ethGameFeeAccountingUnchanged() external {
         // The DefifaFeeAccountingTest suite tests ETH fulfillment comprehensively.
         // Here we verify the core assertion: fee percentage matches for USDC canonical game too.
         uint104 tierPrice = 100e6;
@@ -149,7 +149,7 @@ contract H16CurrencyMismatchFixTest is DefifaUSDCTest {
 
     /// @notice After the fix, the winner of a non-canonical-currency ERC-20 game receives the post-fee surplus
     /// (not the full pot). This confirms the fee was actually deducted.
-    function test_h16_winnerReceivesPostFeeSurplusNotFullPot() external {
+    function test_currencyMismatchFix_winnerReceivesPostFeeSurplusNotFullPot() external {
         uint104 tierPrice = 100e6;
         _setupNonCanonicalGame(2, tierPrice);
 
@@ -183,7 +183,7 @@ contract H16CurrencyMismatchFixTest is DefifaUSDCTest {
     // =========================================================================
 
     /// @notice Launching an ERC-20 game with currency=0 is rejected at launch time.
-    function test_h16_revertOnZeroCurrencyForErc20() external {
+    function test_currencyMismatchFix_revertOnZeroCurrencyForErc20() external {
         DefifaTierParams[] memory tp = new DefifaTierParams[](2);
         for (uint256 i; i < 2; i++) {
             tp[i] = DefifaTierParams({
@@ -196,7 +196,7 @@ contract H16CurrencyMismatchFixTest is DefifaUSDCTest {
         }
 
         DefifaLaunchProjectData memory d = DefifaLaunchProjectData({
-            name: "H16_ZERO_CURRENCY",
+            name: "DEFIFA_ZERO_CURRENCY",
             projectUri: "",
             contractUri: "",
             baseUri: "",
@@ -223,7 +223,7 @@ contract H16CurrencyMismatchFixTest is DefifaUSDCTest {
     }
 
     /// @notice Native token (ETH) is exempt from the zero-currency check.
-    function test_h16_nativeTokenAllowsAnyCurrency() external {
+    function test_currencyMismatchFix_nativeTokenAllowsAnyCurrency() external {
         DefifaTierParams[] memory tp = new DefifaTierParams[](2);
         for (uint256 i; i < 2; i++) {
             tp[i] = DefifaTierParams({
@@ -236,7 +236,7 @@ contract H16CurrencyMismatchFixTest is DefifaUSDCTest {
         }
 
         DefifaLaunchProjectData memory d = DefifaLaunchProjectData({
-            name: "H16_ETH_LAUNCH",
+            name: "DEFIFA_ETH_LAUNCH",
             projectUri: "",
             contractUri: "",
             baseUri: "",
