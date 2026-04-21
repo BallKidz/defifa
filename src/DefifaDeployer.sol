@@ -396,6 +396,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         // Reject ERC-20 games with a zero currency — a zero baseCurrency would cause payout limit lookups
         // in fulfillCommitmentsOf to silently fail, skipping all commitment payouts.
+        // slither-disable-next-line incorrect-equality
         if (launchProjectData.token.token != JBConstants.NATIVE_TOKEN && launchProjectData.token.currency == 0) {
             revert DefifaDeployer_InvalidCurrency();
         }
