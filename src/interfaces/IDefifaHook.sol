@@ -125,6 +125,11 @@ interface IDefifaHook is IJB721Hook {
     /// @return The game pot reporter contract.
     function gamePotReporter() external view returns (IDefifaGamePotReporter);
 
+    /// @notice Whether a token was minted through reserves rather than paid for.
+    /// @param tokenId The ID of the token to check.
+    /// @return True if the token was minted as a reserve.
+    function isReserveMint(uint256 tokenId) external view returns (bool);
+
     /// @notice Get the attestation units for a specific account and tier at a past timestamp.
     /// @param account The account to look up.
     /// @param tier The tier ID.

@@ -102,6 +102,10 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// ($DEFIFA/$NANA) distribution.
     uint256 internal _totalMintCost;
 
+    /// @notice Whether a token was minted through reserves (free) rather than paid for.
+    /// @dev Reserve-minted tokens are excluded from refund calculations since no funds were contributed for them.
+    mapping(uint256 tokenId => bool) internal _isReserveMint;
+
     //*********************************************************************//
     // ---------------- public immutable stored properties --------------- //
     //*********************************************************************//
@@ -224,6 +228,13 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         return _totalTierCheckpoints[tier].latest();
     }
 
+    /// @notice Whether a token was minted through reserves rather than paid for.
+    /// @param tokenId The ID of the token to check.
+    /// @return True if the token was minted as a reserve.
+    function isReserveMint(uint256 tokenId) external view override returns (bool) {
+        return _isReserveMint[tokenId];
+    }
+
     /// @notice The cashOut weight for each tier.
     /// @return The array of weights, indexed by tier.
     function tierCashOutWeights() external view override returns (uint256[128] memory) {
@@ -288,6 +299,27 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         uint256 cumulativeMintPrice = DefifaHookLib.computeCumulativeMintPrice({
             tokenIds: decodedTokenIds, hookStore: hookStore, hook: address(this)
         });
+
+        // During refund phases, exclude reserve-minted tokens — they were minted for free and have no paid amount
+        // to refund.
+        if (
+            gamePhase == DefifaGamePhase.MINT || gamePhase == DefifaGamePhase.REFUND
+                || gamePhase == DefifaGamePhase.NO_CONTEST
+        ) {
+            for (uint256 i; i < decodedTokenIds.length;) {
+                if (_isReserveMint[decodedTokenIds[i]]) {
+                    // slither-disable-next-line calls-loop
+                    cumulativeMintPrice -= hookStore.tierOfTokenId({
+                        hook: address(this), tokenId: decodedTokenIds[i], includeResolvedUri: false
+                    })
+                    .price;
+                }
+
+                unchecked {
+                    ++i;
+                }
+            }
+        }
 
         // Use this contract as the only cash out hook.
         hookSpecifications = new JBCashOutHookSpecification[](1);
@@ -598,6 +630,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         for (uint256 i; i < count;) {
             // Set the token ID.
             tokenId = tokenIds[i];
+
+            // Flag this token as reserve-minted so it is excluded from refund calculations.
+            _isReserveMint[tokenId] = true;
 
             // Mint the token to the reserve beneficiary.
             // slither-disable-next-line reentrancy-no-eth
