@@ -162,6 +162,11 @@ interface IDefifaHook is IJB721Hook {
     /// @return The total attestation units.
     function getTierTotalAttestationUnitsOf(uint256 tier) external view returns (uint256);
 
+    /// @notice Whether a token was minted through reserves rather than paid for.
+    /// @param tokenId The ID of the token to check.
+    /// @return True if the token was minted as a reserve.
+    function isReserveMint(uint256 tokenId) external view returns (bool);
+
     /// @notice The pricing currency used by this hook.
     /// @return The currency identifier.
     function pricingCurrency() external view returns (uint256);

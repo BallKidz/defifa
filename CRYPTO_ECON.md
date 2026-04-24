@@ -231,7 +231,7 @@ $$M(t^+) = M(t^-) - q \cdot p \tag{10}$$
 
 The refund phase creates a *free option* for participants: they can observe late-breaking information (injury reports, market movements, team changes) and exit at zero cost. This option has value and we analyze its implications in Section 5.2.
 
-**Key property.** The refund is dollar-for-dollar: every token refunded removes exactly its mint price from the pot. Because all tiers share the uniform price $p$, the per-NFT backing ratio $B(t) / N_{\text{total}}(t) = p$ is always preserved.
+**Key property.** The refund is dollar-for-dollar: every token refunded removes exactly its mint price from the pot. Because all tiers share the uniform price $p$, the per-NFT backing ratio $B(t) / N_{\text{total}}(t) = p$ is always preserved. Reserve-minted tokens are excluded from refund eligibility — only tokens that were paid for contribute to (and may withdraw from) the pot.
 
 **World Cup example.** Two days before the tournament, a star player for Brazil suffers an injury. 300 Brazil holders refund their NFTs, reducing Brazil's count from 1,500 to 1,200 and the pot from 150 ETH to 147 ETH. The refund activity itself signals the belief shift — other participants observe the on-chain refund volume and update their expectations accordingly.
 
@@ -810,7 +810,7 @@ This is the only mechanism that provides a hard, trustless, time-bounded guarant
 
 The explicit trigger is necessary because the NO_CONTEST phase is initially a *computed* state (the view function returns it based on conditions), but the on-chain ruleset still has the scoring-phase configuration. The trigger queues a new ruleset that enables the actual cash-out mechanics.
 
-**Cash-out behavior.** During NO_CONTEST, the `computeCashOutCount` function in `DefifaHookLib` returns `cumulativeMintPrice` — the same amount the player originally paid. This is identical to the MINT/REFUND phase behavior, implementing a complete refund.
+**Cash-out behavior.** During NO_CONTEST, the `computeCashOutCount` function in `DefifaHookLib` returns `cumulativeMintPrice` — the same amount the player originally paid. This is identical to the MINT/REFUND phase behavior, implementing a complete refund. Reserve-minted tokens (those created via tier `reserveFrequency` rather than paid for) are excluded from refund calculations: their `isReserveMint` flag is set at mint time, and `beforeCashOutRecordedWith` subtracts their tier price from `cumulativeMintPrice` during MINT, REFUND, and NO_CONTEST phases. This prevents reserve beneficiaries from draining the pot by cashing out tokens they never paid for.
 
 #### 9.1.4 Priority Rules
 
