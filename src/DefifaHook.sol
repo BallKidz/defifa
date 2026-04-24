@@ -102,10 +102,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// ($DEFIFA/$NANA) distribution.
     uint256 internal _totalMintCost;
 
-    /// @notice Whether a token was minted through reserves (free) rather than paid for.
-    /// @dev Reserve-minted tokens are excluded from refund calculations since no funds were contributed for them.
-    mapping(uint256 tokenId => bool) internal _isReserveMint;
-
     //*********************************************************************//
     // ---------------- public immutable stored properties --------------- //
     //*********************************************************************//
@@ -134,6 +130,10 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
     /// @notice The contract reporting the game pot.
     IDefifaGamePotReporter public override gamePotReporter;
+
+    /// @notice Whether a token was minted through reserves (free) rather than paid for.
+    /// @dev Reserve-minted tokens are excluded from refund calculations since no funds were contributed for them.
+    mapping(uint256 tokenId => bool) public override isReserveMint;
 
     /// @notice The currency that is accepted when minting tier NFTs.
     uint256 public override pricingCurrency;
@@ -228,13 +228,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         return _totalTierCheckpoints[tier].latest();
     }
 
-    /// @notice Whether a token was minted through reserves rather than paid for.
-    /// @param tokenId The ID of the token to check.
-    /// @return True if the token was minted as a reserve.
-    function isReserveMint(uint256 tokenId) external view override returns (bool) {
-        return _isReserveMint[tokenId];
-    }
-
     /// @notice The cashOut weight for each tier.
     /// @return The array of weights, indexed by tier.
     function tierCashOutWeights() external view override returns (uint256[128] memory) {
@@ -307,7 +300,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
                 || gamePhase == DefifaGamePhase.NO_CONTEST
         ) {
             for (uint256 i; i < decodedTokenIds.length;) {
-                if (_isReserveMint[decodedTokenIds[i]]) {
+                if (isReserveMint[decodedTokenIds[i]]) {
                     // slither-disable-next-line calls-loop
                     cumulativeMintPrice -= hookStore.tierOfTokenId({
                         hook: address(this), tokenId: decodedTokenIds[i], includeResolvedUri: false
@@ -632,7 +625,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             tokenId = tokenIds[i];
 
             // Flag this token as reserve-minted so it is excluded from refund calculations.
-            _isReserveMint[tokenId] = true;
+            isReserveMint[tokenId] = true;
 
             // Mint the token to the reserve beneficiary.
             // slither-disable-next-line reentrancy-no-eth
