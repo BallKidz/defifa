@@ -393,8 +393,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             hookStore: store,
             hook: address(this),
             tierCashOutWeights: _tierCashOutWeights,
-            tokensRedeemedFrom: tokensRedeemedFrom,
-            refundedBurnsFrom: refundedBurnsFrom
+            tokensRedeemedFrom: tokensRedeemedFrom
         });
     }
 
@@ -407,8 +406,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             hookStore: store,
             hook: address(this),
             tierCashOutWeights: _tierCashOutWeights,
-            tokensRedeemedFrom: tokensRedeemedFrom,
-            refundedBurnsFrom: refundedBurnsFrom
+            tokensRedeemedFrom: tokensRedeemedFrom
         });
     }
 

@@ -8,6 +8,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {mulDiv} from "@prb/math/src/Common.sol";
 
 import {DefifaGamePhase} from "../enums/DefifaGamePhase.sol";
+import {IDefifaHook} from "../interfaces/IDefifaHook.sol";
 import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
 
 /// @notice Pure/view helper functions extracted from DefifaHook to reduce contract bytecode size.
@@ -102,8 +103,7 @@ library DefifaHookLib {
         IJB721TiersHookStore hookStore,
         address hook,
         uint256[128] storage tierCashOutWeights,
-        mapping(uint256 => uint256) storage tokensRedeemedFrom,
-        mapping(uint256 => uint256) storage refundedBurnsFrom
+        mapping(uint256 => uint256) storage tokensRedeemedFrom
     )
         public
         view
@@ -135,23 +135,8 @@ library DefifaHookLib {
             tier.initialSupply - tier.remainingSupply - (burnedTokens - tokensRedeemedFrom[tierId]);
 
         // Include pending (unminted) reserve NFTs in the denominator, adjusted for refund-phase burns.
-        // Without this, paid holders could cash out before reserves are minted and extract value
-        // that should be diluted across both paid and reserved holders.
-        // Recalculate from (paidMints - burns) / reserveFrequency since the relationship is not linear.
-        {
-            uint256 refundBurns = refundedBurnsFrom[tierId];
-            uint256 adjustedPending;
-            if (tier.reserveFrequency > 0) {
-                // slither-disable-next-line calls-loop
-                uint256 reservesMinted = hookStore.numberOfReservesMintedFor({hook: hook, tierId: tierId});
-                uint256 nonReserveMints = tier.initialSupply - tier.remainingSupply - reservesMinted;
-                uint256 adjustedMints = nonReserveMints > refundBurns ? nonReserveMints - refundBurns : 0;
-                uint256 availableReserves = adjustedMints / tier.reserveFrequency;
-                if (adjustedMints % tier.reserveFrequency > 0) ++availableReserves;
-                adjustedPending = availableReserves > reservesMinted ? availableReserves - reservesMinted : 0;
-            }
-            totalTokensForCashoutInTier += adjustedPending;
-        }
+        // slither-disable-next-line calls-loop
+        totalTokensForCashoutInTier += IDefifaHook(hook).adjustedPendingReservesFor(tierId);
 
         // Calculate the percentage of the tier cashOut amount a single token counts for.
         // Integer division rounding in cashOutWeight is unavoidable in Solidity. Rounding direction
@@ -172,8 +157,7 @@ library DefifaHookLib {
         IJB721TiersHookStore hookStore,
         address hook,
         uint256[128] storage tierCashOutWeights,
-        mapping(uint256 => uint256) storage tokensRedeemedFrom,
-        mapping(uint256 => uint256) storage refundedBurnsFrom
+        mapping(uint256 => uint256) storage tokensRedeemedFrom
     )
         public
         view
@@ -186,8 +170,7 @@ library DefifaHookLib {
                 hookStore: hookStore,
                 hook: hook,
                 tierCashOutWeights: tierCashOutWeights,
-                tokensRedeemedFrom: tokensRedeemedFrom,
-                refundedBurnsFrom: refundedBurnsFrom
+                tokensRedeemedFrom: tokensRedeemedFrom
             });
             unchecked {
                 ++i;
