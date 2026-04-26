@@ -123,7 +123,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             jbController(),
             new JBAddressRegistry(),
             _protocolFeeProjectId,
-            _defifaProjectId
+            _defifaProjectId,
+            new JB721TiersHookStore()
         );
         hook.transferOwnership(address(deployer));
         governor.transferOwnership(address(deployer));
@@ -375,7 +376,6 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             mintPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
-            store: new JB721TiersHookStore(),
             splits: new JBSplit[](0),
             attestationStartTime: 0,
             attestationGracePeriod: 100_381,
@@ -610,7 +610,6 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             mintPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
-            store: new JB721TiersHookStore(),
             splits: new JBSplit[](0),
             attestationStartTime: 0,
             attestationGracePeriod: 100_381,

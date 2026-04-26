@@ -99,7 +99,8 @@ contract CodexTierCapMismatchTest is JBTest, TestBaseWorkflow {
             jbController(),
             new JBAddressRegistry(),
             defifaProjectId,
-            protocolFeeProjectId
+            protocolFeeProjectId,
+            new JB721TiersHookStore()
         );
 
         hookCodeOrigin.transferOwnership(address(deployer));
@@ -143,7 +144,6 @@ contract CodexTierCapMismatchTest is JBTest, TestBaseWorkflow {
             defaultAttestationDelegate: address(0),
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
-            store: new JB721TiersHookStore(),
             minParticipation: 0,
             scorecardTimeout: 7 days,
             timelockDuration: 0

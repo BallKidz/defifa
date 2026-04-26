@@ -70,6 +70,11 @@ interface IDefifaHook is IJB721Hook {
     /// @param caller The address that set the tier weights.
     event TierCashOutWeightsSet(DefifaTierCashOutWeight[] tierWeights, address caller);
 
+    /// @notice Returns the adjusted pending reserve count for a tier, subtracting refund-phase burns.
+    /// @param tierId The tier ID.
+    /// @return The adjusted pending reserve count.
+    function adjustedPendingReservesFor(uint256 tierId) external view returns (uint256);
+
     /// @notice The total amount redeemed from this game (refunds not counted).
     /// @return The total redeemed amount.
     function amountRedeemed() external view returns (uint256);

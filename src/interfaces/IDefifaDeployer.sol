@@ -2,6 +2,7 @@
 pragma solidity ^0.8.0;
 
 import {IJBAddressRegistry} from "@bananapus/address-registry-v6/src/interfaces/IJBAddressRegistry.sol";
+import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
@@ -87,6 +88,10 @@ interface IDefifaDeployer {
     /// @notice The code origin address used as an implementation for hook clones.
     /// @return The code origin address.
     function HOOK_CODE_ORIGIN() external view returns (address);
+
+    /// @notice The 721 tiers hook store used by all games.
+    /// @return The hook store contract.
+    function HOOK_STORE() external view returns (IJB721TiersHookStore);
 
     /// @notice The address registry used for content-addressable deployment lookups.
     /// @return The address registry contract.

@@ -105,7 +105,8 @@ contract CodexNemesisOneTierZeroTimeoutLockVerifiedTest is JBTest, TestBaseWorkf
             jbController(),
             new JBAddressRegistry(),
             defifaProjectId,
-            protocolFeeProjectId
+            protocolFeeProjectId,
+            new JB721TiersHookStore()
         );
 
         hook.transferOwnership(address(deployer));
@@ -184,7 +185,6 @@ contract CodexNemesisOneTierZeroTimeoutLockVerifiedTest is JBTest, TestBaseWorkf
             defaultAttestationDelegate: address(0),
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
-            store: new JB721TiersHookStore(),
             minParticipation: 0,
             scorecardTimeout: 0,
             timelockDuration: 0

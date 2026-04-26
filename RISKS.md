@@ -26,9 +26,11 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 
 ## 2. Economic Risks
 
-- **Scorecard manipulation via quorum.** Enough attestation power can redirect the whole pot.
+- **Scorecard manipulation via quorum.** Enough attestation power can redirect the whole pot. Once a coalition reaches the BWA (best winning attestation) quorum threshold, they can lock in a scorecard that favors their tiers. The grace period is the primary defense window for other participants to revoke attestations.
+- **BWA quorum lockout.** If a scorecard reaches quorum and the grace period elapses before opponents can revoke, the scorecard becomes ratifiable. In games with concentrated attestation power (few large holders), quorum may be reached quickly, leaving little time for the grace period defense to be effective.
 - **Supply and pending-reserve drift.** Governance and settlement both depend on correct reserve-aware denominators.
 - **Cash-out-weight truncation.** Integer division can lock small dust amounts.
+- **Commitment fee rounding to zero.** When commitment amounts are small relative to the fee percent, `mulDiv(amount, feePercent, MAX_FEE)` can round down to zero, allowing tiny commitments to bypass fees entirely. This is economically insignificant for practical game sizes but means fee accounting is not perfectly tight at dust amounts.
 - **Fee-token dilution from reserved mints.** Reserved mints can dilute fee-token shares even though no ETH was paid for them.
 - **128-tier settlement ceiling.** Games that rely on more than 128 scored tiers can fail settlement.
 

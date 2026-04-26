@@ -93,7 +93,8 @@ contract CodexRegistryMismatchTest is JBTest, TestBaseWorkflow {
             jbController(),
             registry,
             defifaProjectId,
-            protocolFeeProjectId
+            protocolFeeProjectId,
+            new JB721TiersHookStore()
         );
 
         hookCodeOrigin.transferOwnership(address(deployer));
@@ -142,7 +143,6 @@ contract CodexRegistryMismatchTest is JBTest, TestBaseWorkflow {
             defaultAttestationDelegate: address(0),
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
-            store: new JB721TiersHookStore(),
             minParticipation: 0,
             scorecardTimeout: 0,
             timelockDuration: 0

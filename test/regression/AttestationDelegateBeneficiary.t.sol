@@ -105,7 +105,8 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
             jbController(),
             new JBAddressRegistry(),
             _defifaProjectId,
-            _protocolFeeProjectId
+            _protocolFeeProjectId,
+            new JB721TiersHookStore()
         );
 
         hook.transferOwnership(address(deployer));
@@ -237,7 +238,6 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
             mintPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
-            store: new JB721TiersHookStore(),
             splits: new JBSplit[](0),
             attestationStartTime: 0,
             attestationGracePeriod: 100_381,

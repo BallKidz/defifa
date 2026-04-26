@@ -116,14 +116,23 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     // --------------------- public stored properties -------------------- //
     //*********************************************************************//
 
+    /// @notice The amount that has been redeemed from this game, refunds are not counted.
+    uint256 public override amountRedeemed;
+
+    /// @notice The common base for the tokenUri's
+    string public override baseURI;
+
+    /// @notice A flag indicating if the cashout weights has been set.
+    bool public override cashOutWeightIsSet;
+
     /// @notice The address of the origin 'DefifaHook', used to check in the init if the contract is the original or not
     address public immutable override CODE_ORIGIN;
 
-    /// @notice The contract that stores and manages the NFT's data.
-    IJB721TiersHookStore public override store;
+    /// @notice Contract metadata uri.
+    string public override contractURI;
 
-    /// @notice The contract storing all funding cycle configurations.
-    IJBRulesets public override rulesets;
+    /// @notice The address that'll be set as the attestation delegate by default.
+    address public override defaultAttestationDelegate;
 
     /// @notice The contract reporting game phases.
     IDefifaGamePhaseReporter public override gamePhaseReporter;
@@ -138,20 +147,16 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice The currency that is accepted when minting tier NFTs.
     uint256 public override pricingCurrency;
 
-    /// @notice A flag indicating if the cashout weights has been set.
-    bool public override cashOutWeightIsSet;
+    /// @notice The number of tokens burned from a tier during non-COMPLETE phases (refund, no-contest).
+    /// @dev Used to adjust pending reserve counts so reserves that correspond to refunded mints
+    /// are excluded from the cash-out denominator.
+    mapping(uint256 => uint256) public refundedBurnsFrom;
 
-    /// @notice The common base for the tokenUri's
-    string public override baseURI;
+    /// @notice The contract storing all funding cycle configurations.
+    IJBRulesets public override rulesets;
 
-    /// @notice Contract metadata uri.
-    string public override contractURI;
-
-    /// @notice The address that'll be set as the attestation delegate by default.
-    address public override defaultAttestationDelegate;
-
-    /// @notice The amount that has been redeemed from this game, refunds are not counted.
-    uint256 public override amountRedeemed;
+    /// @notice The contract that stores and manages the NFT's data.
+    IJB721TiersHookStore public override store;
 
     /// @notice The amount of tokens that have been redeemed from a tier, refunds are not counted.
     /// @custom:param The tier from which tokens have been redeemed.
@@ -160,6 +165,40 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     //*********************************************************************//
     // ------------------------- external views -------------------------- //
     //*********************************************************************//
+
+    /// @notice Returns the adjusted pending reserve count for a tier, accounting for refund-phase burns.
+    /// @dev Recalculates reserves from (paidMints - burns) / reserveFrequency since the relationship
+    /// between burns and reserves is not linear — it depends on the tier's reserve frequency.
+    /// @param tierId The tier ID.
+    /// @return The adjusted pending reserve count (floored at 0).
+    function adjustedPendingReservesFor(uint256 tierId) public view returns (uint256) {
+        uint256 refundBurns = refundedBurnsFrom[tierId];
+
+        // If no refund burns, return the store's value directly.
+        if (refundBurns == 0) return store.numberOfPendingReservesFor({hook: address(this), tierId: tierId});
+
+        // Get the tier to access reserveFrequency and supply data.
+        JB721Tier memory tier = store.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
+
+        // No reserves if no reserve frequency.
+        if (tier.reserveFrequency == 0) return 0;
+
+        // Calculate the number of reserves already minted.
+        uint256 reservesMinted = store.numberOfReservesMintedFor({hook: address(this), tierId: tierId});
+
+        // Calculate non-reserve mints: initialSupply - remainingSupply - reservesMinted.
+        uint256 nonReserveMints = tier.initialSupply - tier.remainingSupply - reservesMinted;
+
+        // Subtract refund burns from non-reserve mints (burns can't exceed non-reserve mints).
+        uint256 adjustedMints = nonReserveMints > refundBurns ? nonReserveMints - refundBurns : 0;
+
+        // Recalculate available reserves: ceil(adjustedMints / reserveFrequency).
+        uint256 availableReserves = adjustedMints / tier.reserveFrequency;
+        if (adjustedMints % tier.reserveFrequency > 0) ++availableReserves;
+
+        // Return pending = available - already minted (floored at 0).
+        return availableReserves > reservesMinted ? availableReserves - reservesMinted : 0;
+    }
 
     /// @notice The first owner of each token ID, which corresponds to the address that originally contributed to the
     /// project to receive the NFT.
@@ -703,13 +742,20 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             }
 
             // Burn the token.
+            // slither-disable-next-line reentrancy-no-eth
             _burn(tokenId);
 
-            // Track per-tier redemptions during the complete phase.
+            // slither-disable-next-line calls-loop
+            uint256 tierId = hookStore.tierIdOfToken(tokenId);
             if (isComplete) {
+                // Track per-tier redemptions during the complete phase.
                 unchecked {
-                    // slither-disable-next-line reentrancy-no-eth,calls-loop
-                    ++tokensRedeemedFrom[hookStore.tierIdOfToken(tokenId)];
+                    ++tokensRedeemedFrom[tierId];
+                }
+            } else {
+                // Track non-COMPLETE burns (refund/no-contest) so pending reserve counts can be adjusted.
+                unchecked {
+                    ++refundedBurnsFrom[tierId];
                 }
             }
 
@@ -854,8 +900,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         for (uint256 i; i < numberOfTiers;) {
             uint256 tierId = i + 1;
-            // slither-disable-next-line calls-loop
-            uint256 pendingReserves = hookStore.numberOfPendingReservesFor({hook: address(this), tierId: tierId});
+            uint256 pendingReserves = adjustedPendingReservesFor(tierId);
             if (pendingReserves != 0) {
                 // slither-disable-next-line calls-loop
                 JB721Tier memory tier = hookStore.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});

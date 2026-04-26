@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {Script} from "forge-std/Script.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
@@ -109,6 +110,7 @@ contract DeployMainnet is Script, Sphinx {
         });
         DefifaTokenUriResolver tokenUriResolver = new DefifaTokenUriResolver{salt: _salt}(_typeface);
         DefifaGovernor governor = new DefifaGovernor{salt: _salt}({controller: core.controller, owner: safeAddress()});
+        JB721TiersHookStore hookStore = new JB721TiersHookStore{salt: _salt}();
         DefifaDeployer deployer = new DefifaDeployer{salt: _salt}({
             _hookCodeOrigin: address(hook),
             _tokenUriResolver: tokenUriResolver,
@@ -116,7 +118,8 @@ contract DeployMainnet is Script, Sphinx {
             _controller: core.controller,
             _registry: registry.registry,
             _defifaProjectId: _defifaProjectId,
-            _baseProtocolProjectId: _baseProtocolProjectId
+            _baseProtocolProjectId: _baseProtocolProjectId,
+            _hookStore: hookStore
         });
 
         governor.transferOwnership(address(deployer));

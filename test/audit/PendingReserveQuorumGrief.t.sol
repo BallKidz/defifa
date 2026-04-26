@@ -117,7 +117,8 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
             jbController(),
             new JBAddressRegistry(),
             _defifaProjectId,
-            _protocolFeeProjectId
+            _protocolFeeProjectId,
+            new JB721TiersHookStore()
         );
 
         _hookImpl.transferOwnership(address(_deployer));
@@ -288,7 +289,6 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
             defaultAttestationDelegate: address(0),
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
-            store: new JB721TiersHookStore(),
             minParticipation: 0,
             scorecardTimeout: 0,
             timelockDuration: 0

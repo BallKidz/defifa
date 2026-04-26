@@ -130,7 +130,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             jbController(),
             _registry,
             _defifaProjectId,
-            _protocolFeeProjectId
+            _protocolFeeProjectId,
+            new JB721TiersHookStore()
         );
 
         // Transfer ownership of the hook to the deployer.
@@ -970,7 +971,6 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             mintPeriodDuration: _mintPeriodDuration,
             start: _launchProjectAt + uint48(_mintPeriodDuration) + _inBetweenMintAndFifa,
             refundPeriodDuration: _inBetweenMintAndFifa,
-            store: new JB721TiersHookStore(),
             splits: new JBSplit[](0),
             attestationStartTime: 0,
             attestationGracePeriod: 100_381,
@@ -1253,7 +1253,6 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             mintPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
-            store: new JB721TiersHookStore(),
             splits: new JBSplit[](0),
             attestationStartTime: 0,
             attestationGracePeriod: 100_381,

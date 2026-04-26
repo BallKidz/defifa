@@ -8,6 +8,7 @@ import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol
 import {mulDiv} from "@prb/math/src/Common.sol";
 
 import {DefifaGamePhase} from "../enums/DefifaGamePhase.sol";
+import {IDefifaHook} from "../interfaces/IDefifaHook.sol";
 import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
 
 /// @notice Pure/view helper functions extracted from DefifaHook to reduce contract bytecode size.
@@ -64,6 +65,10 @@ library DefifaHookLib {
             // Get the tier.
             // slither-disable-next-line calls-loop
             tier = hookStore.tierOf({hook: hook, id: tierWeights[i].id, includeResolvedUri: false});
+
+            // Guard against uint32 truncation: if the caller passes a tier ID > type(uint32).max,
+            // the store may silently truncate and return a different tier.
+            if (tierWeights[i].id != tier.id) revert DefifaHook_InvalidTierId();
 
             // Can't set a cashOut weight for tiers not in category 0.
             if (tier.category != 0) revert DefifaHook_InvalidTierId();
@@ -129,13 +134,9 @@ library DefifaHookLib {
         uint256 totalTokensForCashoutInTier =
             tier.initialSupply - tier.remainingSupply - (burnedTokens - tokensRedeemedFrom[tierId]);
 
-        // Include pending (unminted) reserve NFTs in the denominator. Without this, paid holders
-        // could cash out before reserves are minted and extract value that should be diluted across
-        // both paid and reserved holders. By counting pending reserves, each token's share of the
-        // tier weight is computed against the full eventual supply.
+        // Include pending (unminted) reserve NFTs in the denominator, adjusted for refund-phase burns.
         // slither-disable-next-line calls-loop
-        uint256 pendingReserves = hookStore.numberOfPendingReservesFor({hook: hook, tierId: tierId});
-        totalTokensForCashoutInTier += pendingReserves;
+        totalTokensForCashoutInTier += IDefifaHook(hook).adjustedPendingReservesFor(tierId);
 
         // Calculate the percentage of the tier cashOut amount a single token counts for.
         // Integer division rounding in cashOutWeight is unavoidable in Solidity. Rounding direction
