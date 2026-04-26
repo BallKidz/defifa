@@ -177,15 +177,8 @@ contract CodexNemesisSingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
 
         vm.prank(_player);
         vm.expectRevert(DefifaHook.DefifaHook_NothingToClaim.selector);
-        jbMultiTerminal().cashOutTokensOf(
-            _player,
-            projectId,
-            0,
-            JBConstants.NATIVE_TOKEN,
-            0,
-            payable(_player),
-            cashOutMetadata
-        );
+        jbMultiTerminal()
+            .cashOutTokensOf(_player, projectId, 0, JBConstants.NATIVE_TOKEN, 0, payable(_player), cashOutMetadata);
     }
 
     function _launchData() internal returns (DefifaLaunchProjectData memory) {

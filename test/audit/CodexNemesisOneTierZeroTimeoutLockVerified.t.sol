@@ -145,15 +145,16 @@ contract CodexNemesisOneTierZeroTimeoutLockVerifiedTest is JBTest, TestBaseWorkf
         bytes memory cashOutMetadata = _cashOutMetadata();
         vm.prank(player);
         vm.expectRevert(DefifaHook.DefifaHook_NothingToClaim.selector);
-        JBMultiTerminal(payable(address(jbMultiTerminal()))).cashOutTokensOf({
-            holder: player,
-            projectId: projectId,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(player),
-            metadata: cashOutMetadata
-        });
+        JBMultiTerminal(payable(address(jbMultiTerminal())))
+            .cashOutTokensOf({
+                holder: player,
+                projectId: projectId,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(player),
+                metadata: cashOutMetadata
+            });
     }
 
     function _launchData() internal returns (DefifaLaunchProjectData memory) {
@@ -201,13 +202,7 @@ contract CodexNemesisOneTierZeroTimeoutLockVerifiedTest is JBTest, TestBaseWorkf
 
         vm.prank(user);
         jbMultiTerminal().pay{value: amount}(
-            projectId,
-            JBConstants.NATIVE_TOKEN,
-            amount,
-            user,
-            0,
-            "",
-            metadataHelper().createMetadata(ids, data)
+            projectId, JBConstants.NATIVE_TOKEN, amount, user, 0, "", metadataHelper().createMetadata(ids, data)
         );
     }
 
