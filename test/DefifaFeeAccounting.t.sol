@@ -117,7 +117,8 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
             jbController(),
             _registry,
             _defifaProjectId,
-            _protocolFeeProjectId
+            _protocolFeeProjectId,
+            new JB721TiersHookStore()
         );
 
         // Grant the deployer SET_SPLIT_GROUPS permission on the defifa fee project.
@@ -453,7 +454,6 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
             mintPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
-            store: new JB721TiersHookStore(),
             splits: splits,
             attestationStartTime: 0,
             attestationGracePeriod: 100_381,

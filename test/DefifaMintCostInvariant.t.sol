@@ -233,7 +233,8 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
             jbController(),
             new JBAddressRegistry(),
             _protocolFeeProjectId,
-            _defifaProjectId
+            _defifaProjectId,
+            new JB721TiersHookStore()
         );
         hookImpl.transferOwnership(address(deployer));
         governor.transferOwnership(address(deployer));
@@ -259,7 +260,6 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
             mintPeriodDuration: 100 days,
             start: uint48(block.timestamp + 200 days),
             refundPeriodDuration: 100 days,
-            store: new JB721TiersHookStore(),
             splits: new JBSplit[](0),
             attestationStartTime: 0,
             attestationGracePeriod: 100_381,

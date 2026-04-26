@@ -28,6 +28,8 @@ import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Recei
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {mulDiv} from "@prb/math/src/Common.sol";
 
+import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
+
 import {DefifaHook} from "./DefifaHook.sol";
 import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 import {IDefifaDeployer} from "./interfaces/IDefifaDeployer.sol";
@@ -102,6 +104,9 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @notice The hooks registry.
     IJBAddressRegistry public immutable REGISTRY;
 
+    /// @notice The 721 tiers hook store used by all games.
+    IJB721TiersHookStore public immutable HOOK_STORE;
+
     /// @notice The divisor that describes the protocol fee that should be taken.
     /// @dev This is equal to 100 divided by the fee percent (e.g. 40 = 2.5% fee).
     uint256 public constant override BASE_PROTOCOL_FEE_DIVISOR = 40;
@@ -120,6 +125,9 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
     /// @notice The total absolute split percent for each game (out of SPLITS_TOTAL_PERCENT).
     mapping(uint256 => uint256) internal _commitmentPercentOf;
+
+    /// @notice Whether commitments have been fulfilled for a game.
+    mapping(uint256 => bool) public commitmentsFulfilledFor;
 
     /// @notice Whether the no-contest refund ruleset has been triggered for a game.
     /// @dev Once triggered, the game stays in NO_CONTEST and refunds are enabled.
@@ -278,7 +286,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         IJBController _controller,
         IJBAddressRegistry _registry,
         uint256 _defifaProjectId,
-        uint256 _baseProtocolProjectId
+        uint256 _baseProtocolProjectId,
+        IJB721TiersHookStore _hookStore
     ) {
         // slither-disable-next-line missing-zero-check
         HOOK_CODE_ORIGIN = _hookCodeOrigin;
@@ -288,6 +297,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         REGISTRY = _registry;
         DEFIFA_PROJECT_ID = _defifaProjectId;
         BASE_PROTOCOL_PROJECT_ID = _baseProtocolProjectId;
+        HOOK_STORE = _hookStore;
         /// @dev Uses the deployer address as group ID. Game scoring rulesets use uint160(token) as group ID.
         SPLIT_GROUP = uint256(uint160(address(this)));
     }
@@ -300,7 +310,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @param gameId The ID of the game to fulfill splits for.
     function fulfillCommitmentsOf(uint256 gameId) external virtual override {
         // Make sure commitments haven't already been fulfilled.
-        if (fulfilledCommitmentsOf[gameId] != 0) return;
+        if (commitmentsFulfilledFor[gameId]) return;
+        commitmentsFulfilledFor[gameId] = true;
 
         // Get the game's current funding cycle along with its metadata.
         // slither-disable-next-line unused-return
@@ -319,10 +330,9 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Get the current pot and store it. This also prevents re-entrance since the check above will return early.
         uint256 pot = terminal.STORE().balanceOf({terminal: address(terminal), projectId: gameId, token: token});
 
-        // If the pot is empty, set the sentinel and queue the final ruleset without attempting payouts.
+        // If the pot is empty, queue the final ruleset without attempting payouts.
         // slither-disable-next-line incorrect-equality
         if (pot == 0) {
-            fulfilledCommitmentsOf[gameId] = 1;
             _queueFinalRuleset({gameId: gameId, metadata: metadata});
             // slither-disable-next-line reentrancy-events
             emit FulfilledCommitments({gameId: gameId, pot: 0, caller: msg.sender});
@@ -334,8 +344,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             mulDiv({x: pot, y: _commitmentPercentOf[gameId], denominator: JBConstants.SPLITS_TOTAL_PERCENT});
 
         // Store the actual fee amount for accurate currentGamePotOf reporting.
-        // Use max(feeAmount, 1) to preserve the reentrancy guard when pot is 0.
-        fulfilledCommitmentsOf[gameId] = feeAmount > 0 ? feeAmount : 1;
+        fulfilledCommitmentsOf[gameId] = feeAmount;
 
         // Send only the fee portion as payouts. The remaining balance stays as surplus for cash-outs.
         // Use the ruleset's baseCurrency — this matches the currency under which payout limits were stored
@@ -346,9 +355,9 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             projectId: gameId, token: token, amount: feeAmount, currency: metadata.baseCurrency, minTokensPaidOut: 0
         }) {}
         catch (bytes memory reason) {
-            // Payout failed — fee stays in pot. Reset to sentinel (1) so currentGamePotOf
-            // doesn't double-count the fee, while preserving the reentrancy guard.
-            fulfilledCommitmentsOf[gameId] = 1;
+            // Payout failed — fee stays in pot. Reset to 0 so currentGamePotOf
+            // doesn't double-count the fee.
+            fulfilledCommitmentsOf[gameId] = 0;
             // slither-disable-next-line reentrancy-events
             emit CommitmentPayoutFailed({gameId: gameId, amount: feeAmount, reason: reason});
         }
@@ -394,12 +403,20 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // The hook and governor hardcode uint256[128] tier-weight tables, so reject games with more than 128 tiers.
         if (launchProjectData.tiers.length > 128) revert DefifaDeployer_InvalidGameConfiguration();
 
-        // Reject ERC-20 games with a zero currency — a zero baseCurrency would cause payout limit lookups
+        // Reject ERC-20 games with a zero currency �� a zero baseCurrency would cause payout limit lookups
         // in fulfillCommitmentsOf to silently fail, skipping all commitment payouts.
         // slither-disable-next-line incorrect-equality
         if (launchProjectData.token.token != JBConstants.NATIVE_TOKEN && launchProjectData.token.currency == 0) {
             revert DefifaDeployer_InvalidCurrency();
         }
+
+        // If a scorecard timeout is set, it must exceed the attestation grace period + timelock duration.
+        // Otherwise the game would enter NO_CONTEST before a scorecard could ever reach SUCCEEDED.
+        if (
+            launchProjectData.scorecardTimeout > 0
+                && launchProjectData.scorecardTimeout
+                    <= launchProjectData.attestationGracePeriod + launchProjectData.timelockDuration
+        ) revert DefifaDeployer_InvalidGameConfiguration();
 
         // Get the game ID, optimistically knowing it will be one greater than the current count.
         // Note: this prediction can race with other concurrent project deployments. If another project is
@@ -536,7 +553,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             _contractUri: launchProjectData.contractUri,
             _tiers: hookTiers,
             _currency: launchProjectData.token.currency,
-            _store: launchProjectData.store,
+            _store: HOOK_STORE,
             _gamePhaseReporter: this,
             _gamePotReporter: this,
             _defaultAttestationDelegate: launchProjectData.defaultAttestationDelegate,

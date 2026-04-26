@@ -129,7 +129,8 @@ contract FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
             jbController(),
             _registry,
             _defifaProjectId,
-            _protocolFeeProjectId
+            _protocolFeeProjectId,
+            new JB721TiersHookStore()
         );
 
         hook.transferOwnership(address(deployer));
@@ -214,8 +215,9 @@ contract FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
             "Scorecard state should be RATIFIED"
         );
 
-        // Verify fulfilledCommitmentsOf is sentinel (1)
-        assertEq(deployer.fulfilledCommitmentsOf(_projectId), 1, "should be sentinel value 1");
+        // Verify commitments have been fulfilled.
+        assertTrue(deployer.commitmentsFulfilledFor(_projectId), "commitments should be fulfilled");
+        assertEq(deployer.fulfilledCommitmentsOf(_projectId), 0, "no fee amount when payout reverted");
     }
 
     // ----- Internal helpers ------
@@ -242,7 +244,6 @@ contract FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
             mintPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
-            store: new JB721TiersHookStore(),
             splits: new JBSplit[](0),
             attestationStartTime: 0,
             attestationGracePeriod: 100_381,

@@ -114,7 +114,8 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
             jbController(),
             new JBAddressRegistry(),
             _protocolFeeProjectId,
-            _defifaProjectId
+            _defifaProjectId,
+            new JB721TiersHookStore()
         );
         hook.transferOwnership(address(deployer));
         governor.transferOwnership(address(deployer));
@@ -620,7 +621,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
     /// @notice During COUNTDOWN, MINT, and REFUND phases, NO_CONTEST is not returned even if threshold/timeout would
     /// trigger.
     function testNoContest_onlyDuringScoringWindow() external {
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 100 ether, uint32(1));
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 100 ether, uint32(100_382));
         (_pid, _nft, _gov) = _launch(d);
 
         // COUNTDOWN
@@ -815,7 +816,6 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
             mintPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
-            store: new JB721TiersHookStore(),
             splits: new JBSplit[](0),
             attestationStartTime: 0,
             attestationGracePeriod: 100_381,

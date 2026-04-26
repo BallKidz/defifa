@@ -95,7 +95,6 @@ contract CodexNemesisCurrencyMismatchBypassTest is DefifaUSDCTest {
             mintPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
-            store: new JB721TiersHookStore(),
             splits: new JBSplit[](0),
             attestationStartTime: 0,
             attestationGracePeriod: 1 days,

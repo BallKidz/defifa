@@ -70,12 +70,14 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
         // Keep a reference to the rarity text;
         string memory valueText;
 
-        // Keep a reference to the game's name.
+        // Keep a reference to the game's name (escaped for JSON/SVG safety).
         // TODO: Somehow make the `IDefifaHook` have the `name` function.
-        string memory title = ERC721(address(hook)).name();
+        string memory titleJson = _escapeJson(ERC721(address(hook)).name());
+        string memory titleSvg = _escapeSvg(ERC721(address(hook)).name());
 
         // Keep a reference to the tier's name.
-        string memory team;
+        string memory teamJson;
+        string memory teamSvg;
 
         // Keep a reference to the SVG parts.
         string[] memory parts = new string[](4);
@@ -88,8 +90,10 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
             JB721Tier memory tier =
                 hook.store().tierOfTokenId({hook: address(hook), tokenId: tokenId, includeResolvedUri: false});
 
-            // Set the tier's name.
-            team = hook.tierNameOf(tier.id);
+            // Set the tier's name (escaped for JSON/SVG safety).
+            string memory rawTeam = hook.tierNameOf(tier.id);
+            teamJson = _escapeJson(rawTeam);
+            teamSvg = _escapeSvg(rawTeam);
 
             // Check to see if the tier has a URI. Return it if it does.
             if (tier.encodedIPFSUri != bytes32(0)) {
@@ -101,11 +105,11 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
             parts[1] = string(
                 abi.encodePacked(
                     '{"name":"',
-                    team,
+                    teamJson,
                     '", "id": "',
                     uint256(tier.id).toString(),
                     '","description":"Team: ',
-                    team,
+                    teamJson,
                     ", ID: ",
                     uint256(tier.id).toString(),
                     '.","image":"data:image/svg+xml;base64,'
@@ -201,27 +205,27 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
                 gamePhaseText,
                 "</text>",
                 '<text x="10" y="85" style="font-size:26px; font-family: Capsules-500; font-weight:500; fill: #c0b3f1;">',
-                _getSubstring(title, 0, 30),
+                _getSubstring(titleSvg, 0, 30),
                 "</text>",
                 '<text x="10" y="120" style="font-size:26px; font-family: Capsules-500; font-weight:500; fill: #c0b3f1;">',
-                _getSubstring(title, 30, 60),
+                _getSubstring(titleSvg, 30, 60),
                 "</text>",
                 '<text x="10" y="205" style="font-size:80px; font-family: Capsules-700; font-weight:700; fill: #fea282;">',
-                bytes(_getSubstring(team, 20, 30)).length != 0 && bytes(_getSubstring(team, 10, 20)).length != 0
-                    ? _getSubstring(team, 0, 10)
+                bytes(_getSubstring(teamSvg, 20, 30)).length != 0 && bytes(_getSubstring(teamSvg, 10, 20)).length != 0
+                    ? _getSubstring(teamSvg, 0, 10)
                     : "",
                 "</text>",
                 '<text x="10" y="295" style="font-size:80px; font-family: Capsules-700; font-weight:700; fill: #fea282;">',
-                bytes(_getSubstring(team, 20, 30)).length != 0
-                    ? _getSubstring(team, 10, 20)
-                    : bytes(_getSubstring(team, 10, 20)).length != 0 ? _getSubstring(team, 0, 10) : "",
+                bytes(_getSubstring(teamSvg, 20, 30)).length != 0
+                    ? _getSubstring(teamSvg, 10, 20)
+                    : bytes(_getSubstring(teamSvg, 10, 20)).length != 0 ? _getSubstring(teamSvg, 0, 10) : "",
                 "</text>",
                 '<text x="10" y="385" style="font-size:80px; font-family: Capsules-700; font-weight:700; fill: #fea282;">',
-                bytes(_getSubstring(team, 20, 30)).length != 0
-                    ? _getSubstring(team, 20, 30)
-                    : bytes(_getSubstring(team, 10, 20)).length != 0
-                        ? _getSubstring(team, 10, 20)
-                        : _getSubstring(team, 0, 10),
+                bytes(_getSubstring(teamSvg, 20, 30)).length != 0
+                    ? _getSubstring(teamSvg, 20, 30)
+                    : bytes(_getSubstring(teamSvg, 10, 20)).length != 0
+                        ? _getSubstring(teamSvg, 10, 20)
+                        : _getSubstring(teamSvg, 0, 10),
                 "</text>",
                 '<text x="10" y="430" style="font-size:16px; font-family: Capsules-500; font-weight:500; fill: #c0b3f1;">TOKEN ID: ',
                 tokenId.toString(),
@@ -311,5 +315,94 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
             }
         }
         return string(result);
+    }
+
+    /// @notice Escapes special characters for safe JSON string interpolation.
+    /// @param input The raw string.
+    /// @return The escaped string.
+    function _escapeJson(string memory input) internal pure returns (string memory) {
+        bytes memory b = bytes(input);
+        // Worst case: every char needs escaping (2x length).
+        bytes memory out = new bytes(b.length * 2);
+        uint256 j;
+        for (uint256 i; i < b.length;) {
+            bytes1 c = b[i];
+            if (c == '"' || c == "\\") {
+                out[j++] = "\\";
+                out[j++] = c;
+            } else if (c == 0x0a) {
+                // newline
+                out[j++] = "\\";
+                out[j++] = "n";
+            } else if (c == 0x0d) {
+                // carriage return
+                out[j++] = "\\";
+                out[j++] = "r";
+            } else {
+                out[j++] = c;
+            }
+            unchecked {
+                ++i;
+            }
+        }
+        // Trim to actual length.
+        bytes memory trimmed = new bytes(j);
+        for (uint256 k; k < j;) {
+            trimmed[k] = out[k];
+            unchecked {
+                ++k;
+            }
+        }
+        return string(trimmed);
+    }
+
+    /// @notice Escapes special characters for safe SVG text interpolation.
+    /// @param input The raw string.
+    /// @return The escaped string.
+    function _escapeSvg(string memory input) internal pure returns (string memory) {
+        bytes memory b = bytes(input);
+        // Worst case: each char becomes 5 chars (&amp;).
+        bytes memory out = new bytes(b.length * 5);
+        uint256 j;
+        for (uint256 i; i < b.length;) {
+            bytes1 c = b[i];
+            if (c == "&") {
+                out[j++] = "&";
+                out[j++] = "a";
+                out[j++] = "m";
+                out[j++] = "p";
+                out[j++] = ";";
+            } else if (c == "<") {
+                out[j++] = "&";
+                out[j++] = "l";
+                out[j++] = "t";
+                out[j++] = ";";
+            } else if (c == ">") {
+                out[j++] = "&";
+                out[j++] = "g";
+                out[j++] = "t";
+                out[j++] = ";";
+            } else if (c == '"') {
+                out[j++] = "&";
+                out[j++] = "q";
+                out[j++] = "u";
+                out[j++] = "o";
+                out[j++] = "t";
+                out[j++] = ";";
+            } else {
+                out[j++] = c;
+            }
+            unchecked {
+                ++i;
+            }
+        }
+        bytes memory trimmed = new bytes(j);
+        for (uint256 k; k < j;) {
+            trimmed[k] = out[k];
+            unchecked {
+                ++k;
+            }
+        }
+        return string(trimmed);
     }
 }

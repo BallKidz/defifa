@@ -157,9 +157,23 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @custom:param The tier from which tokens have been redeemed.
     mapping(uint256 => uint256) public override tokensRedeemedFrom;
 
+    /// @notice The number of tokens burned from a tier during non-COMPLETE phases (refund, no-contest).
+    /// @dev Used to adjust pending reserve counts so reserves that correspond to refunded mints
+    /// are excluded from the cash-out denominator.
+    mapping(uint256 => uint256) public refundedBurnsFrom;
+
     //*********************************************************************//
     // ------------------------- external views -------------------------- //
     //*********************************************************************//
+
+    /// @notice Returns the adjusted pending reserve count for a tier, subtracting refund-phase burns.
+    /// @param tierId The tier ID.
+    /// @return The adjusted pending reserve count (floored at 0).
+    function adjustedPendingReservesFor(uint256 tierId) public view returns (uint256) {
+        uint256 pendingReserves = store.numberOfPendingReservesFor({hook: address(this), tierId: tierId});
+        uint256 refundBurns = refundedBurnsFrom[tierId];
+        return pendingReserves > refundBurns ? pendingReserves - refundBurns : 0;
+    }
 
     /// @notice The first owner of each token ID, which corresponds to the address that originally contributed to the
     /// project to receive the NFT.
@@ -354,7 +368,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             hookStore: store,
             hook: address(this),
             tierCashOutWeights: _tierCashOutWeights,
-            tokensRedeemedFrom: tokensRedeemedFrom
+            tokensRedeemedFrom: tokensRedeemedFrom,
+            refundedBurnsFrom: refundedBurnsFrom
         });
     }
 
@@ -367,7 +382,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             hookStore: store,
             hook: address(this),
             tierCashOutWeights: _tierCashOutWeights,
-            tokensRedeemedFrom: tokensRedeemedFrom
+            tokensRedeemedFrom: tokensRedeemedFrom,
+            refundedBurnsFrom: refundedBurnsFrom
         });
     }
 
@@ -705,11 +721,17 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             // Burn the token.
             _burn(tokenId);
 
-            // Track per-tier redemptions during the complete phase.
+            // slither-disable-next-line calls-loop
+            uint256 tierId = hookStore.tierIdOfToken(tokenId);
             if (isComplete) {
+                // Track per-tier redemptions during the complete phase.
                 unchecked {
-                    // slither-disable-next-line reentrancy-no-eth,calls-loop
-                    ++tokensRedeemedFrom[hookStore.tierIdOfToken(tokenId)];
+                    ++tokensRedeemedFrom[tierId];
+                }
+            } else {
+                // Track non-COMPLETE burns (refund/no-contest) so pending reserve counts can be adjusted.
+                unchecked {
+                    ++refundedBurnsFrom[tierId];
                 }
             }
 
@@ -854,8 +876,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         for (uint256 i; i < numberOfTiers;) {
             uint256 tierId = i + 1;
-            // slither-disable-next-line calls-loop
-            uint256 pendingReserves = hookStore.numberOfPendingReservesFor({hook: address(this), tierId: tierId});
+            uint256 pendingReserves = adjustedPendingReservesFor(tierId);
             if (pendingReserves != 0) {
                 // slither-disable-next-line calls-loop
                 JB721Tier memory tier = hookStore.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});

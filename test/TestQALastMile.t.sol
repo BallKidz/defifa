@@ -138,7 +138,8 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
             jbController(),
             _registry,
             _defifaProjectId,
-            _protocolFeeProjectId
+            _protocolFeeProjectId,
+            new JB721TiersHookStore()
         );
 
         hook.transferOwnership(address(deployer));
@@ -221,8 +222,9 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
         // Verify game is in COMPLETE phase (scorecard is set).
         assertEq(uint256(deployer.currentGamePhaseOf(_projectId)), uint256(DefifaGamePhase.COMPLETE));
 
-        // Verify fulfilledCommitmentsOf returns 1 (sentinel).
-        assertEq(deployer.fulfilledCommitmentsOf(_projectId), 1, "should be sentinel value 1");
+        // Verify commitments have been fulfilled.
+        assertTrue(deployer.commitmentsFulfilledFor(_projectId), "commitments should be fulfilled");
+        assertEq(deployer.fulfilledCommitmentsOf(_projectId), 0, "no fee amount when pot is empty");
 
         // --- Players CAN cash out immediately (no DoS) ---
         uint256 user0BalBefore = _users[0].balance;
@@ -248,7 +250,7 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
 
         // --- Calling fulfillCommitmentsOf again is a no-op (idempotent) ---
         deployer.fulfillCommitmentsOf(_projectId);
-        assertEq(deployer.fulfilledCommitmentsOf(_projectId), 1, "should still be sentinel value 1");
+        assertTrue(deployer.commitmentsFulfilledFor(_projectId), "commitments should still be fulfilled");
     }
 
     // ----- Internal helpers ------
@@ -275,7 +277,6 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
             mintPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
-            store: new JB721TiersHookStore(),
             splits: new JBSplit[](0),
             attestationStartTime: 0,
             attestationGracePeriod: 100_381,
@@ -416,7 +417,8 @@ contract TestQAGameIdPredictionRace is JBTest, TestBaseWorkflow {
             jbController(),
             _registry,
             _defifaProjectId,
-            _protocolFeeProjectId
+            _protocolFeeProjectId,
+            new JB721TiersHookStore()
         );
 
         hook.transferOwnership(address(deployer));
@@ -498,7 +500,6 @@ contract TestQAGameIdPredictionRace is JBTest, TestBaseWorkflow {
             mintPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
-            store: new JB721TiersHookStore(),
             splits: new JBSplit[](0),
             attestationStartTime: 0,
             attestationGracePeriod: 100_381,

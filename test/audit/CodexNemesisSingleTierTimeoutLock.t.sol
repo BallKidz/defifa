@@ -9,10 +9,11 @@ import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaGamePhase} from "../../src/enums/DefifaGamePhase.sol";
+import {DefifaTierCashOutWeight} from "../../src/structs/DefifaTierCashOutWeight.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../../src/structs/DefifaTierParams.sol";
+import {DefifaDelegation} from "../../src/structs/DefifaDelegation.sol";
 import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
-import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
@@ -21,16 +22,21 @@ import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingCo
 import {JBTerminalConfig} from "@bananapus/core-v6/src/structs/JBTerminalConfig.sol";
 import {JBRulesetConfig} from "@bananapus/core-v6/src/structs/JBRulesetConfig.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
+import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
+import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
-import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
 import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
-import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
+import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
+import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
-contract CodexNemesisNoContestReserveDrainTest is JBTest, TestBaseWorkflow {
+contract CodexNemesisSingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
+    using JBRulesetMetadataResolver for JBRuleset;
+
     uint256 internal _protocolFeeProjectId;
     uint256 internal _defifaProjectId;
+    uint256 internal _gameId = 3;
 
     DefifaDeployer internal _deployer;
     DefifaHook internal _hookImpl;
@@ -38,7 +44,6 @@ contract CodexNemesisNoContestReserveDrainTest is JBTest, TestBaseWorkflow {
 
     address internal _projectOwner = address(bytes20(keccak256("projectOwner")));
     address internal _player = address(bytes20(keccak256("player")));
-    address internal _reserveBeneficiary = address(bytes20(keccak256("reserveBeneficiary")));
 
     function setUp() public virtual override {
         super.setUp();
@@ -109,9 +114,14 @@ contract CodexNemesisNoContestReserveDrainTest is JBTest, TestBaseWorkflow {
         _governorImpl.transferOwnership(address(_deployer));
     }
 
-    function test_noContestReserveMintExcludedFromRefund() external {
+    function test_singleTierGameWithZeroTimeoutLocksFunds() external {
         DefifaLaunchProjectData memory data = _launchData();
         uint256 projectId = _deployer.launchGameWith(data);
+        JBRuleset memory ruleset = jbRulesets().currentOf(projectId);
+        if (ruleset.dataHook() == address(0)) {
+            (ruleset,) = jbRulesets().latestQueuedOf(projectId);
+        }
+        DefifaHook hook = DefifaHook(ruleset.dataHook());
 
         vm.warp(data.start - data.mintPeriodDuration - data.refundPeriodDuration);
         vm.deal(_player, 1 ether);
@@ -129,65 +139,54 @@ contract CodexNemesisNoContestReserveDrainTest is JBTest, TestBaseWorkflow {
             _buildPayMetadata(abi.encode(_player, tierIds))
         );
 
+        DefifaDelegation[] memory delegations = new DefifaDelegation[](1);
+        delegations[0] = DefifaDelegation({delegatee: _player, tierId: 1});
+        vm.prank(_player);
+        hook.setTierDelegatesTo(delegations);
+
         vm.warp(data.start + 1);
-        (, JBRulesetMetadata memory metadata) = jbController().currentRulesetOf(projectId);
-        DefifaHook hook = DefifaHook(metadata.dataHook);
-        assertEq(uint256(_deployer.currentGamePhaseOf(projectId)), uint256(DefifaGamePhase.NO_CONTEST));
+        assertEq(uint256(_deployer.currentGamePhaseOf(projectId)), uint256(DefifaGamePhase.SCORING));
 
-        JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
-        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
-        hook.mintReservesFor(reserveConfigs);
+        DefifaTierCashOutWeight[] memory scorecard = new DefifaTierCashOutWeight[](1);
+        scorecard[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: hook.TOTAL_CASHOUT_WEIGHT()});
+        uint256 scorecardId = _governorImpl.submitScorecardFor(_gameId, scorecard);
 
-        assertEq(hook.balanceOf(_reserveBeneficiary), 1, "reserve beneficiary received a free NFT");
-        assertTrue(hook.isReserveMint(_generateTokenId(1, 2)), "token flagged as reserve mint");
+        assertEq(_governorImpl.quorum(_gameId), 500_000_000, "single tier quorum remains positive");
+        assertEq(
+            _governorImpl.getBWAAttestationWeight(_gameId, scorecardId, _player, uint48(block.timestamp)),
+            0,
+            "sole beneficiary has zero BWA power"
+        );
 
+        vm.prank(_player);
+        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        _governorImpl.attestToScorecardFrom(_gameId, scorecardId);
+
+        vm.warp(block.timestamp + 365 days);
+        assertEq(
+            uint256(_deployer.currentGamePhaseOf(projectId)),
+            uint256(DefifaGamePhase.SCORING),
+            "timeout disabled keeps the game in scoring forever"
+        );
+
+        vm.expectRevert(DefifaDeployer.DefifaDeployer_NotNoContest.selector);
         _deployer.triggerNoContestFor(projectId);
 
-        // Build metadata for the reserve token cashout before calling expectRevert.
-        uint256 reserveTokenId = _generateTokenId(1, 2);
-        uint256[] memory reserveTokenIds = new uint256[](1);
-        reserveTokenIds[0] = reserveTokenId;
-        bytes memory reserveCashOutMetadata = _buildCashOutMetadata(reserveTokenIds);
-
-        // The reserve beneficiary's cashout reverts — reserve-minted tokens are excluded from refund calculations.
-        vm.prank(_reserveBeneficiary);
-        vm.expectRevert();
-        jbMultiTerminal()
-            .cashOutTokensOf(
-                _reserveBeneficiary,
-                projectId,
-                0,
-                JBConstants.NATIVE_TOKEN,
-                0,
-                payable(_reserveBeneficiary),
-                reserveCashOutMetadata
-            );
-
-        // The paid player can still get their full refund.
-        uint256 playerTokenId = _generateTokenId(1, 1);
-        uint256 balanceBefore = _player.balance;
-        _cashOut(projectId, _player, playerTokenId);
-
-        // Player gets full refund (1 ether minus fee).
-        assertTrue(_player.balance > balanceBefore, "player received refund");
-        assertEq(hook.balanceOf(_player), 0, "player NFT burned");
-    }
-
-    function _cashOut(uint256 projectId, address holder, uint256 tokenId) internal {
         uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = tokenId;
+        tokenIds[0] = _generateTokenId(1, 1);
         bytes memory cashOutMetadata = _buildCashOutMetadata(tokenIds);
 
-        vm.prank(holder);
+        vm.prank(_player);
+        vm.expectRevert(DefifaHook.DefifaHook_NothingToClaim.selector);
         jbMultiTerminal()
-            .cashOutTokensOf(holder, projectId, 0, JBConstants.NATIVE_TOKEN, 0, payable(holder), cashOutMetadata);
+            .cashOutTokensOf(_player, projectId, 0, JBConstants.NATIVE_TOKEN, 0, payable(_player), cashOutMetadata);
     }
 
     function _launchData() internal returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](1);
         tierParams[0] = DefifaTierParams({
-            reservedRate: 1,
-            reservedTokenBeneficiary: _reserveBeneficiary,
+            reservedRate: 1001,
+            reservedTokenBeneficiary: address(0),
             encodedIPFSUri: bytes32(0),
             shouldUseReservedTokenBeneficiaryAsDefault: false,
             name: "SOLE"
@@ -206,11 +205,11 @@ contract CodexNemesisNoContestReserveDrainTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             splits: new JBSplit[](0),
             attestationStartTime: 0,
-            attestationGracePeriod: 1 days,
+            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
-            minParticipation: 2 ether,
+            minParticipation: 0,
             scorecardTimeout: 0,
             timelockDuration: 0
         });

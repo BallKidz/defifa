@@ -104,6 +104,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @custom:param tierId The tier ID (0-indexed).
     mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) internal _scorecardTierWeightsOf;
 
+    /// @notice The timestamp when quorum was first reached for a scorecard.
+    /// @dev Reset to 0 if attestations drop below quorum via revocation.
+    /// @custom:param gameId The ID of the game.
+    /// @custom:param scorecardId The ID of the scorecard.
+    mapping(uint256 => mapping(uint256 => uint48)) internal _quorumReachedAtOf;
+
     //*********************************************************************//
     // -------------------------- constructor ---------------------------- //
     //*********************************************************************//
@@ -163,6 +169,11 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Increase the attestation count.
         attestations.count += weight;
+
+        // Record when quorum is first reached so the timelock anchors to this moment.
+        if (_quorumReachedAtOf[gameId][scorecardId] == 0 && attestations.count >= scorecard.quorumSnapshot) {
+            _quorumReachedAtOf[gameId][scorecardId] = uint48(block.timestamp);
+        }
 
         // Store the BWA weight that was added (used for accurate subtraction on revoke).
         attestations.attestedWeightOf[msg.sender] = weight;
@@ -236,6 +247,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Subtract the weight and clear the attestation.
         attestations.count -= weight;
         attestations.attestedWeightOf[msg.sender] = 0;
+
+        // Reset quorum timestamp if attestations drop below quorum.
+        DefifaScorecard storage scorecard = _scorecardOf[gameId][scorecardId];
+        if (attestations.count < scorecard.quorumSnapshot) {
+            _quorumReachedAtOf[gameId][scorecardId] = 0;
+        }
 
         emit AttestationRevoked(gameId, scorecardId, msg.sender, weight);
     }
@@ -312,7 +329,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Grace period extends from when attestations begin, not from submission time.
         // This prevents the grace period from expiring before attestations even start
         // when a scorecard is submitted early.
-        scorecard.gracePeriodEnds = uint48(attestationsBegin + attestationGracePeriodOf(gameId));
+        uint256 gracePeriodEnds = uint256(attestationsBegin) + attestationGracePeriodOf(gameId);
+        if (gracePeriodEnds > type(uint48).max) revert DefifaGovernor_Uint48Overflow();
+        scorecard.gracePeriodEnds = uint48(gracePeriodEnds);
 
         // Store tier weights for BWA computation.
         for (uint256 i; i < numberOfTierWeights;) {
@@ -335,9 +354,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                 // slither-disable-next-line calls-loop
                 JB721Tier memory tier =
                     hookStore.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
+                // Use adjusted pending reserves that account for refund-phase burns.
                 // slither-disable-next-line calls-loop
-                uint256 pendingReserves =
-                    hookStore.numberOfPendingReservesFor({hook: metadata.dataHook, tierId: tierId});
+                uint256 pendingReserves = IDefifaHook(metadata.dataHook).adjustedPendingReservesFor(tierId);
                 // slither-disable-next-line calls-loop
                 uint256 submittedTierAttestationUnits =
                     IDefifaHook(metadata.dataHook).currentSupplyOfTier(tierId) * tier.votingUnits;
@@ -554,8 +573,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             // When the reserve beneficiary later mints, their new NFTs add to the numerator while
             // pending reserves decrease by the same amount — so no one's voting power shifts.
             {
+                // Use adjusted pending reserves that account for refund-phase burns.
                 // slither-disable-next-line calls-loop
-                uint256 pendingReserves = store.numberOfPendingReservesFor({hook: metadata.dataHook, tierId: tierId});
+                uint256 pendingReserves = IDefifaHook(metadata.dataHook).adjustedPendingReservesFor(tierId);
                 if (pendingReserves != 0) {
                     // slither-disable-next-line calls-loop
                     JB721Tier memory tier =
@@ -700,8 +720,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             // burner erase another participant's quorum contribution without erasing their claim.
             // slither-disable-next-line calls-loop
             uint256 currentTierSupply = hook.currentSupplyOfTier(tierId);
+            // Use adjusted pending reserves that account for refund-phase burns.
             // slither-disable-next-line calls-loop
-            uint256 pendingReserves = store.numberOfPendingReservesFor({hook: metadata.dataHook, tierId: tierId});
+            uint256 pendingReserves = hook.adjustedPendingReservesFor(tierId);
             if (currentTierSupply != 0 || pendingReserves != 0) {
                 eligibleTierWeights += MAX_ATTESTATION_POWER_TIER;
             }
@@ -757,8 +778,14 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // If quorum has been reached (using the concentration-adjusted snapshot), check timelock.
         if (scorecard.quorumSnapshot <= _scorecardAttestationsOf[gameId][scorecardId].count) {
             uint256 timelockDur = timelockDurationOf(gameId);
-            if (timelockDur > 0 && block.timestamp < uint256(scorecard.gracePeriodEnds) + timelockDur) {
-                return DefifaScorecardState.QUEUED;
+            if (timelockDur > 0) {
+                // Anchor the timelock to the later of grace period end or when quorum was reached.
+                uint256 quorumReachedAt = _quorumReachedAtOf[gameId][scorecardId];
+                uint256 timelockAnchor =
+                    quorumReachedAt > scorecard.gracePeriodEnds ? quorumReachedAt : uint256(scorecard.gracePeriodEnds);
+                if (block.timestamp < timelockAnchor + timelockDur) {
+                    return DefifaScorecardState.QUEUED;
+                }
             }
             return DefifaScorecardState.SUCCEEDED;
         }
