@@ -137,11 +137,21 @@ library DefifaHookLib {
         // Include pending (unminted) reserve NFTs in the denominator, adjusted for refund-phase burns.
         // Without this, paid holders could cash out before reserves are minted and extract value
         // that should be diluted across both paid and reserved holders.
-        // slither-disable-next-line calls-loop
-        uint256 pendingReserves = hookStore.numberOfPendingReservesFor({hook: hook, tierId: tierId});
-        uint256 refundBurns = refundedBurnsFrom[tierId];
-        uint256 adjustedPending = pendingReserves > refundBurns ? pendingReserves - refundBurns : 0;
-        totalTokensForCashoutInTier += adjustedPending;
+        // Recalculate from (paidMints - burns) / reserveFrequency since the relationship is not linear.
+        {
+            uint256 refundBurns = refundedBurnsFrom[tierId];
+            uint256 adjustedPending;
+            if (tier.reserveFrequency > 0) {
+                // slither-disable-next-line calls-loop
+                uint256 reservesMinted = hookStore.numberOfReservesMintedFor({hook: hook, tierId: tierId});
+                uint256 nonReserveMints = tier.initialSupply - tier.remainingSupply - reservesMinted;
+                uint256 adjustedMints = nonReserveMints > refundBurns ? nonReserveMints - refundBurns : 0;
+                uint256 availableReserves = adjustedMints / tier.reserveFrequency;
+                if (adjustedMints % tier.reserveFrequency > 0) ++availableReserves;
+                adjustedPending = availableReserves > reservesMinted ? availableReserves - reservesMinted : 0;
+            }
+            totalTokensForCashoutInTier += adjustedPending;
+        }
 
         // Calculate the percentage of the tier cashOut amount a single token counts for.
         // Integer division rounding in cashOutWeight is unavoidable in Solidity. Rounding direction
