@@ -744,6 +744,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             }
 
             // Burn the token.
+            // slither-disable-next-line reentrancy-no-eth
             _burn(tokenId);
 
             // slither-disable-next-line calls-loop
