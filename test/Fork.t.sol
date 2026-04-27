@@ -2056,7 +2056,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
             attestationStartTime: 0,
-            attestationGracePeriod: 1, // Very short — should be clamped to 1 day.
+            attestationGracePeriod: 1, // Below minimum — governor reverts.
             defaultAttestationDelegate: address(0),
             tierPrice: uint104(1 ether),
             tiers: _makeTierParams(4),
@@ -2066,10 +2066,9 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             scorecardTimeout: 0,
             timelockDuration: 0
         });
-        (_pid, _nft, _gov) = _launch(d);
 
-        // Governor should enforce minimum grace period of 1 day.
-        assertGe(_gov.attestationGracePeriodOf(_gameId), 1 days, "grace period >= 1 day");
+        vm.expectRevert(DefifaGovernor.DefifaGovernor_GracePeriodTooShort.selector);
+        _launch(d);
     }
 
     // =========================================================================
