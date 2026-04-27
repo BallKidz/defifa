@@ -410,7 +410,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             revert DefifaDeployer_InvalidCurrency();
         }
 
-        // If a scorecard timeout is set, it must exceed the attestation grace period + timelock duration.
+        // If a scorecard timeout is set, it must exceed the grace period + timelock duration.
         // Otherwise the game would enter NO_CONTEST before a scorecard could ever reach SUCCEEDED.
         if (
             launchProjectData.scorecardTimeout > 0

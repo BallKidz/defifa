@@ -481,9 +481,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         if (attestationStartTime == 0) attestationStartTime = block.timestamp;
 
         // Enforce a minimum grace period to prevent instant ratification.
-        if (attestationGracePeriod < MIN_ATTESTATION_GRACE_PERIOD) {
-            revert DefifaGovernor_GracePeriodTooShort();
-        }
+        if (attestationGracePeriod < MIN_ATTESTATION_GRACE_PERIOD) revert DefifaGovernor_GracePeriodTooShort();
 
         // Ensure values fit within their allocated 48-bit widths before packing.
         if (attestationStartTime > type(uint48).max) revert DefifaGovernor_Uint48Overflow();
