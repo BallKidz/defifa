@@ -31,7 +31,7 @@ import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRules
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
-contract CodexNemesisSingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
+contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
     uint256 internal _protocolFeeProjectId;

@@ -27,7 +27,7 @@ import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRules
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
-contract CodexRegistryMismatchTest is JBTest, TestBaseWorkflow {
+contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
     JBAddressRegistry internal registry;
     DefifaDeployer internal deployer;
 

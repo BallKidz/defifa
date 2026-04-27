@@ -5,7 +5,6 @@ import {DefifaUSDCTest} from "../DefifaUSDC.t.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierCashOutWeight} from "../../src/structs/DefifaTierCashOutWeight.sol";
 import {DefifaTierParams} from "../../src/structs/DefifaTierParams.sol";
-import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
@@ -15,7 +14,7 @@ import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 /// baseCurrency. Before the fix, using a non-canonical currency (e.g. currency=1 for USDC) caused sendPayoutsOf to use
 /// uint32(uint160(token)) which didn't match the stored payout limit currency, silently skipping payouts.
 /// After the fix, fulfillCommitmentsOf uses metadata.baseCurrency which always matches the stored limit.
-contract CodexNemesisCurrencyMismatchBypassTest is DefifaUSDCTest {
+contract CurrencyMismatchBypassTest is DefifaUSDCTest {
     /// @notice Verify that an ERC-20 game with non-canonical currency (1) correctly pays out commitment fees.
     function test_nonCanonicalCurrencyPayoutsNowSucceed() external {
         uint104 tierPrice = 100e6;
