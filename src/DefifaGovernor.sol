@@ -28,10 +28,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
     error DefifaGovernor_AlreadyAttested();
     error DefifaGovernor_AlreadyInitialized();
-    error DefifaGovernor_GracePeriodTooShort();
     error DefifaGovernor_AlreadyRatified();
     error DefifaGovernor_DuplicateScorecard();
     error DefifaGovernor_GameNotFound();
+    error DefifaGovernor_GracePeriodTooShort();
     error DefifaGovernor_IncorrectTierOrder();
     error DefifaGovernor_NotAllowed();
     error DefifaGovernor_NotAttested();
