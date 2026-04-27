@@ -31,13 +31,13 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     error DefifaGovernor_AlreadyRatified();
     error DefifaGovernor_DuplicateScorecard();
     error DefifaGovernor_GameNotFound();
+    error DefifaGovernor_GracePeriodTooShort();
     error DefifaGovernor_IncorrectTierOrder();
     error DefifaGovernor_NotAllowed();
     error DefifaGovernor_NotAttested();
     error DefifaGovernor_Uint48Overflow();
     error DefifaGovernor_UnknownProposal();
     error DefifaGovernor_UnownedProposedCashoutValue();
-    error DefifaGovernor_GracePeriodTooShort();
 
     //*********************************************************************//
     // ------------------------- public constants ------------------------ //
