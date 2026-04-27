@@ -410,19 +410,13 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             revert DefifaDeployer_InvalidCurrency();
         }
 
-        // Normalize the grace period for validation — it will be clamped to at least 1 day during governor
-        // initialization, so the timeout check must account for this minimum.
-        {
-            uint256 effectiveGrace =
-                launchProjectData.attestationGracePeriod < 1 days ? 1 days : launchProjectData.attestationGracePeriod;
-
-            // If a scorecard timeout is set, it must exceed the effective grace period + timelock duration.
-            // Otherwise the game would enter NO_CONTEST before a scorecard could ever reach SUCCEEDED.
-            if (
-                launchProjectData.scorecardTimeout > 0
-                    && launchProjectData.scorecardTimeout <= effectiveGrace + launchProjectData.timelockDuration
-            ) revert DefifaDeployer_InvalidGameConfiguration();
-        }
+        // If a scorecard timeout is set, it must exceed the grace period + timelock duration.
+        // Otherwise the game would enter NO_CONTEST before a scorecard could ever reach SUCCEEDED.
+        if (
+            launchProjectData.scorecardTimeout > 0
+                && launchProjectData.scorecardTimeout
+                    <= launchProjectData.attestationGracePeriod + launchProjectData.timelockDuration
+        ) revert DefifaDeployer_InvalidGameConfiguration();
 
         // Get the game ID, optimistically knowing it will be one greater than the current count.
         // Note: this prediction can race with other concurrent project deployments. If another project is

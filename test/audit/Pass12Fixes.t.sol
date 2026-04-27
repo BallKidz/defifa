@@ -32,7 +32,6 @@ import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
-import {JBMultiTerminal} from "@bananapus/core-v6/src/JBMultiTerminal.sol";
 
 /// @dev Helper to read block.timestamp via an external call, bypassing the via-ir optimizer's timestamp caching.
 contract TimestampReader2 {

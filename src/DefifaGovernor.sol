@@ -37,6 +37,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     error DefifaGovernor_Uint48Overflow();
     error DefifaGovernor_UnknownProposal();
     error DefifaGovernor_UnownedProposedCashoutValue();
+    error DefifaGovernor_GracePeriodTooShort();
 
     //*********************************************************************//
     // ------------------------- public constants ------------------------ //
@@ -44,6 +45,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
     /// @notice The max attestation power each tier has if every token within the tier attestations.
     uint256 public constant override MAX_ATTESTATION_POWER_TIER = 1_000_000_000;
+
+    /// @notice The minimum attestation grace period.
+    uint256 public constant override MIN_ATTESTATION_GRACE_PERIOD = 1 days;
 
     //*********************************************************************//
     // --------------- public immutable stored properties ---------------- //
@@ -476,8 +480,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Set a default attestation start time if needed.
         if (attestationStartTime == 0) attestationStartTime = block.timestamp;
 
-        // Enforce a minimum grace period of 1 day to prevent instant ratification.
-        if (attestationGracePeriod < 1 days) attestationGracePeriod = 1 days;
+        // Enforce a minimum grace period to prevent instant ratification.
+        if (attestationGracePeriod < MIN_ATTESTATION_GRACE_PERIOD) revert DefifaGovernor_GracePeriodTooShort();
 
         // Ensure values fit within their allocated 48-bit widths before packing.
         if (attestationStartTime > type(uint48).max) revert DefifaGovernor_Uint48Overflow();

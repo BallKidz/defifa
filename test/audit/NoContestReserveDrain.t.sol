@@ -28,7 +28,7 @@ import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRules
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
-contract CodexNemesisNoContestReserveDrainTest is JBTest, TestBaseWorkflow {
+contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
     uint256 internal _protocolFeeProjectId;
     uint256 internal _defifaProjectId;
 
