@@ -46,7 +46,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @notice The max attestation power each tier has if every token within the tier attestations.
     uint256 public constant override MAX_ATTESTATION_POWER_TIER = 1_000_000_000;
 
-    /// @notice The minimum attestation grace period.
+    /// @notice The minimum attestation grace period enforced during game initialization.
     uint256 public constant override MIN_ATTESTATION_GRACE_PERIOD = 1 days;
 
     //*********************************************************************//

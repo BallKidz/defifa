@@ -138,28 +138,28 @@ contract Pass12FixesTest is JBTest, TestBaseWorkflow {
     // M-43: Timeout validation uses effective (clamped) grace period
     // =========================================================================
 
-    /// @notice Launching with grace=1s, timeout=2h, timelock=1h should revert because the
-    ///         effective grace period is clamped to 1 day, making timeout (2h) <= 1 day + 1h.
+    /// @notice Launching with grace=1s should revert because the governor enforces a
+    ///         minimum grace period of 1 day.
     function test_M43_fix_shortGrace_reverts() external {
         DefifaLaunchProjectData memory d = _launchDataCustomTimeout({
-            attestationGracePeriod: 1, // 1 second — will be clamped to 1 day
+            attestationGracePeriod: 1, // 1 second — below MIN_ATTESTATION_GRACE_PERIOD
             scorecardTimeout: 2 hours,
             timelockDuration: 1 hours
         });
 
-        vm.expectRevert(DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector);
+        vm.expectRevert(DefifaGovernor.DefifaGovernor_GracePeriodTooShort.selector);
         deployer.launchGameWith(d);
     }
 
-    /// @notice A valid configuration with timeout > effective grace + timelock should succeed.
+    /// @notice A valid configuration with sufficient grace and timeout > grace + timelock should succeed.
     function test_M43_valid_timeout_still_passes() external {
         DefifaLaunchProjectData memory d = _launchDataCustomTimeout({
-            attestationGracePeriod: 1, // 1 second — will be clamped to 1 day
+            attestationGracePeriod: uint32(1 days), // meets MIN_ATTESTATION_GRACE_PERIOD
             scorecardTimeout: uint32(2 days), // 2 days > 1 day + 1 hour
             timelockDuration: 1 hours
         });
 
-        // Should NOT revert — timeout (2 days) > effective grace (1 day) + timelock (1 hour).
+        // Should NOT revert — grace meets minimum and timeout (2 days) > grace (1 day) + timelock (1 hour).
         uint256 gameId = deployer.launchGameWith(d);
         assertGt(gameId, 0, "game should launch successfully");
     }

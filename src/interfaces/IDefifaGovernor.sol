@@ -123,7 +123,7 @@ interface IDefifaGovernor {
     /// @return The maximum attestation power tier.
     function MAX_ATTESTATION_POWER_TIER() external view returns (uint256);
 
-    /// @notice The minimum attestation grace period.
+    /// @notice The minimum attestation grace period enforced during game initialization.
     /// @return The minimum grace period in seconds.
     function MIN_ATTESTATION_GRACE_PERIOD() external view returns (uint256);
 
