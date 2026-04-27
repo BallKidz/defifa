@@ -30,7 +30,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
-contract CodexNemesisOneTierZeroTimeoutLockVerifiedTest is JBTest, TestBaseWorkflow {
+contract OneTierZeroTimeoutLockTest is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
     uint256 internal constant GAME_ID = 3;

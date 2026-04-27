@@ -45,6 +45,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     //*********************************************************************//
 
     error DefifaHook_BadTierOrder();
+    error DefifaHook_IdenticalTokens();
     error DefifaHook_DelegateAddressZero();
     error DefifaHook_DelegateChangesUnavailableInThisPhase();
     error DefifaHook_GameIsntScoringYet();
@@ -488,6 +489,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         JB721Hook(_directory)
         Ownable(msg.sender)
     {
+        if (address(_defifaToken) == address(_baseProtocolToken)) revert DefifaHook_IdenticalTokens();
+
         CODE_ORIGIN = address(this);
         DEFIFA_TOKEN = _defifaToken;
         BASE_PROTOCOL_TOKEN = _baseProtocolToken;

@@ -5,9 +5,7 @@ import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
-import {DefifaGamePhase} from "../../src/enums/DefifaGamePhase.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
-import {DefifaTierCashOutWeight} from "../../src/structs/DefifaTierCashOutWeight.sol";
 import {DefifaTierParams} from "../../src/structs/DefifaTierParams.sol";
 
 import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
@@ -31,7 +29,7 @@ import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
-contract CodexTierCapMismatchTest is JBTest, TestBaseWorkflow {
+contract TierCapMismatchTest is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
     DefifaDeployer internal deployer;

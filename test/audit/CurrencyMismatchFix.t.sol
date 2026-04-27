@@ -1,36 +1,15 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.28;
 
-import {DefifaUSDCTest, DefifaMockUSDC} from "../DefifaUSDC.t.sol";
-import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
-import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
-import {DefifaHook} from "../../src/DefifaHook.sol";
-import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
+import {DefifaUSDCTest} from "../DefifaUSDC.t.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierCashOutWeight} from "../../src/structs/DefifaTierCashOutWeight.sol";
 import {DefifaTierParams} from "../../src/structs/DefifaTierParams.sol";
-import {DefifaDelegation} from "../../src/structs/DefifaDelegation.sol";
-import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
-import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
-import {JBRulesetConfig, JBTerminalConfig} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
-import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
-import {JBMultiTerminal} from "@bananapus/core-v6/src/JBMultiTerminal.sol";
-import {JBPermissionIds} from "@bananapus/permission-ids-v6/src/JBPermissionIds.sol";
-import {JBPermissionsData} from "@bananapus/core-v6/src/structs/JBPermissionsData.sol";
-import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
-import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
-import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
-import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
-import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
-import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
-import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
 /// @title CurrencyMismatchFixTest
 /// @notice Adversarial tests for the currency mismatch fix: verifies that fulfillCommitmentsOf correctly resolves
