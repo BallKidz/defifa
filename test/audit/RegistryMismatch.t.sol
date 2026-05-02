@@ -144,7 +144,7 @@ contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0,
+            scorecardTimeout: 100_382,
             timelockDuration: 0
         });
     }

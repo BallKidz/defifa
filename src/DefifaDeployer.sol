@@ -41,6 +41,10 @@ import {DefifaLaunchProjectData} from "./structs/DefifaLaunchProjectData.sol";
 import {DefifaOpsData} from "./structs/DefifaOpsData.sol";
 import {DefifaTierParams} from "./structs/DefifaTierParams.sol";
 
+interface IJBControllerProjectUri {
+    function setUriOf(uint256 projectId, string calldata uri) external;
+}
+
 /// @notice Deploys and manages Defifa games.
 contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGamePotReporter, IERC721Receiver {
     using Strings for uint256;
@@ -403,6 +407,12 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // The hook and governor hardcode uint256[128] tier-weight tables, so reject games with more than 128 tiers.
         if (launchProjectData.tiers.length > 128) revert DefifaDeployer_InvalidGameConfiguration();
 
+        // Single-tier scorecards give the only tier 100% of the scorecard, which leaves all holders with zero
+        // benefit-weighted attestation power. Require a timeout so the game can still fall through to no-contest.
+        if (launchProjectData.tiers.length == 1 && launchProjectData.scorecardTimeout == 0) {
+            revert DefifaDeployer_InvalidGameConfiguration();
+        }
+
         // Reject ERC-20 games with a zero currency �� a zero baseCurrency would cause payout limit lookups
         // in fulfillCommitmentsOf to silently fail, skipping all commitment payouts.
         // slither-disable-next-line incorrect-equality
@@ -418,11 +428,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                     <= launchProjectData.attestationGracePeriod + launchProjectData.timelockDuration
         ) revert DefifaDeployer_InvalidGameConfiguration();
 
-        // Get the game ID, optimistically knowing it will be one greater than the current count.
-        // Note: this prediction can race with other concurrent project deployments. If another project is
-        // created between reading count() and launchProjectFor(), the actual ID will differ. This is
-        // caught by the equality check after launch (gameId != actualGameId reverts).
-        gameId = CONTROLLER.PROJECTS().count() + 1;
+        // Reserve the game ID up front so permissionless project creations cannot invalidate hook deployment.
+        gameId = CONTROLLER.PROJECTS().createFor(address(this));
 
         {
             // Store the timestamps that'll define the game phases.
@@ -560,12 +567,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             _tierNames: tierNames
         });
 
-        // Launch the Juicebox project.
-        uint256 actualGameId =
-            _launchGame({launchProjectData: launchProjectData, gameId: gameId, dataHook: address(hook)});
-
-        // Revert if the game ID does not match (e.g. front-run by another project creation).
-        if (gameId != actualGameId) revert DefifaDeployer_InvalidGameConfiguration();
+        // Launch the Juicebox rulesets for the reserved project.
+        _launchGame({launchProjectData: launchProjectData, gameId: gameId, dataHook: address(hook)});
 
         // Clone and initialize the new governor.
         GOVERNOR.initializeGame({
@@ -759,14 +762,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         return groupedSplits;
     }
 
-    function _launchGame(
-        DefifaLaunchProjectData memory launchProjectData,
-        uint256 gameId,
-        address dataHook
-    )
-        internal
-        returns (uint256 projectId)
-    {
+    function _launchGame(DefifaLaunchProjectData memory launchProjectData, uint256 gameId, address dataHook) internal {
         //
         JBAccountingContext[] memory accountingContexts = new JBAccountingContext[](1);
         accountingContexts[0] = launchProjectData.token;
@@ -923,14 +919,18 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             fundAccessLimitGroups: fundAccessConstraints
         });
 
-        // launch the project.
-        return CONTROLLER.launchProjectFor({
-            owner: address(this),
-            projectUri: launchProjectData.projectUri,
+        // Launch the rulesets for the reserved project.
+        // slither-disable-next-line unused-return
+        CONTROLLER.launchRulesetsFor({
+            projectId: gameId,
             rulesetConfigurations: rulesetConfigs,
             terminalConfigurations: terminalConfigurations,
             memo: "Launching Defifa game."
         });
+        if (bytes(launchProjectData.projectUri).length != 0) {
+            IJBControllerProjectUri(address(CONTROLLER))
+                .setUriOf({projectId: gameId, uri: launchProjectData.projectUri});
+        }
     }
 
     /// @notice Queues the final ruleset for a game: no payouts, no fund access limits, surplus = entire balance.

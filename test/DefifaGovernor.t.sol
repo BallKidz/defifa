@@ -609,14 +609,14 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.prank(_user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-                holder: _user,
-                projectId: _projectId,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(_user),
-                metadata: cashOutMetadata
-            });
+            holder: _user,
+            projectId: _projectId,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(_user),
+            metadata: cashOutMetadata
+        });
 
         assertEq(IERC20(_protocolFeeProjectTokenAccount).balanceOf(_user), _nanaBalance + _receiveNana);
         assertEq(IERC20(_defifaProjectTokenAccount).balanceOf(_user), _defifaBalance + _receiveDefifa);
@@ -680,14 +680,14 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.prank(_refundUser);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-                holder: _refundUser,
-                projectId: _projectId,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(_refundUser),
-                metadata: cashOutMetadata
-            });
+            holder: _refundUser,
+            projectId: _projectId,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(_refundUser),
+            metadata: cashOutMetadata
+        });
         vm.warp(block.timestamp + 1);
 
         assertEq(_refundUser.balance, _cost);
@@ -910,14 +910,14 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
                 vm.prank(_user);
                 JBMultiTerminal(address(jbMultiTerminal()))
                     .cashOutTokensOf({
-                        holder: _user,
-                        projectId: _projectId,
-                        cashOutCount: 0,
-                        tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                        minTokensReclaimed: 0,
-                        beneficiary: payable(_user),
-                        metadata: cashOutMetadata
-                    });
+                    holder: _user,
+                    projectId: _projectId,
+                    cashOutCount: 0,
+                    tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                    minTokensReclaimed: 0,
+                    beneficiary: payable(_user),
+                    metadata: cashOutMetadata
+                });
                 // We calculate the expected output based on the given distribution and how much is in the pot
                 _expectedTierCashOut = (_pot * _tierWeight) / totalWeight;
             }
@@ -979,7 +979,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0,
+            scorecardTimeout: 100_382,
             timelockDuration: 0
         });
         (uint256 _projectId, DefifaHook _nft,) = createDefifaProject(_launchData);
@@ -1261,7 +1261,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0,
+            scorecardTimeout: nTiers == 1 ? 100_382 : 0,
             timelockDuration: 0
         });
     }
@@ -1311,14 +1311,14 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.prank(_refundUser);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-                holder: _refundUser,
-                projectId: _projectId,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(_refundUser),
-                metadata: cashOutMetadata
-            });
+            holder: _refundUser,
+            projectId: _projectId,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(_refundUser),
+            metadata: cashOutMetadata
+        });
         // User should have their original funds again
         assertEq(_refundUser.balance, _cost);
         // User should no longer have the NFT

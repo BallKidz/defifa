@@ -113,49 +113,9 @@ contract OneTierZeroTimeoutLockTest is JBTest, TestBaseWorkflow {
         governor.transferOwnership(address(deployer));
     }
 
-    function test_oneTier_zeroTimeout_permanentlyLocksGameInScoring() external {
-        projectId = deployer.launchGameWith(_launchData());
-
-        JBRuleset memory ruleset = jbRulesets().currentOf(projectId);
-        if (ruleset.dataHook() == address(0)) {
-            (ruleset,) = jbRulesets().latestQueuedOf(projectId);
-        }
-        gameHook = DefifaHook(ruleset.dataHook());
-
-        vm.warp(block.timestamp + 1 days);
-        _mintSingleTier(player, 1 ether);
-
-        vm.warp(block.timestamp + 3 days + 1);
-        assertEq(uint256(deployer.currentGamePhaseOf(projectId)), uint256(DefifaGamePhase.SCORING));
-
-        DefifaTierCashOutWeight[] memory scorecard = new DefifaTierCashOutWeight[](1);
-        scorecard[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: gameHook.TOTAL_CASHOUT_WEIGHT()});
-        uint256 scorecardId = governor.submitScorecardFor(GAME_ID, scorecard);
-
-        vm.warp(block.timestamp + 1);
-        vm.prank(player);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
-        governor.attestToScorecardFrom(GAME_ID, scorecardId);
-
-        vm.warp(block.timestamp + 365 days);
-        assertEq(uint256(deployer.currentGamePhaseOf(projectId)), uint256(DefifaGamePhase.SCORING));
-
-        vm.expectRevert(DefifaDeployer.DefifaDeployer_NotNoContest.selector);
-        deployer.triggerNoContestFor(projectId);
-
-        bytes memory cashOutMetadata = _cashOutMetadata();
-        vm.prank(player);
-        vm.expectRevert(DefifaHook.DefifaHook_NothingToClaim.selector);
-        JBMultiTerminal(payable(address(jbMultiTerminal())))
-            .cashOutTokensOf({
-                holder: player,
-                projectId: projectId,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(player),
-                metadata: cashOutMetadata
-            });
+    function test_oneTier_zeroTimeout_revertsAtLaunch() external {
+        vm.expectRevert(DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector);
+        deployer.launchGameWith(_launchData());
     }
 
     function _launchData() internal returns (DefifaLaunchProjectData memory) {

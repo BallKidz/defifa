@@ -344,8 +344,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
                     // slither-disable-next-line calls-loop
                     cumulativeMintPrice -= hookStore.tierOfTokenId({
                         hook: address(this), tokenId: decodedTokenIds[i], includeResolvedUri: false
-                    })
-                    .price;
+                    }).price;
                 }
 
                 unchecked {
@@ -463,7 +462,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             tokenIds: tokenIds,
             hookStore: store,
             hook: address(this),
-            totalMintCost: _totalMintCost,
+            totalMintCost: _totalMintCost + _pendingReserveMintCost(),
             defifaBalance: DEFIFA_TOKEN.balanceOf(address(this)),
             baseProtocolBalance: BASE_PROTOCOL_TOKEN.balanceOf(address(this))
         });
@@ -784,7 +783,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             // are accounted for, preventing paid holders from claiming a disproportionate share.
             // slither-disable-next-line reentrancy-events
             beneficiaryReceivedTokens = _claimTokensFor({
-                beneficiary: context.holder,
+                beneficiary: context.beneficiary,
                 shareToBeneficiary: cumulativeMintPrice,
                 outOfTotal: _totalMintCost + _pendingReserveMintCost()
             });
