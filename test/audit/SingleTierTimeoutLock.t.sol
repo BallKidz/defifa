@@ -114,13 +114,13 @@ contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
         _governorImpl.transferOwnership(address(_deployer));
     }
 
-    function test_singleTierGameWithZeroTimeoutRevertsAtLaunch() external {
+    function test_singleTierGameWithZeroTimeoutCanLaunch() external {
         DefifaLaunchProjectData memory data = _launchData();
-        vm.expectRevert(DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector);
-        _deployer.launchGameWith(data);
+        uint256 gameId = _deployer.launchGameWith(data);
+        assertGt(gameId, 0);
     }
 
-    function _launchData() internal returns (DefifaLaunchProjectData memory) {
+    function _launchData() internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](1);
         tierParams[0] = DefifaTierParams({
             reservedRate: 1001,

@@ -41,10 +41,6 @@ import {DefifaLaunchProjectData} from "./structs/DefifaLaunchProjectData.sol";
 import {DefifaOpsData} from "./structs/DefifaOpsData.sol";
 import {DefifaTierParams} from "./structs/DefifaTierParams.sol";
 
-interface IJBControllerProjectUri {
-    function setUriOf(uint256 projectId, string calldata uri) external;
-}
-
 /// @notice Deploys and manages Defifa games.
 contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGamePotReporter, IERC721Receiver {
     using Strings for uint256;
@@ -265,6 +261,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         // Check scorecard ratification timeout: if enough time has passed without a ratified scorecard, the game is
         // NO_CONTEST.
+        // Game phase timing is timestamp-based by design.
+        // forge-lint: disable-next-line(block-timestamp)
         if (ops.scorecardTimeout > 0 && block.timestamp > currentRuleset.start + ops.scorecardTimeout) {
             return DefifaGamePhase.NO_CONTEST;
         }
@@ -381,19 +379,28 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         override
         returns (uint256 gameId)
     {
-        // Start the game right after the mint and refund durations if it isnt provided.
+        // Game launch timing is timestamp-based by design.
+        uint256 currentTimestamp = block.timestamp;
+
+        // If no explicit game start is provided, start after the configured mint and refund windows.
         if (launchProjectData.start == 0) {
-            launchProjectData.start =
-                uint48(block.timestamp + launchProjectData.mintPeriodDuration + launchProjectData.refundPeriodDuration);
+            uint256 start =
+                currentTimestamp + launchProjectData.mintPeriodDuration + launchProjectData.refundPeriodDuration;
+            if (start > type(uint48).max) revert DefifaDeployer_InvalidGameConfiguration();
+
+            // Casting to uint48 is safe because `start` was bounded above.
+            // forge-lint: disable-next-line(unsafe-typecast)
+            launchProjectData.start = uint48(start);
         }
-        // Start minting right away if a start time isn't provided.
+        // If callers provide a future start with no mint duration, derive a mint window that begins now and ends
+        // before the refund window. This preserves the requested start while keeping minting immediately available.
         // slither-disable-next-line incorrect-equality
         else if (
             launchProjectData.mintPeriodDuration == 0
-                && launchProjectData.start > block.timestamp + launchProjectData.refundPeriodDuration
+                && launchProjectData.start > currentTimestamp + launchProjectData.refundPeriodDuration
         ) {
             launchProjectData.mintPeriodDuration =
-                uint24(launchProjectData.start - (block.timestamp + launchProjectData.refundPeriodDuration));
+                uint24(launchProjectData.start - (currentTimestamp + launchProjectData.refundPeriodDuration));
         }
 
         // Make sure the provided gameplay timestamps are sequential and that there is a mint duration.
@@ -401,19 +408,13 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             // slither-disable-next-line incorrect-equality
             launchProjectData.mintPeriodDuration == 0
                 || launchProjectData.start
-                    < block.timestamp + launchProjectData.refundPeriodDuration + launchProjectData.mintPeriodDuration
+                    < currentTimestamp + launchProjectData.refundPeriodDuration + launchProjectData.mintPeriodDuration
         ) revert DefifaDeployer_InvalidGameConfiguration();
 
         // The hook and governor hardcode uint256[128] tier-weight tables, so reject games with more than 128 tiers.
         if (launchProjectData.tiers.length > 128) revert DefifaDeployer_InvalidGameConfiguration();
 
-        // Single-tier scorecards give the only tier 100% of the scorecard, which leaves all holders with zero
-        // benefit-weighted attestation power. Require a timeout so the game can still fall through to no-contest.
-        if (launchProjectData.tiers.length == 1 && launchProjectData.scorecardTimeout == 0) {
-            revert DefifaDeployer_InvalidGameConfiguration();
-        }
-
-        // Reject ERC-20 games with a zero currency �� a zero baseCurrency would cause payout limit lookups
+        // Reject ERC-20 games with a zero currency. A zero baseCurrency would cause payout limit lookups
         // in fulfillCommitmentsOf to silently fail, skipping all commitment payouts.
         // slither-disable-next-line incorrect-equality
         if (launchProjectData.token.token != JBConstants.NATIVE_TOKEN && launchProjectData.token.currency == 0) {
@@ -762,8 +763,15 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         return groupedSplits;
     }
 
+    /// @notice Launch the Juicebox project rulesets that define a Defifa game's lifecycle.
+    /// @dev The project ID is reserved before the hook clone is initialized, so this function launches rulesets for
+    /// that existing project instead of creating a new one. It also forwards `projectUri` to the controller so the
+    /// project metadata is set atomically with the first rulesets.
+    /// @param launchProjectData The normalized launch data for the game.
+    /// @param gameId The reserved Juicebox project ID for the game.
+    /// @param dataHook The initialized Defifa hook clone used by every ruleset.
     function _launchGame(DefifaLaunchProjectData memory launchProjectData, uint256 gameId, address dataHook) internal {
-        //
+        // Accept exactly the token/accounting context the game was configured to use.
         JBAccountingContext[] memory accountingContexts = new JBAccountingContext[](1);
         accountingContexts[0] = launchProjectData.token;
 
@@ -772,11 +780,13 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         terminalConfigurations[0] =
             JBTerminalConfig({terminal: launchProjectData.terminal, accountingContextsToAccept: accountingContexts});
 
-        // Build the rulesets that this Defifa game will go through.
+        // Build the rulesets that this Defifa game will go through. Games always have MINT and SCORING phases; the
+        // REFUND phase is omitted entirely when its duration is zero so the scoring ruleset can follow minting.
         bool hasRefundPhase = launchProjectData.refundPeriodDuration != 0;
         JBRulesetConfig[] memory rulesetConfigs = new JBRulesetConfig[](hasRefundPhase ? 3 : 2);
 
-        // `MINT` cycle.
+        // MINT cycle: payments are accepted, cash-outs are enabled, and pending reserved tokens are paused so the
+        // scoring/final phases decide how reserved tokens are distributed.
         rulesetConfigs[0] = JBRulesetConfig({
             mustStartAtOrAfter: launchProjectData.start - launchProjectData.mintPeriodDuration
                 - launchProjectData.refundPeriodDuration,
@@ -819,7 +829,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         uint256 cycleNumber = 1;
         if (hasRefundPhase) {
-            // `REFUND` cycle.
+            // REFUND cycle: payments are paused while cash-outs remain available at pre-scoring terms.
             rulesetConfigs[cycleNumber++] = JBRulesetConfig({
                 mustStartAtOrAfter: launchProjectData.start - launchProjectData.refundPeriodDuration,
                 duration: launchProjectData.refundPeriodDuration,
@@ -861,7 +871,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             });
         }
 
-        // Set fund access constraints.
+        // The scoring ruleset can send the whole pot as payouts. `fulfillCommitmentsOf` only sends the commitment
+        // portion and leaves the rest as surplus for the final cash-out ruleset.
         JBCurrencyAmount[] memory payoutAmounts = new JBCurrencyAmount[](1);
         payoutAmounts[0] = JBCurrencyAmount({
             // We allow a payout of the full amount, this will then mostly be added back to the balance of the project.
@@ -877,7 +888,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             surplusAllowances: new JBCurrencyAmount[](0)
         });
 
-        // `SCORING` cycle.
+        // SCORING cycle: payments pause, the game owner must send payouts, and the Defifa hook determines the final
+        // cash-out weights once a scorecard is ratified.
         rulesetConfigs[cycleNumber++] = JBRulesetConfig({
             mustStartAtOrAfter: launchProjectData.start,
             duration: 0,
@@ -919,18 +931,15 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             fundAccessLimitGroups: fundAccessConstraints
         });
 
-        // Launch the rulesets for the reserved project.
+        // Launch the rulesets for the reserved project and set the project URI in the same controller call.
         // slither-disable-next-line unused-return
         CONTROLLER.launchRulesetsFor({
             projectId: gameId,
+            projectUri: launchProjectData.projectUri,
             rulesetConfigurations: rulesetConfigs,
             terminalConfigurations: terminalConfigurations,
             memo: "Launching Defifa game."
         });
-        if (bytes(launchProjectData.projectUri).length != 0) {
-            IJBControllerProjectUri(address(CONTROLLER))
-                .setUriOf({projectId: gameId, uri: launchProjectData.projectUri});
-        }
     }
 
     /// @notice Queues the final ruleset for a game: no payouts, no fund access limits, surplus = entire balance.

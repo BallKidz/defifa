@@ -20,7 +20,11 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
     // HELPERS
     // =========================================================================
 
-    function _launchDataNonCanonical(uint8 n, uint104 tierPrice) internal returns (DefifaLaunchProjectData memory) {
+    function _launchDataNonCanonical(uint8 n, uint104 tierPrice)
+        internal
+        view
+        returns (DefifaLaunchProjectData memory)
+    {
         DefifaTierParams[] memory tp = new DefifaTierParams[](n);
         for (uint256 i; i < n; i++) {
             tp[i] = DefifaTierParams({

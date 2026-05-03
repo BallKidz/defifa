@@ -242,7 +242,7 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         }
     }
 
-    function _launchData() internal returns (DefifaLaunchProjectData memory data) {
+    function _launchData() internal view returns (DefifaLaunchProjectData memory data) {
         DefifaTierParams[] memory tiers = new DefifaTierParams[](4);
         tiers[0] = DefifaTierParams({
             reservedRate: 1,

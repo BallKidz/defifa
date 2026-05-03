@@ -266,7 +266,7 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
 
     // ---- helpers ----
 
-    function _launchData() internal returns (DefifaLaunchProjectData memory) {
+    function _launchData() internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tp = new DefifaTierParams[](4);
         // Tier 1: has reserves (the tier under test)
         tp[0] = DefifaTierParams({
@@ -344,14 +344,14 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         jbMultiTerminal()
             .cashOutTokensOf({
-                holder: user,
-                projectId: _pid,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(user),
-                metadata: meta
-            });
+            holder: user,
+            projectId: _pid,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(user),
+            metadata: meta
+        });
     }
 
     function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {

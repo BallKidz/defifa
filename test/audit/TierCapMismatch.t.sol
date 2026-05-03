@@ -113,7 +113,7 @@ contract TierCapMismatchTest is JBTest, TestBaseWorkflow {
         deployer.launchGameWith(data);
     }
 
-    function _launchData(uint256 tierCount) internal returns (DefifaLaunchProjectData memory) {
+    function _launchData(uint256 tierCount) internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tiers = new DefifaTierParams[](tierCount);
         for (uint256 i; i < tierCount; i++) {
             tiers[i] = DefifaTierParams({

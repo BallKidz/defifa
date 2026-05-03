@@ -323,18 +323,23 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         if (scorecard.attestationsBegin != 0) revert DefifaGovernor_DuplicateScorecard();
 
         uint256 attestationStartTime = attestationStartTimeOf(gameId);
+
+        // Game phase timing is timestamp-based by design.
+        uint256 currentTimestamp = block.timestamp;
         uint256 timeUntilAttestationsBegin =
-            block.timestamp > attestationStartTime ? 0 : attestationStartTime - block.timestamp;
+            currentTimestamp > attestationStartTime ? 0 : attestationStartTime - currentTimestamp;
 
         // Casting to uint48 is safe because block.timestamp fits in uint48 until year 8921556.
         // forge-lint: disable-next-line(unsafe-typecast)
-        uint48 attestationsBegin = uint48(block.timestamp + timeUntilAttestationsBegin);
+        uint48 attestationsBegin = uint48(currentTimestamp + timeUntilAttestationsBegin);
         scorecard.attestationsBegin = attestationsBegin;
         // Grace period extends from when attestations begin, not from submission time.
         // This prevents the grace period from expiring before attestations even start
         // when a scorecard is submitted early.
         uint256 gracePeriodEnds = uint256(attestationsBegin) + attestationGracePeriodOf(gameId);
         if (gracePeriodEnds > type(uint48).max) revert DefifaGovernor_Uint48Overflow();
+        // Safe after the explicit max check above.
+        // forge-lint: disable-next-line(unsafe-typecast)
         scorecard.gracePeriodEnds = uint48(gracePeriodEnds);
 
         // Store tier weights for BWA computation.
@@ -769,12 +774,16 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // If the scorecard has attestations beginning in the future, the state is PENDING.
         // At exactly `attestationsBegin`, attestations are open so the state is ACTIVE.
+        // Game phase timing is timestamp-based by design.
+        // forge-lint: disable-next-line(block-timestamp)
         if (scorecard.attestationsBegin > block.timestamp) {
             return DefifaScorecardState.PENDING;
         }
 
         // If the scorecard's grace period has not yet ended, the state is ACTIVE.
         // At exactly `gracePeriodEnds`, the grace period has elapsed so we fall through to the quorum check.
+        // Game phase timing is timestamp-based by design.
+        // forge-lint: disable-next-line(block-timestamp)
         if (scorecard.gracePeriodEnds > block.timestamp) {
             return DefifaScorecardState.ACTIVE;
         }
@@ -787,6 +796,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                 uint256 quorumReachedAt = _quorumReachedAtOf[gameId][scorecardId];
                 uint256 timelockAnchor =
                     quorumReachedAt > scorecard.gracePeriodEnds ? quorumReachedAt : uint256(scorecard.gracePeriodEnds);
+                // Game phase timing is timestamp-based by design.
+                // forge-lint: disable-next-line(block-timestamp)
                 if (block.timestamp < timelockAnchor + timelockDur) {
                     return DefifaScorecardState.QUEUED;
                 }

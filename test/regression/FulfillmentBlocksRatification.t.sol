@@ -222,7 +222,7 @@ contract FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
 
     // ----- Internal helpers ------
 
-    function _getBasicLaunchData(uint8 nTiers) internal returns (DefifaLaunchProjectData memory) {
+    function _getBasicLaunchData(uint8 nTiers) internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](nTiers);
         for (uint256 i = 0; i < nTiers; i++) {
             tierParams[i] = DefifaTierParams({

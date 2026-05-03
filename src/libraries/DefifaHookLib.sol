@@ -211,8 +211,7 @@ library DefifaHookLib {
             // slither-disable-next-line calls-loop
             cumulativeMintPrice += hookStore.tierOfTokenId({
                 hook: hook, tokenId: tokenIds[i], includeResolvedUri: false
-            })
-            .price;
+            }).price;
         }
 
         // Calculate the user's claimable amount proportional to what they paid.
@@ -239,8 +238,7 @@ library DefifaHookLib {
             // slither-disable-next-line calls-loop
             cumulativeMintPrice += hookStore.tierOfTokenId({
                 hook: hook, tokenId: tokenIds[i], includeResolvedUri: false
-            })
-            .price;
+            }).price;
         }
     }
 

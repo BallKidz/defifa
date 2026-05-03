@@ -113,12 +113,12 @@ contract OneTierZeroTimeoutLockTest is JBTest, TestBaseWorkflow {
         governor.transferOwnership(address(deployer));
     }
 
-    function test_oneTier_zeroTimeout_revertsAtLaunch() external {
-        vm.expectRevert(DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector);
-        deployer.launchGameWith(_launchData());
+    function test_oneTier_zeroTimeout_canLaunch() external {
+        projectId = deployer.launchGameWith(_launchData());
+        assertGt(projectId, 0);
     }
 
-    function _launchData() internal returns (DefifaLaunchProjectData memory) {
+    function _launchData() internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tiers = new DefifaTierParams[](1);
         tiers[0] = DefifaTierParams({
             reservedRate: 1001,

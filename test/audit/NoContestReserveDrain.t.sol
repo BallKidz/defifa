@@ -183,7 +183,7 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
             .cashOutTokensOf(holder, projectId, 0, JBConstants.NATIVE_TOKEN, 0, payable(holder), cashOutMetadata);
     }
 
-    function _launchData() internal returns (DefifaLaunchProjectData memory) {
+    function _launchData() internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](1);
         tierParams[0] = DefifaTierParams({
             reservedRate: 1,

@@ -128,14 +128,14 @@ contract MintCostHandler is Test {
         vm.prank(info.holder);
         JBMultiTerminal(address(terminal))
             .cashOutTokensOf({
-                holder: info.holder,
-                projectId: pid,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(info.holder),
-                metadata: metaHelper.createMetadata(bids, data)
-            });
+            holder: info.holder,
+            projectId: pid,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(info.holder),
+            metadata: metaHelper.createMetadata(bids, data)
+        });
 
         expectedMintCost -= tierPrice;
         burnCount++;

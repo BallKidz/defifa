@@ -249,7 +249,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         scorecard[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: 0});
     }
 
-    function _launchData() internal returns (DefifaLaunchProjectData memory data) {
+    function _launchData() internal view returns (DefifaLaunchProjectData memory data) {
         DefifaTierParams[] memory tiers = new DefifaTierParams[](4);
         // Tiers 1-2: have reserves (reserveRate=1, 1 reserve per mint)
         for (uint256 i; i < 2; i++) {
@@ -333,14 +333,14 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         jbMultiTerminal()
             .cashOutTokensOf({
-                holder: user,
-                projectId: _pid,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(user),
-                metadata: metadata
-            });
+            holder: user,
+            projectId: _pid,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(user),
+            metadata: metadata
+        });
     }
 
     function _cashOutMetadata(uint256 tierId, uint256 tokenNumber) internal view returns (bytes memory) {

@@ -236,14 +236,14 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
             vm.prank(_users[0]);
             JBMultiTerminal(address(jbMultiTerminal()))
                 .cashOutTokensOf({
-                    holder: _users[0],
-                    projectId: _projectId,
-                    cashOutCount: 0,
-                    tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                    minTokensReclaimed: 0,
-                    beneficiary: payable(_users[0]),
-                    metadata: cashOutMetadata
-                });
+                holder: _users[0],
+                projectId: _projectId,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(_users[0]),
+                metadata: cashOutMetadata
+            });
         }
         uint256 reclaimed = _users[0].balance - user0BalBefore;
         assertGt(reclaimed, 0, "winner should reclaim ETH immediately (no DoS)");
@@ -255,7 +255,7 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
 
     // ----- Internal helpers ------
 
-    function _getBasicLaunchData(uint8 nTiers) internal returns (DefifaLaunchProjectData memory) {
+    function _getBasicLaunchData(uint8 nTiers) internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](nTiers);
         for (uint256 i = 0; i < nTiers; i++) {
             tierParams[i] = DefifaTierParams({
@@ -478,7 +478,7 @@ contract TestQAGameIdPredictionRace is JBTest, TestBaseWorkflow {
 
     // ----- Internal helpers ------
 
-    function _getBasicLaunchData(uint8 nTiers) internal returns (DefifaLaunchProjectData memory) {
+    function _getBasicLaunchData(uint8 nTiers) internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](nTiers);
         for (uint256 i = 0; i < nTiers; i++) {
             tierParams[i] = DefifaTierParams({

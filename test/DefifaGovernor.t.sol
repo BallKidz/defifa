@@ -1231,7 +1231,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         _governor.submitScorecardFor(_gameId, scorecards);
     }
 
-    function getBasicDefifaLaunchData(uint8 nTiers) internal returns (DefifaLaunchProjectData memory) {
+    function getBasicDefifaLaunchData(uint8 nTiers) internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](nTiers);
         for (uint256 i = 0; i < nTiers; i++) {
             tierParams[i] = DefifaTierParams({

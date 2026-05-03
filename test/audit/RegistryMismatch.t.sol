@@ -116,7 +116,7 @@ contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
         );
     }
 
-    function _launchData() internal returns (DefifaLaunchProjectData memory) {
+    function _launchData() internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tiers = new DefifaTierParams[](1);
         tiers[0] = DefifaTierParams({
             name: "Team 1",

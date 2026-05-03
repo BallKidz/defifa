@@ -1218,7 +1218,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.ts() + 3 days + 1);
     }
 
-    function _launchData(uint8 n, uint256 tierPrice) internal returns (DefifaLaunchProjectData memory) {
+    function _launchData(uint8 n, uint256 tierPrice) internal view returns (DefifaLaunchProjectData memory) {
         return _launchDataWithTimelock(n, tierPrice, 0);
     }
 
@@ -1228,6 +1228,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         uint256 timelockDuration
     )
         internal
+        view
         returns (DefifaLaunchProjectData memory)
     {
         DefifaTierParams[] memory tp = new DefifaTierParams[](n);

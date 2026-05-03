@@ -166,7 +166,7 @@ contract TestAuditGapsERC20Games is JBTest, TestBaseWorkflow {
     // LAUNCH DATA HELPERS
     // =========================================================================
 
-    function _launchData(uint8 n, uint104 tierPrice) internal returns (DefifaLaunchProjectData memory) {
+    function _launchData(uint8 n, uint104 tierPrice) internal view returns (DefifaLaunchProjectData memory) {
         return _launchDataWith(n, tierPrice, 0, 0);
     }
 
@@ -177,6 +177,7 @@ contract TestAuditGapsERC20Games is JBTest, TestBaseWorkflow {
         uint32 scorecardTimeout
     )
         internal
+        view
         returns (DefifaLaunchProjectData memory)
     {
         DefifaTierParams[] memory tp = new DefifaTierParams[](n);
@@ -325,14 +326,14 @@ contract TestAuditGapsERC20Games is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-                holder: user,
-                projectId: _pid,
-                cashOutCount: 0,
-                tokenToReclaim: address(token),
-                minTokensReclaimed: 0,
-                beneficiary: payable(user),
-                metadata: cashOutMetadata
-            });
+            holder: user,
+            projectId: _pid,
+            cashOutCount: 0,
+            tokenToReclaim: address(token),
+            minTokensReclaimed: 0,
+            beneficiary: payable(user),
+            metadata: cashOutMetadata
+        });
     }
 
     function _refund(address user, uint256 tid) internal {
@@ -628,7 +629,7 @@ contract TestAuditGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
     // HELPERS
     // =========================================================================
 
-    function _launchData(uint8 n) internal returns (DefifaLaunchProjectData memory) {
+    function _launchData(uint8 n) internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tp = new DefifaTierParams[](n);
         for (uint256 i; i < n; i++) {
             tp[i] = DefifaTierParams({
@@ -735,14 +736,14 @@ contract TestAuditGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-                holder: user,
-                projectId: pid,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(user),
-                metadata: meta
-            });
+            holder: user,
+            projectId: pid,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(user),
+            metadata: meta
+        });
     }
 
     /// @dev Deploy both games and mint NFTs for both. Game A has 4 tiers, Game B has 3 tiers.

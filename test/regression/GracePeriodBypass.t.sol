@@ -243,6 +243,7 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
         uint256 attestationGracePeriod
     )
         internal
+        view
         returns (DefifaLaunchProjectData memory)
     {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](nTiers);
