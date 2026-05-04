@@ -909,6 +909,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             if (pendingReserves != 0) {
                 // slither-disable-next-line calls-loop
                 JB721Tier memory tier = hookStore.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
+
+                // Pending reserves dilute claims by the same economic weight as paid mints at this tier's price.
                 cost += pendingReserves * tier.price;
             }
             unchecked {
