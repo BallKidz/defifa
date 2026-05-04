@@ -954,7 +954,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         uint48 _launchProjectAt = uint48(block.timestamp) + _durationUntilProjectLaunch;
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](1);
         tierParams[0] = DefifaTierParams({
-            reservedRate: 1001,
+            reservedRate: 0,
             reservedTokenBeneficiary: address(0),
             encodedIPFSUri: bytes32(0), // this way we dont need more tokenUris
             shouldUseReservedTokenBeneficiaryAsDefault: false,
@@ -1235,7 +1235,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](nTiers);
         for (uint256 i = 0; i < nTiers; i++) {
             tierParams[i] = DefifaTierParams({
-                reservedRate: 1001,
+                reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0), // this way we dont need more tokenUris
                 shouldUseReservedTokenBeneficiaryAsDefault: false,

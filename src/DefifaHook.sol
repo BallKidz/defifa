@@ -457,6 +457,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // If the game isn't complete, we do not have any tokens to claim.
         if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.COMPLETE) return (0, 0);
 
+        // Include unminted reserves in the denominator. Once reserves are pending, their future recipients are
+        // entitled to fee-token claims as if the reserve NFTs had already been minted; otherwise paid holders could
+        // claim too large a share before the reserve mint transaction lands.
         // slither-disable-next-line unused-return
         return DefifaHookLib.computeTokensClaim({
             tokenIds: tokenIds,

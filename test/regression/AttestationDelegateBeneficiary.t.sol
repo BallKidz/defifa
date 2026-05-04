@@ -220,7 +220,7 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](2);
         for (uint256 i = 0; i < 2; i++) {
             tierParams[i] = DefifaTierParams({
-                reservedRate: 1001,
+                reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,

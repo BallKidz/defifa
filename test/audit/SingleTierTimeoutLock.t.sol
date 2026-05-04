@@ -123,7 +123,7 @@ contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
     function _launchData() internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](1);
         tierParams[0] = DefifaTierParams({
-            reservedRate: 1001,
+            reservedRate: 0,
             reservedTokenBeneficiary: address(0),
             encodedIPFSUri: bytes32(0),
             shouldUseReservedTokenBeneficiaryAsDefault: false,

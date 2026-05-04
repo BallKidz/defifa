@@ -75,7 +75,7 @@ contract CurrencyMismatchBypassTest is DefifaUSDCTest {
         DefifaTierParams[] memory tp = new DefifaTierParams[](2);
         for (uint256 i; i < 2; i++) {
             tp[i] = DefifaTierParams({
-                reservedRate: 1001,
+                reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,

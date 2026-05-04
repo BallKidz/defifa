@@ -253,7 +253,7 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         });
         for (uint256 i = 1; i < 4; i++) {
             tiers[i] = DefifaTierParams({
-                reservedRate: 1001,
+                reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,

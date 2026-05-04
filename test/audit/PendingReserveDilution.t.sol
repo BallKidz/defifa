@@ -211,7 +211,7 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         // Tiers 2-4: disinterested attestors (no reserves)
         for (uint256 i = 1; i < 4; i++) {
             tp[i] = DefifaTierParams({
-                reservedRate: 1001,
+                reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
