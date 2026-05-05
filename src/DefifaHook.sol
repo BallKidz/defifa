@@ -82,16 +82,16 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
     /// @notice The delegation status for each address and for each tier.
     /// _delegator The delegator.
-    /// _tierId The ID of the tier being delegated.
+    /// _tierId The ID of the tier to delegate.
     mapping(address => mapping(uint256 => address)) internal _tierDelegation;
 
     /// @notice The delegation checkpoints for each address and for each tier.
     /// _delegator The delegator.
-    /// _tierId The ID of the tier being checked.
+    /// _tierId The ID of the tier to check.
     mapping(address => mapping(uint256 => Checkpoints.Trace208)) internal _delegateTierCheckpoints;
 
     /// @notice The total delegation status for each tier.
-    /// _tierId The ID of the tier being checked.
+    /// _tierId The ID of the tier to check.
     mapping(uint256 => Checkpoints.Trace208) internal _totalTierCheckpoints;
 
     /// @notice The first owner of each token ID, stored on first transfer out.
@@ -132,7 +132,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice The address of the origin 'DefifaHook', used to check in the init if the contract is the original or not
     address public immutable override CODE_ORIGIN;
 
-    /// @notice Contract metadata uri.
+    /// @notice The contract-level metadata URI used by marketplaces to display collection information.
     string public override contractURI;
 
     /// @notice The address that'll be set as the attestation delegate by default.
@@ -852,7 +852,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         emit TierCashOutWeightsSet(tierWeights, msg.sender);
     }
 
-    /// @notice Delegate attestations.
+    /// @notice Delegate this account's voting power for a single tier to a specified delegate.
     /// @param delegatee The account to delegate tier attestation units to.
     /// @param tierId The ID of the tier to delegate attestation units for.
     function setTierDelegateTo(address delegatee, uint256 tierId) public virtual override {
@@ -867,7 +867,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         _delegateTier({account: msg.sender, delegatee: delegatee, tierId: tierId});
     }
 
-    /// @notice Delegate attestations.
+    /// @notice Delegate this account's voting power across multiple tiers to specified delegates.
     /// @param delegations An array of tiers to set delegates for.
     function setTierDelegatesTo(DefifaDelegation[] memory delegations) external virtual override {
         // Make sure the current game phase is the minting phase.
@@ -949,7 +949,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice Delegate all attestation units for the specified tier.
     /// @param account The account delegating tier attestation units.
     /// @param delegatee The account to delegate tier attestation units to.
-    /// @param tierId The ID of the tier for which attestation units are being transferred.
+    /// @param tierId The ID of the tier to transfer attestation units for.
     function _delegateTier(address account, address delegatee, uint256 tierId) internal virtual {
         // Get the current delegatee
         address oldDelegate = _tierDelegation[account][tierId];
@@ -1036,7 +1036,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice Moves delegated tier attestations from one delegate to another.
     /// @param from The account to transfer tier attestation units from.
     /// @param to The account to transfer tier attestation units to.
-    /// @param tierId The ID of the tier for which attestation units are being transferred.
+    /// @param tierId The ID of the tier to transfer attestation units for.
     /// @param amount The amount of attestation units to delegate.
     function _moveTierDelegateAttestations(address from, address to, uint256 tierId, uint256 amount) internal {
         // Nothing to do if moving to the same account, or no amount is being moved.
@@ -1145,7 +1145,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// register a burn, `to` should be zero. Total supply of attestation units will be adjusted with mints and burns.
     /// @param from The account to transfer tier attestation units from.
     /// @param to The account to transfer tier attestation units to.
-    /// @param tierId The ID of the tier for which attestation units are being transferred.
+    /// @param tierId The ID of the tier to transfer attestation units for.
     /// @param amount The amount of attestation units to delegate.
     function _transferTierAttestationUnits(address from, address to, uint256 tierId, uint256 amount) internal virtual {
         if (from == address(0) || to == address(0)) {
@@ -1193,8 +1193,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     }
 
     /// @notice Before transferring an NFT, register its first owner (if necessary).
-    /// @param to The address the NFT is being transferred to.
-    /// @param tokenId The token ID of the NFT being transferred.
+    /// @param to The address to transfer the NFT to.
+    /// @param tokenId The token ID of the NFT to transfer.
     /// @param auth The address authorizing the transfer.
     /// @return from The address the token was transferred from.
     function _update(address to, uint256 tokenId, address auth) internal virtual override returns (address from) {

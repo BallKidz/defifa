@@ -2,7 +2,7 @@
 pragma solidity ^0.8.0;
 
 /// @notice Operational parameters stored for a deployed game — the token, timing, and contest rules.
-/// @custom:member token The token being used by the game.
+/// @custom:member token The token used by the game.
 /// @custom:member start The time at which the game should start, measured in seconds.
 /// @custom:member mintPeriodDuration The duration of the game's mint phase, measured in seconds.
 /// @custom:member refundPeriodDuration The time between the mint phase and the start time when mint's are no longer

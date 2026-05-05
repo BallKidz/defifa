@@ -10,7 +10,7 @@ import {DefifaTierParams} from "./DefifaTierParams.sol";
 
 /// @notice All parameters needed to launch a new Defifa game — the name, tiers, timing, splits, and governance
 /// configuration.
-/// @custom:member name The name of the game being created.
+/// @custom:member name The name of the game to create.
 /// @custom:member projectUri Metadata to associate with the project.
 /// @custom:member contractUri The URI to associate with the 721.
 /// @custom:member baseUri The URI base to prepend onto any tier token URIs.
