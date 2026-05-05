@@ -85,8 +85,17 @@ npm install @ballkidz/defifa
 
 ```bash
 npm install
-forge build
-forge test
+forge build --deny notes
+forge test --deny notes
+```
+
+Useful checks before opening or updating a PR:
+
+```bash
+forge fmt --check
+forge build --deny notes --sizes --skip "*/test/**" --skip "*/script/**"
+forge build --deny notes --build-info --skip "*/test/**" --skip "*/script/**"
+npm pack --dry-run --json
 ```
 
 Useful scripts:

@@ -90,5 +90,9 @@ The contracts split responsibility as follows:
 ## Verification
 
 - `npm install`
-- `forge build`
-- `forge test`
+- `forge fmt --check`
+- `forge build --deny notes`
+- `forge build --deny notes --sizes --skip "*/test/**" --skip "*/script/**"`
+- `forge build --deny notes --build-info --skip "*/test/**" --skip "*/script/**"`
+- `forge test --deny notes`
+- `npm pack --dry-run --json`

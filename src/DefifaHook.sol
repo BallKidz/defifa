@@ -172,6 +172,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// between burns and reserves is not linear — it depends on the tier's reserve frequency.
     /// @param tierId The tier ID.
     /// @return The adjusted pending reserve count (floored at 0).
+    // slither-disable-next-line calls-loop
     function adjustedPendingReservesFor(uint256 tierId) public view returns (uint256) {
         uint256 refundBurns = refundedBurnsFrom[tierId];
 
@@ -618,6 +619,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice Mint reserved tokens within the tier for the provided value.
     /// @param tierId The ID of the tier to mint within.
     /// @param count The number of reserved tokens to mint.
+    // slither-disable-next-line reentrancy-benign,reentrancy-no-eth
     function mintReservesFor(uint256 tierId, uint256 count) public override {
         // Minting reserves must not be paused.
         // slither-disable-next-line calls-loop

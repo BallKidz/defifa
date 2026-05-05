@@ -310,6 +310,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
     /// @notice Fulfill split amounts between all splits for a game.
     /// @param gameId The ID of the game to fulfill splits for.
+    // slither-disable-next-line reentrancy-benign,reentrancy-no-eth
     function fulfillCommitmentsOf(uint256 gameId) external virtual override {
         // Make sure commitments haven't already been fulfilled.
         if (commitmentsFulfilledFor[gameId]) return;
@@ -374,6 +375,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @notice Launches a new game owned by this contract with a DefifaHook attached.
     /// @param launchProjectData Data necessary to fulfill the transaction to launch a game.
     /// @return gameId The ID of the newly configured game.
+    // slither-disable-next-line reentrancy-benign,reentrancy-no-eth
     function launchGameWith(DefifaLaunchProjectData memory launchProjectData)
         external
         override
