@@ -19,7 +19,8 @@ import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 import {IDefifaHook} from "./interfaces/IDefifaHook.sol";
 import {IDefifaTokenUriResolver} from "./interfaces/IDefifaTokenUriResolver.sol";
 
-/// @notice Standard Token URIs for Defifa games.
+/// @notice Generates on-chain SVG token URIs for Defifa game NFTs. Each NFT image shows the tier name, game phase,
+/// and current cash-out value. Uses an on-chain typeface for rendering text within the SVG.
 contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolver {
     using Strings for uint256;
 

@@ -41,7 +41,11 @@ import {DefifaLaunchProjectData} from "./structs/DefifaLaunchProjectData.sol";
 import {DefifaOpsData} from "./structs/DefifaOpsData.sol";
 import {DefifaTierParams} from "./structs/DefifaTierParams.sol";
 
-/// @notice Deploys and manages Defifa games.
+/// @notice Deploys and manages Defifa games — prediction-market-style contests built on Juicebox. Each game has
+/// tiers representing outcomes (teams, players, events). Players mint tier NFTs during the mint phase, then after
+/// the event concludes, a scorecard assigns cash-out weights to each tier. The treasury is distributed proportionally
+/// to winning NFT holders. Games progress through phases: COUNTDOWN → MINT → REFUND → SCORING → COMPLETE (or
+/// NO_CONTEST if minimum participation isn't met or scorecard ratification times out).
 contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGamePotReporter, IERC721Receiver {
     using Strings for uint256;
     using SafeERC20 for IERC20;

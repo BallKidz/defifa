@@ -20,7 +20,10 @@ import {DefifaScorecard} from "./structs/DefifaScorecard.sol";
 import {DefifaTierCashOutWeight} from "./structs/DefifaTierCashOutWeight.sol";
 import {DefifaHookLib} from "./libraries/DefifaHookLib.sol";
 
-/// @notice Manages the ratification of Defifa scorecards.
+/// @notice Manages the ratification of Defifa scorecards through token-weighted attestation. After a game ends,
+/// anyone can submit a scorecard proposing cash-out weights for each tier. NFT holders attest to scorecards using
+/// their voting power (proportional to NFTs held). A scorecard is ratified once it reaches quorum and survives the
+/// grace period, after which the deployer applies the weights to the game's treasury.
 contract DefifaGovernor is Ownable, IDefifaGovernor {
     //*********************************************************************//
     // --------------------------- custom errors ------------------------- //
