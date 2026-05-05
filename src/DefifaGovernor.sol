@@ -129,7 +129,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     // ---------------------- external transactions ---------------------- //
     //*********************************************************************//
 
-    /// @notice Attests to a scorecard.
+    /// @notice Cast an attestation supporting a proposed scorecard, weighted by the caller's tier voting power.
     /// @param gameId The ID of the game to which the scorecard belongs.
     /// @param scorecardId The scorecard ID.
     /// @return weight The attestation weight that was applied.
@@ -465,7 +465,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     // ----------------------- public transactions ----------------------- //
     //*********************************************************************//
 
-    /// @notice Initializes a game.
+    /// @notice Initialize governance for a newly deployed game, setting the initial block number for vote accounting.
     /// @param gameId The ID of the game.
     /// @param attestationStartTime The amount of time between a scorecard being submitted and attestations to it being
     /// enabled, measured in seconds.
@@ -748,7 +748,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         return eligibleTierWeights / 2;
     }
 
-    /// @notice The state of a proposal.
+    /// @notice Get the current governance state (pending, active, defeated, succeeded) of a scorecard proposal.
     /// @param gameId The ID of the game to get a proposal state of.
     /// @param scorecardId The ID of the proposal to get the state of.
     /// @return The state.

@@ -99,13 +99,13 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @notice The default Defifa token URI resolver.
     IJB721TokenUriResolver public immutable override TOKEN_URI_RESOLVER;
 
-    /// @notice The Defifa governor.
+    /// @notice The governance contract that ratifies scorecards for each game.
     IDefifaGovernor public immutable override GOVERNOR;
 
     /// @notice The controller with which new projects should be deployed.
     IJBController public immutable override CONTROLLER;
 
-    /// @notice The hooks registry.
+    /// @notice The Juicebox 721 tiers hook registry used to register deployed games.
     IJBAddressRegistry public immutable REGISTRY;
 
     /// @notice The 721 tiers hook store used by all games.
@@ -203,7 +203,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         return (ops.minParticipation, ops.scorecardTimeout);
     }
 
-    /// @notice The game times.
+    /// @notice Get the countdown, minting, and refund deadline timestamps for a game.
     /// @param gameId The ID of the game for which the game times apply.
     /// @return The game's start time, as a unix timestamp.
     /// @return The game's minting period duration, in seconds.
@@ -213,7 +213,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         return (ops.start, ops.mintPeriodDuration, ops.refundPeriodDuration);
     }
 
-    /// @notice The token of a game.
+    /// @notice Get the ERC-20 token address associated with a given game.
     /// @param gameId The ID of the game to get the token of.
     /// @return The game's token.
     function tokenOf(uint256 gameId) external view override returns (address) {

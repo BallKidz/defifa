@@ -132,7 +132,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice The address of the origin 'DefifaHook', used to check in the init if the contract is the original or not
     address public immutable override CODE_ORIGIN;
 
-    /// @notice Contract metadata uri.
+    /// @notice The contract-level metadata URI used by marketplaces to display collection information.
     string public override contractURI;
 
     /// @notice The address that'll be set as the attestation delegate by default.
@@ -852,7 +852,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         emit TierCashOutWeightsSet(tierWeights, msg.sender);
     }
 
-    /// @notice Delegate attestations.
+    /// @notice Delegate this account's voting power for a single tier to a specified delegate.
     /// @param delegatee The account to delegate tier attestation units to.
     /// @param tierId The ID of the tier to delegate attestation units for.
     function setTierDelegateTo(address delegatee, uint256 tierId) public virtual override {
@@ -867,7 +867,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         _delegateTier({account: msg.sender, delegatee: delegatee, tierId: tierId});
     }
 
-    /// @notice Delegate attestations.
+    /// @notice Delegate this account's voting power across multiple tiers to specified delegates.
     /// @param delegations An array of tiers to set delegates for.
     function setTierDelegatesTo(DefifaDelegation[] memory delegations) external virtual override {
         // Make sure the current game phase is the minting phase.
