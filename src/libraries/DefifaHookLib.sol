@@ -244,7 +244,7 @@ library DefifaHookLib {
 
     /// @notice Compute the cash out count for the beforeCashOutRecorded hook.
     /// @param gamePhase The current game phase.
-    /// @param cumulativeMintPrice The cumulative mint price of the tokens being cashed out.
+    /// @param cumulativeMintPrice The cumulative mint price of the tokens to cash out.
     /// @param surplusValue The surplus value from the context.
     /// @param totalAmountRedeemed The amount already redeemed.
     /// @param cumulativeCashOutWeight The cumulative cash out weight of the tokens.
@@ -294,7 +294,7 @@ library DefifaHookLib {
 
     /// @notice Computes the attestation units for tiers during payment processing.
     /// @dev Returns parallel arrays: tier IDs, cumulative attestation units per tier, and whether to switch delegate.
-    /// @param tierIdsToMint The tier IDs being minted (must be in ascending order).
+    /// @param tierIdsToMint The tier IDs to mint (must be in ascending order).
     /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
     /// @return tierIds The unique tier IDs.

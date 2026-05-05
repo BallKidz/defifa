@@ -24,7 +24,7 @@ interface IDefifaGovernor {
 
     /// @notice Emitted when an account attests to a scorecard.
     /// @param gameId The ID of the game.
-    /// @param scorecardId The ID of the scorecard being attested to.
+    /// @param scorecardId The ID of the scorecard attested to.
     /// @param weight The attestation weight applied.
     /// @param caller The address that submitted the attestation.
     event ScorecardAttested(uint256 indexed gameId, uint256 indexed scorecardId, uint256 weight, address caller);

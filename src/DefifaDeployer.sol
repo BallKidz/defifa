@@ -141,7 +141,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     // ------------------------- external views -------------------------- //
     //*********************************************************************//
 
-    /// @notice The current pot the game is being played with.
+    /// @notice The current pot the game is played with.
     /// @param gameId The ID of the game for which the pot applies.
     /// @param includeCommitments A flag indicating if the portion of the pot committed to fulfill preprogrammed
     /// obligations should be included.

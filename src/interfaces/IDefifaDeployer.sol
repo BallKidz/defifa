@@ -15,7 +15,7 @@ import {IDefifaHook} from "./IDefifaHook.sol";
 /// and commitment fulfillment.
 interface IDefifaDeployer {
     /// @notice Emitted when a commitment payout fails during fulfillment.
-    /// @param gameId The ID of the game being fulfilled.
+    /// @param gameId The ID of the game that was fulfilled.
     /// @param amount The amount that failed to pay out.
     /// @param reason The revert reason bytes from the failed payout.
     event CommitmentPayoutFailed(uint256 indexed gameId, uint256 amount, bytes reason);

@@ -446,7 +446,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     }
 
     /// @notice The ID of a scorecard representing the provided tier weights.
-    /// @param gameHook The address where the game is being played.
+    /// @param gameHook The address where the game is played.
     /// @param tierWeights The weights of each tier in the scorecard.
     function scorecardIdOf(
         address gameHook,
@@ -467,8 +467,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
     /// @notice Initialize governance for a newly deployed game, setting the initial block number for vote accounting.
     /// @param gameId The ID of the game.
-    /// @param attestationStartTime The amount of time between a scorecard being submitted and attestations to it being
-    /// enabled, measured in seconds.
+    /// @param attestationStartTime The amount of time between a scorecard submission and attestations becoming enabled,
+    /// measured in seconds.
     /// @param attestationGracePeriod The amount of time that must go by before a scorecard can be ratified.
     /// @param timelockDuration The cooling period after quorum is met before a scorecard can be ratified.
     function initializeGame(
@@ -523,8 +523,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         return uint256(uint48(_packedScorecardInfoOf[gameId] >> 48));
     }
 
-    /// @notice The amount of time between a scorecard being submitted and attestations to it being enabled, measured in
-    /// seconds.
+    /// @notice The amount of time between a scorecard submission and attestations becoming enabled, measured in seconds.
     /// @dev This can be increased to leave time for users to acquire attestation power, or delegate it, before
     /// a scorecard becomes live.
     /// @param gameId The ID of the game to get the attestation delay of.
@@ -541,7 +540,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// MAX_ATTESTATION_POWER_TIER; a holder of 1-of-100 gets MAX_ATTESTATION_POWER_TIER / 100.
     /// This ensures each game outcome (tier) has equal governance weight — the scorecard reflects
     /// consensus across outcomes, not dominance by whichever outcome sold the most tokens.
-    /// @param gameId The ID of the game for which attestations are being counted.
+    /// @param gameId The ID of the game to count attestations for.
     /// @param account The account to get attestations for.
     /// @param timestamp The timestamp to measure attestations from.
     /// @return attestationPower The amount of attestation power of an account.
@@ -839,7 +838,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     }
 
     /// @notice A value representing the contents of a scorecard.
-    /// @param gameHook The address where the game is being played.
+    /// @param gameHook The address where the game is played.
     /// @param calldataBytes The calldata that will be sent if the scorecard is ratified.
     function _hashScorecardOf(address gameHook, bytes memory calldataBytes) internal pure virtual returns (uint256) {
         return uint256(keccak256(abi.encode(gameHook, calldataBytes)));
