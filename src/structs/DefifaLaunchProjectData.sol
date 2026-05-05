@@ -8,6 +8,8 @@ import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 
 import {DefifaTierParams} from "./DefifaTierParams.sol";
 
+/// @notice All parameters needed to launch a new Defifa game — the name, tiers, timing, splits, and governance
+/// configuration.
 /// @custom:member name The name of the game being created.
 /// @custom:member projectUri Metadata to associate with the project.
 /// @custom:member contractUri The URI to associate with the 721.

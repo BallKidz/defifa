@@ -8,9 +8,10 @@ import {IERC721Receiver} from "@openzeppelin/contracts/token/ERC721/IERC721Recei
 
 import {DefifaDeployer} from "./DefifaDeployer.sol";
 
-/// @notice A contract that can be sent a project to be burned, while still allowing defifa permissions.
-/// @dev Once the project NFT is transferred here, it cannot be recovered. This contract permanently
-/// holds the project NFT and grants SET_SPLIT_GROUPS permission to the Defifa deployer.
+/// @notice A dead-end owner for Defifa project NFTs. When the project NFT is transferred here, this contract
+/// permanently holds it and grants SET_SPLIT_GROUPS permission to the Defifa deployer — allowing the deployer to
+/// manage splits without any human having project ownership.
+/// @dev Once the project NFT is transferred here, it cannot be recovered.
 contract DefifaProjectOwner is IERC721Receiver {
     //*********************************************************************//
     // --------------------------- custom errors ------------------------- //

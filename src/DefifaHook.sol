@@ -36,7 +36,10 @@ import {DefifaTierCashOutWeight} from "./structs/DefifaTierCashOutWeight.sol";
 import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 import {DefifaHookLib} from "./libraries/DefifaHookLib.sol";
 
-/// @notice A hook that transforms Juicebox treasury interactions into a Defifa game.
+/// @notice The 721 hook that powers Defifa games. Extends JB721Hook to enforce game phase rules on minting and
+/// cashing out, track per-tier voting power via checkpoints, and apply scorecard-determined cash-out weights after
+/// ratification. Mints are only allowed during the MINT phase, refunds during the REFUND phase, and cash outs
+/// with scoring weights only after a scorecard is ratified in the COMPLETE phase.
 contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     using Checkpoints for Checkpoints.Trace208;
 
