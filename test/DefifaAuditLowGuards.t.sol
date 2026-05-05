@@ -244,11 +244,11 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
         }
     }
 
-    function _launchData(uint8 n, uint256 tierPrice) internal returns (DefifaLaunchProjectData memory) {
+    function _launchData(uint8 n, uint256 tierPrice) internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tp = new DefifaTierParams[](n);
         for (uint256 i; i < n; i++) {
             tp[i] = DefifaTierParams({
-                reservedRate: 1001,
+                reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,

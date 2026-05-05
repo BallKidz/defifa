@@ -262,7 +262,7 @@ contract Pass12FixesTest is JBTest, TestBaseWorkflow {
         DefifaTierParams[] memory tp = new DefifaTierParams[](4);
         for (uint256 i; i < 4; i++) {
             tp[i] = DefifaTierParams({
-                reservedRate: 1001,
+                reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
@@ -313,14 +313,14 @@ contract Pass12FixesTest is JBTest, TestBaseWorkflow {
         });
         // Tiers 3-4: disinterested attestors (no meaningful reserves).
         tp[2] = DefifaTierParams({
-            reservedRate: 1001,
+            reservedRate: 0,
             reservedTokenBeneficiary: address(0),
             encodedIPFSUri: bytes32(0),
             shouldUseReservedTokenBeneficiaryAsDefault: false,
             name: "TEAM3"
         });
         tp[3] = DefifaTierParams({
-            reservedRate: 1001,
+            reservedRate: 0,
             reservedTokenBeneficiary: address(0),
             encodedIPFSUri: bytes32(0),
             shouldUseReservedTokenBeneficiaryAsDefault: false,

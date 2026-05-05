@@ -198,7 +198,7 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         assertGt(reserveReclaim, 0, "reserve holder can reclaim their share after fix");
     }
 
-    function _launchData() internal returns (DefifaLaunchProjectData memory) {
+    function _launchData() internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tp = new DefifaTierParams[](4);
         // Tier 1: has reserves (the tier under test)
         tp[0] = DefifaTierParams({
@@ -211,7 +211,7 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         // Tiers 2-4: disinterested attestors (no reserves)
         for (uint256 i = 1; i < 4; i++) {
             tp[i] = DefifaTierParams({
-                reservedRate: 1001,
+                reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
@@ -276,14 +276,14 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         jbMultiTerminal()
             .cashOutTokensOf({
-                holder: user,
-                projectId: _pid,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(user),
-                metadata: meta
-            });
+            holder: user,
+            projectId: _pid,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(user),
+            metadata: meta
+        });
     }
 
     function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {

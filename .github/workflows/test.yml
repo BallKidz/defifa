@@ -13,12 +13,14 @@ jobs:
           submodules: recursive
       - uses: actions/setup-node@v4
         with:
-          node-version: latest
+          node-version: 25.9.0
       - name: Install npm dependencies
-        run: npm install --omit=dev
+        run: npm install
       - name: Install Foundry
         uses: foundry-rs/foundry-toolchain@v1
       - name: Run tests
-        run: forge test --fail-fast --summary --detailed --skip "*/script/**"
+        run: forge test --deny notes --fail-fast --summary --detailed --skip "*/script/**"
         env:
           RPC_ETHEREUM_MAINNET: ${{ secrets.RPC_ETHEREUM_MAINNET }}
+      - name: Build contracts
+        run: forge build --deny notes --skip "*/test/**" --skip "*/script/**"

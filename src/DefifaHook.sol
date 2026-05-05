@@ -172,6 +172,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// between burns and reserves is not linear — it depends on the tier's reserve frequency.
     /// @param tierId The tier ID.
     /// @return The adjusted pending reserve count (floored at 0).
+    // slither-disable-next-line calls-loop
     function adjustedPendingReservesFor(uint256 tierId) public view returns (uint256) {
         uint256 refundBurns = refundedBurnsFrom[tierId];
 
@@ -344,8 +345,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
                     // slither-disable-next-line calls-loop
                     cumulativeMintPrice -= hookStore.tierOfTokenId({
                         hook: address(this), tokenId: decodedTokenIds[i], includeResolvedUri: false
-                    })
-                    .price;
+                    }).price;
                 }
 
                 unchecked {
@@ -458,12 +458,15 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // If the game isn't complete, we do not have any tokens to claim.
         if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.COMPLETE) return (0, 0);
 
+        // Include unminted reserves in the denominator. Once reserves are pending, their future recipients are
+        // entitled to fee-token claims as if the reserve NFTs had already been minted; otherwise paid holders could
+        // claim too large a share before the reserve mint transaction lands.
         // slither-disable-next-line unused-return
         return DefifaHookLib.computeTokensClaim({
             tokenIds: tokenIds,
             hookStore: store,
             hook: address(this),
-            totalMintCost: _totalMintCost,
+            totalMintCost: _totalMintCost + _pendingReserveMintCost(),
             defifaBalance: DEFIFA_TOKEN.balanceOf(address(this)),
             baseProtocolBalance: BASE_PROTOCOL_TOKEN.balanceOf(address(this))
         });
@@ -616,6 +619,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice Mint reserved tokens within the tier for the provided value.
     /// @param tierId The ID of the tier to mint within.
     /// @param count The number of reserved tokens to mint.
+    // slither-disable-next-line reentrancy-benign,reentrancy-no-eth
     function mintReservesFor(uint256 tierId, uint256 count) public override {
         // Minting reserves must not be paused.
         // slither-disable-next-line calls-loop
@@ -784,7 +788,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             // are accounted for, preventing paid holders from claiming a disproportionate share.
             // slither-disable-next-line reentrancy-events
             beneficiaryReceivedTokens = _claimTokensFor({
-                beneficiary: context.holder,
+                beneficiary: context.beneficiary,
                 shareToBeneficiary: cumulativeMintPrice,
                 outOfTotal: _totalMintCost + _pendingReserveMintCost()
             });
@@ -907,6 +911,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             if (pendingReserves != 0) {
                 // slither-disable-next-line calls-loop
                 JB721Tier memory tier = hookStore.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
+
+                // Pending reserves dilute claims by the same economic weight as paid mints at this tier's price.
                 cost += pendingReserves * tier.price;
             }
             unchecked {

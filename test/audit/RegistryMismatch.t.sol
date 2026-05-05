@@ -116,7 +116,7 @@ contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
         );
     }
 
-    function _launchData() internal returns (DefifaLaunchProjectData memory) {
+    function _launchData() internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tiers = new DefifaTierParams[](1);
         tiers[0] = DefifaTierParams({
             name: "Team 1",
@@ -144,7 +144,7 @@ contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0,
+            scorecardTimeout: 100_382,
             timelockDuration: 0
         });
     }

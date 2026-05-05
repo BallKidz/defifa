@@ -72,7 +72,6 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
 
         // Keep a reference to the game's name (escaped for JSON/SVG safety).
         // TODO: Somehow make the `IDefifaHook` have the `name` function.
-        string memory titleJson = _escapeJson(ERC721(address(hook)).name());
         string memory titleSvg = _escapeSvg(ERC721(address(hook)).name());
 
         // Keep a reference to the tier's name.

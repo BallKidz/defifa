@@ -242,7 +242,7 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         }
     }
 
-    function _launchData() internal returns (DefifaLaunchProjectData memory data) {
+    function _launchData() internal view returns (DefifaLaunchProjectData memory data) {
         DefifaTierParams[] memory tiers = new DefifaTierParams[](4);
         tiers[0] = DefifaTierParams({
             reservedRate: 1,
@@ -253,7 +253,7 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         });
         for (uint256 i = 1; i < 4; i++) {
             tiers[i] = DefifaTierParams({
-                reservedRate: 1001,
+                reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,

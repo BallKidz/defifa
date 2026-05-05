@@ -509,11 +509,11 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.ts() + 3 days + 1);
     }
 
-    function _launchData(uint8 n, uint256 tierPrice) internal returns (DefifaLaunchProjectData memory) {
+    function _launchData(uint8 n, uint256 tierPrice) internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tp = new DefifaTierParams[](n);
         for (uint256 i; i < n; i++) {
             tp[i] = DefifaTierParams({
-                reservedRate: 1001,
+                reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
@@ -595,14 +595,14 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-                holder: user,
-                projectId: _pid,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(user),
-                metadata: meta
-            });
+            holder: user,
+            projectId: _pid,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(user),
+            metadata: meta
+        });
     }
 
     function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {

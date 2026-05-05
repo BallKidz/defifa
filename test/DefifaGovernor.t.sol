@@ -609,14 +609,14 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.prank(_user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-                holder: _user,
-                projectId: _projectId,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(_user),
-                metadata: cashOutMetadata
-            });
+            holder: _user,
+            projectId: _projectId,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(_user),
+            metadata: cashOutMetadata
+        });
 
         assertEq(IERC20(_protocolFeeProjectTokenAccount).balanceOf(_user), _nanaBalance + _receiveNana);
         assertEq(IERC20(_defifaProjectTokenAccount).balanceOf(_user), _defifaBalance + _receiveDefifa);
@@ -680,14 +680,14 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.prank(_refundUser);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-                holder: _refundUser,
-                projectId: _projectId,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(_refundUser),
-                metadata: cashOutMetadata
-            });
+            holder: _refundUser,
+            projectId: _projectId,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(_refundUser),
+            metadata: cashOutMetadata
+        });
         vm.warp(block.timestamp + 1);
 
         assertEq(_refundUser.balance, _cost);
@@ -910,14 +910,14 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
                 vm.prank(_user);
                 JBMultiTerminal(address(jbMultiTerminal()))
                     .cashOutTokensOf({
-                        holder: _user,
-                        projectId: _projectId,
-                        cashOutCount: 0,
-                        tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                        minTokensReclaimed: 0,
-                        beneficiary: payable(_user),
-                        metadata: cashOutMetadata
-                    });
+                    holder: _user,
+                    projectId: _projectId,
+                    cashOutCount: 0,
+                    tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                    minTokensReclaimed: 0,
+                    beneficiary: payable(_user),
+                    metadata: cashOutMetadata
+                });
                 // We calculate the expected output based on the given distribution and how much is in the pot
                 _expectedTierCashOut = (_pot * _tierWeight) / totalWeight;
             }
@@ -954,7 +954,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         uint48 _launchProjectAt = uint48(block.timestamp) + _durationUntilProjectLaunch;
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](1);
         tierParams[0] = DefifaTierParams({
-            reservedRate: 1001,
+            reservedRate: 0,
             reservedTokenBeneficiary: address(0),
             encodedIPFSUri: bytes32(0), // this way we dont need more tokenUris
             shouldUseReservedTokenBeneficiaryAsDefault: false,
@@ -979,7 +979,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0,
+            scorecardTimeout: 100_382,
             timelockDuration: 0
         });
         (uint256 _projectId, DefifaHook _nft,) = createDefifaProject(_launchData);
@@ -1231,11 +1231,11 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         _governor.submitScorecardFor(_gameId, scorecards);
     }
 
-    function getBasicDefifaLaunchData(uint8 nTiers) internal returns (DefifaLaunchProjectData memory) {
+    function getBasicDefifaLaunchData(uint8 nTiers) internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](nTiers);
         for (uint256 i = 0; i < nTiers; i++) {
             tierParams[i] = DefifaTierParams({
-                reservedRate: 1001,
+                reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0), // this way we dont need more tokenUris
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
@@ -1261,7 +1261,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0,
+            scorecardTimeout: nTiers == 1 ? 100_382 : 0,
             timelockDuration: 0
         });
     }
@@ -1311,14 +1311,14 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.prank(_refundUser);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-                holder: _refundUser,
-                projectId: _projectId,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(_refundUser),
-                metadata: cashOutMetadata
-            });
+            holder: _refundUser,
+            projectId: _projectId,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(_refundUser),
+            metadata: cashOutMetadata
+        });
         // User should have their original funds again
         assertEq(_refundUser.balance, _cost);
         // User should no longer have the NFT

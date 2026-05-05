@@ -128,14 +128,14 @@ contract MintCostHandler is Test {
         vm.prank(info.holder);
         JBMultiTerminal(address(terminal))
             .cashOutTokensOf({
-                holder: info.holder,
-                projectId: pid,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(info.holder),
-                metadata: metaHelper.createMetadata(bids, data)
-            });
+            holder: info.holder,
+            projectId: pid,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(info.holder),
+            metadata: metaHelper.createMetadata(bids, data)
+        });
 
         expectedMintCost -= tierPrice;
         burnCount++;
@@ -243,7 +243,7 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
         DefifaTierParams[] memory tp = new DefifaTierParams[](N_TIERS);
         for (uint256 i; i < N_TIERS; i++) {
             tp[i] = DefifaTierParams({
-                reservedRate: 1001,
+                reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
                 encodedIPFSUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,

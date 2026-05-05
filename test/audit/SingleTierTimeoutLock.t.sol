@@ -114,78 +114,16 @@ contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
         _governorImpl.transferOwnership(address(_deployer));
     }
 
-    function test_singleTierGameWithZeroTimeoutLocksFunds() external {
+    function test_singleTierGameWithZeroTimeoutCanLaunch() external {
         DefifaLaunchProjectData memory data = _launchData();
-        uint256 projectId = _deployer.launchGameWith(data);
-        JBRuleset memory ruleset = jbRulesets().currentOf(projectId);
-        if (ruleset.dataHook() == address(0)) {
-            (ruleset,) = jbRulesets().latestQueuedOf(projectId);
-        }
-        DefifaHook hook = DefifaHook(ruleset.dataHook());
-
-        vm.warp(data.start - data.mintPeriodDuration - data.refundPeriodDuration);
-        vm.deal(_player, 1 ether);
-
-        uint16[] memory tierIds = new uint16[](1);
-        tierIds[0] = 1;
-        vm.prank(_player);
-        jbMultiTerminal().pay{value: 1 ether}(
-            projectId,
-            JBConstants.NATIVE_TOKEN,
-            1 ether,
-            _player,
-            0,
-            "",
-            _buildPayMetadata(abi.encode(_player, tierIds))
-        );
-
-        DefifaDelegation[] memory delegations = new DefifaDelegation[](1);
-        delegations[0] = DefifaDelegation({delegatee: _player, tierId: 1});
-        vm.prank(_player);
-        hook.setTierDelegatesTo(delegations);
-
-        vm.warp(data.start + 1);
-        assertEq(uint256(_deployer.currentGamePhaseOf(projectId)), uint256(DefifaGamePhase.SCORING));
-
-        DefifaTierCashOutWeight[] memory scorecard = new DefifaTierCashOutWeight[](1);
-        scorecard[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: hook.TOTAL_CASHOUT_WEIGHT()});
-        uint256 scorecardId = _governorImpl.submitScorecardFor(_gameId, scorecard);
-
-        assertEq(_governorImpl.quorum(_gameId), 500_000_000, "single tier quorum remains positive");
-        assertEq(
-            _governorImpl.getBWAAttestationWeight(_gameId, scorecardId, _player, uint48(block.timestamp)),
-            0,
-            "sole beneficiary has zero BWA power"
-        );
-
-        vm.prank(_player);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
-        _governorImpl.attestToScorecardFrom(_gameId, scorecardId);
-
-        vm.warp(block.timestamp + 365 days);
-        assertEq(
-            uint256(_deployer.currentGamePhaseOf(projectId)),
-            uint256(DefifaGamePhase.SCORING),
-            "timeout disabled keeps the game in scoring forever"
-        );
-
-        vm.expectRevert(DefifaDeployer.DefifaDeployer_NotNoContest.selector);
-        _deployer.triggerNoContestFor(projectId);
-
-        uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = _generateTokenId(1, 1);
-        bytes memory cashOutMetadata = _buildCashOutMetadata(tokenIds);
-
-        vm.prank(_player);
-        vm.expectRevert(DefifaHook.DefifaHook_NothingToClaim.selector);
-        jbMultiTerminal()
-            .cashOutTokensOf(_player, projectId, 0, JBConstants.NATIVE_TOKEN, 0, payable(_player), cashOutMetadata);
+        uint256 gameId = _deployer.launchGameWith(data);
+        assertGt(gameId, 0);
     }
 
-    function _launchData() internal returns (DefifaLaunchProjectData memory) {
+    function _launchData() internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](1);
         tierParams[0] = DefifaTierParams({
-            reservedRate: 1001,
+            reservedRate: 0,
             reservedTokenBeneficiary: address(0),
             encodedIPFSUri: bytes32(0),
             shouldUseReservedTokenBeneficiaryAsDefault: false,

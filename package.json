@@ -1,30 +1,47 @@
 {
   "name": "@ballkidz/defifa",
-  "version": "0.0.25",
+  "version": "0.0.26",
   "license": "MIT",
   "engines": {
-    "node": ">=20.0.0"
+    "node": "25.9.0"
   },
   "bugs": {
-    "url": "https://github.com/BallKidz/defifa-collection-deployer/issues"
+    "url": "https://github.com/BallKidz/defifa/issues"
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/BallKidz/defifa-collection-deployer"
+    "url": "git+https://github.com/BallKidz/defifa.git"
   },
+  "files": [
+    "src",
+    "script",
+    "lib/base64/base64.sol",
+    "lib/typeface/contracts/interfaces/ITypeface.sol",
+    "README.md",
+    "ARCHITECTURE.md",
+    "ADMINISTRATION.md",
+    "AUDIT_INSTRUCTIONS.md",
+    "CHANGELOG.md",
+    "CRYPTO_ECON.md",
+    "RISKS.md",
+    "SKILLS.md",
+    "STYLE_GUIDE.md",
+    "USER_JOURNEYS.md",
+    "foundry.toml",
+    "remappings.txt"
+  ],
   "dependencies": {
-    "@bananapus/721-hook-v6": "^0.0.38",
-    "@bananapus/core-v6": "^0.0.36",
-    "@bananapus/permission-ids-v6": "^0.0.19",
-    "@croptop/core-v6": "^0.0.36",
-    "@openzeppelin/contracts": "^5.6.1",
-    "@prb/math": "^4.1.1",
-    "@rev-net/core-v6": "^0.0.35",
-    "scripty.sol": "^2.1.1"
+    "@bananapus/721-hook-v6": "0.0.43",
+    "@bananapus/address-registry-v6": "0.0.25",
+    "@bananapus/core-v6": "0.0.39",
+    "@bananapus/permission-ids-v6": "0.0.22",
+    "@openzeppelin/contracts": "5.6.1",
+    "@prb/math": "4.1.1",
+    "scripty.sol": "2.1.1"
   },
   "devDependencies": {
-    "@bananapus/address-registry-v6": "^0.0.17",
-    "@sphinx-labs/plugins": "^0.33.3"
+    "@sphinx-labs/contracts": "0.23.1",
+    "@sphinx-labs/plugins": "0.33.3"
   },
   "scripts": {
     "test": "forge test",
