@@ -143,7 +143,8 @@ interface IDefifaGovernor {
     /// @return The scorecard ID.
     function scorecardIdOf(address gameHook, DefifaTierCashOutWeight[] calldata tierWeights) external returns (uint256);
 
-    /// @notice The state of a scorecard.
+    /// @notice The governance state of a submitted scorecard (PENDING, ACTIVE, DEFEATED, SUCCEEDED, QUEUED, or
+    /// RATIFIED).
     /// @param gameId The ID of the game.
     /// @param scorecardId The ID of the scorecard.
     /// @return The scorecard state.
@@ -154,13 +155,14 @@ interface IDefifaGovernor {
     /// @return The timelock duration in seconds.
     function timelockDurationOf(uint256 gameId) external view returns (uint256);
 
-    /// @notice Attest to a submitted scorecard.
+    /// @notice Attest to a submitted scorecard using your NFT voting power, adding your weight toward ratification.
     /// @param gameId The ID of the game.
     /// @param scorecardId The ID of the scorecard to attest to.
     /// @return weight The attestation weight applied.
     function attestToScorecardFrom(uint256 gameId, uint256 scorecardId) external returns (uint256 weight);
 
-    /// @notice Initialize a game's governance parameters.
+    /// @notice Initialize governance parameters for a game — sets when attestation begins, the grace period, and
+    /// timelock duration.
     /// @param gameId The ID of the game.
     /// @param attestationStartTime The timestamp when attestation begins.
     /// @param attestationGracePeriod The grace period duration in seconds.

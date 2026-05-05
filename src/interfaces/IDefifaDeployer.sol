@@ -81,7 +81,7 @@ interface IDefifaDeployer {
     /// @return The project ID.
     function DEFIFA_PROJECT_ID() external view returns (uint256);
 
-    /// @notice The governor contract used for scorecard governance.
+    /// @notice The governor contract responsible for scorecard submission and attestation-based ratification.
     /// @return The governor contract.
     function GOVERNOR() external view returns (IDefifaGovernor);
 
@@ -116,12 +116,12 @@ interface IDefifaDeployer {
     /// @return scorecardTimeout The scorecard timeout duration.
     function safetyParamsOf(uint256 gameId) external view returns (uint256 minParticipation, uint32 scorecardTimeout);
 
-    /// @notice The timing parameters for a game.
+    /// @notice The timing parameters for a game (start time, mint duration, and refund period).
     /// @param gameId The ID of the game.
     /// @return The mint duration, start time, and refund period.
     function timesFor(uint256 gameId) external view returns (uint48, uint24, uint24);
 
-    /// @notice The token address for a game.
+    /// @notice The token address used for payments and cash outs in a specific game.
     /// @param gameId The ID of the game.
     /// @return The token address.
     function tokenOf(uint256 gameId) external view returns (address);

@@ -100,7 +100,7 @@ interface IDefifaHook is IJB721Hook {
     /// @return The code origin address.
     function CODE_ORIGIN() external view returns (address);
 
-    /// @notice The contract-level metadata URI.
+    /// @notice The contract-level metadata URI (used by marketplaces for collection-level info).
     /// @return The contract URI string.
     function contractURI() external view returns (string memory);
 
@@ -257,12 +257,12 @@ interface IDefifaHook is IJB721Hook {
     /// @param tierWeights The tier cash out weights to set.
     function setTierCashOutWeightsTo(DefifaTierCashOutWeight[] memory tierWeights) external;
 
-    /// @notice Set the attestation delegate for a specific tier.
+    /// @notice Delegate your attestation voting power for a specific tier to another address.
     /// @param delegatee The address to delegate to.
     /// @param tierId The tier ID.
     function setTierDelegateTo(address delegatee, uint256 tierId) external;
 
-    /// @notice Set attestation delegates for multiple tiers at once.
+    /// @notice Delegate your attestation voting power for multiple tiers to other addresses in a single call.
     /// @param delegations The delegation assignments.
     function setTierDelegatesTo(DefifaDelegation[] memory delegations) external;
 }
