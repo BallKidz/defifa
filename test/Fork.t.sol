@@ -1388,7 +1388,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
     // =========================================================================
 
     function test_fork_minParticipation_exactBoundary_meets() external {
-        // balance == minParticipation: check uses `<`, so 4 < 4 = false → SCORING.
+        // tokenSupply == minParticipation: check uses `<`, so 4e18 < 4e18 = false → SCORING.
         DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 4 ether, 0);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
@@ -1400,6 +1400,10 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             _delegateSelf(_users[i], i + 1);
             vm.warp(_tsReader.timestamp() + 1);
         }
+
+        // Defifa games use weight=0 so `pay` doesn't mint fungible tokens.
+        // Mint project tokens to simulate the token supply that gamePhaseOf now checks.
+        _mintProjectTokens(_users[0], 4 ether);
 
         _toScoring();
         assertEq(uint256(deployer.currentGamePhaseOf(_pid)), uint256(DefifaGamePhase.SCORING));
@@ -2382,5 +2386,13 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
     function _generateTokenId(uint256 _tierId, uint256 _tokenNumber) internal pure returns (uint256) {
         return (_tierId * 1_000_000_000) + _tokenNumber;
+    }
+
+    /// @dev Mints fungible project tokens by pranking as the terminal. Defifa games use weight=0 so `pay` does not
+    /// mint fungible tokens. This helper simulates the token supply that `gamePhaseOf` now checks via
+    /// `CONTROLLER.TOKENS().totalSupplyOf(gameId)`.
+    function _mintProjectTokens(address beneficiary, uint256 amount) internal {
+        vm.prank(address(jbMultiTerminal()));
+        jbController().mintTokensOf(_pid, amount, beneficiary, "", false);
     }
 }

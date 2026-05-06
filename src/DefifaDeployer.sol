@@ -254,13 +254,12 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Get the game's ops data for the safety mechanism checks. Cache to avoid repeated SLOAD.
         DefifaOpsData memory ops = _opsOf[gameId];
 
-        // Check minimum participation threshold: if the treasury balance is below the threshold, the game is
-        // NO_CONTEST.
+        // Check minimum participation threshold using token supply (not terminal balance).
+        // Token supply reflects actual minted participation — direct `addToBalanceOf` top-ups
+        // don't mint tokens and therefore can't bypass this check.
         if (ops.minParticipation > 0) {
-            IJBTerminal terminal = CONTROLLER.DIRECTORY().primaryTerminalOf({projectId: gameId, token: ops.token});
-            uint256 balance = IJBMultiTerminal(address(terminal)).STORE()
-                .balanceOf({terminal: address(terminal), projectId: gameId, token: ops.token});
-            if (balance < ops.minParticipation) return DefifaGamePhase.NO_CONTEST;
+            uint256 totalTokenSupply = CONTROLLER.TOKENS().totalSupplyOf(gameId);
+            if (totalTokenSupply < ops.minParticipation) return DefifaGamePhase.NO_CONTEST;
         }
 
         // Check scorecard ratification timeout: if enough time has passed without a ratified scorecard, the game is
@@ -427,13 +426,19 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             revert DefifaDeployer_InvalidCurrency();
         }
 
-        // If a scorecard timeout is set, it must exceed the grace period + timelock duration.
+        // If a scorecard timeout is set, it must exceed the full ratification window:
+        // attestation delay (time from scoring start to attestation start) + grace period + timelock.
         // Otherwise the game would enter NO_CONTEST before a scorecard could ever reach SUCCEEDED.
-        if (
-            launchProjectData.scorecardTimeout > 0
-                && launchProjectData.scorecardTimeout
-                    <= launchProjectData.attestationGracePeriod + launchProjectData.timelockDuration
-        ) revert DefifaDeployer_InvalidGameConfiguration();
+        if (launchProjectData.scorecardTimeout > 0) {
+            // Attestation delay: how long after scoring starts before attestations can begin.
+            uint256 attestationDelay = launchProjectData.attestationStartTime > launchProjectData.start
+                ? launchProjectData.attestationStartTime - launchProjectData.start
+                : 0;
+            if (
+                launchProjectData.scorecardTimeout
+                    <= attestationDelay + launchProjectData.attestationGracePeriod + launchProjectData.timelockDuration
+            ) revert DefifaDeployer_InvalidGameConfiguration();
+        }
 
         // Reserve the game ID up front so permissionless project creations cannot invalidate hook deployment.
         gameId = CONTROLLER.PROJECTS().createFor(address(this));

@@ -282,9 +282,19 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
         }
 
         // Concatenate the strings
-        return isEth
-            ? string(abi.encodePacked("\u039E", integerPart, ".", decimalPartStr))
-            : string(abi.encodePacked(integerPart, ".", decimalPartStr, " ", IERC20Metadata(token).symbol()));
+        if (isEth) {
+            return string(abi.encodePacked("\u039E", integerPart, ".", decimalPartStr));
+        }
+
+        // Try to get the token symbol; fall back to a truncated hex address if the call reverts.
+        string memory tokenSymbol;
+        try IERC20Metadata(token).symbol() returns (string memory s) {
+            tokenSymbol = _escapeSvg(s);
+        } catch {
+            tokenSymbol = Strings.toHexString(uint160(token), 20);
+        }
+
+        return string(abi.encodePacked(integerPart, ".", decimalPartStr, " ", tokenSymbol));
     }
 
     /// @notice Gets a substring.
