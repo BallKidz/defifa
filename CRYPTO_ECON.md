@@ -777,11 +777,11 @@ Defifa includes a comprehensive safety system — the **NO_CONTEST** mechanism �
 
 #### 9.1.1 Trigger 1: Minimum Participation Threshold
 
-**Mechanism.** At game creation, the organizer sets `minParticipation` — a minimum treasury balance required for the game to proceed to scoring. The `currentGamePhaseOf()` function checks the treasury balance against this threshold before returning SCORING. If the balance is below the threshold, it returns NO_CONTEST.
+**Mechanism.** At game creation, the organizer sets `minParticipation` — a minimum token supply required for the game to proceed to scoring. The `currentGamePhaseOf()` function checks the total token supply (via `CONTROLLER.TOKENS().totalSupplyOf(gameId)`) against this threshold before returning SCORING. If the supply is below the threshold, it returns NO_CONTEST.
 
 **What it solves.** Ghost games with negligible participation skip directly to refundability without requiring any governance action. A 32-team World Cup game with `minParticipation = 1 ETH` won't enter scoring if only 50 people mint (0.5 ETH pot).
 
-**Attack surface.** An adversary who wants to force no-contest can refund enough tokens during the refund phase to push the balance below the threshold. Mitigation: set the threshold conservatively low relative to expected participation (e.g., 10% of the maximum expected pot).
+**Attack surface.** An adversary who wants to force no-contest can cash out enough tokens during the refund phase to push the supply below the threshold. Note that direct balance top-ups (via `addToBalanceOf`) cannot inflate participation since the check uses token supply, not treasury balance. Mitigation: set the threshold conservatively low relative to expected participation.
 
 **Configuration.** Set to 0 to disable. The threshold is set at launch before any minting occurs, so calibration depends on organizer judgment.
 
@@ -820,7 +820,7 @@ The phase resolution follows strict priority:
 
 2. **Explicit trigger is sticky.** Once `noContestTriggeredFor[gameId]` is set, the game stays in NO_CONTEST permanently (cannot transition to SCORING even if conditions change).
 
-3. **Both thresholds are checked independently.** A game can enter NO_CONTEST from either `minParticipation` (balance too low) or `scorecardTimeout` (time elapsed) — whichever condition is met first.
+3. **Both thresholds are checked independently.** A game can enter NO_CONTEST from either `minParticipation` (token supply too low) or `scorecardTimeout` (time elapsed) — whichever condition is met first.
 
 #### 9.1.5 The Default Attestation Delegate
 
