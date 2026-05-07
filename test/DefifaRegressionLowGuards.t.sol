@@ -30,12 +30,12 @@ import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
 
-/// @title DefifaAuditLowGuardsTest
-/// @notice Tests for validation guards added in the audit/low-findings branch:
+/// @title DefifaRegressionLowGuardsTest
+/// @notice Tests for validation guards added in the regression branch:
 ///   - DefifaGovernor_AlreadyInitialized (re-initialization guard)
 ///   - uint48 overflow checks on attestationStartTime and attestationGracePeriod
 ///   - DefifaHook_DelegateAddressZero (address(0) delegation guard)
-contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
+contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
     address _protocolFeeProjectTokenAccount;
@@ -134,7 +134,7 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
         });
 
         // Second initialization for the same gameId should revert.
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_AlreadyInitialized.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_AlreadyInitialized.selector);
         _standaloneGov.initializeGame({
             gameId: gameId, attestationStartTime: block.timestamp, attestationGracePeriod: 2 days, timelockDuration: 0
         });
@@ -162,7 +162,7 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
         // type(uint48).max + 1 should overflow the 48-bit packing.
         uint256 overflowStartTime = uint256(type(uint48).max) + 1;
 
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
         _standaloneGov.initializeGame({
             gameId: 99, attestationStartTime: overflowStartTime, attestationGracePeriod: 2 days, timelockDuration: 0
         });
@@ -177,7 +177,7 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
         // type(uint48).max + 1 should overflow the 48-bit packing.
         uint256 overflowGracePeriod = uint256(type(uint48).max) + 1;
 
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
         _standaloneGov.initializeGame({
             gameId: 100,
             attestationStartTime: block.timestamp,
@@ -194,7 +194,7 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
 
         // _users[0] owns an NFT in tier 1 during the MINT phase.
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
         _nft.setTierDelegateTo({delegatee: address(0), tierId: 1});
     }
 
@@ -208,7 +208,7 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
         delegations[0] = DefifaDelegation({delegatee: address(0), tierId: 1});
 
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
         _nft.setTierDelegatesTo(delegations);
     }
 
@@ -224,7 +224,7 @@ contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
         delegations[1] = DefifaDelegation({delegatee: address(0), tierId: 2});
 
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
         _nft.setTierDelegatesTo(delegations);
     }
 

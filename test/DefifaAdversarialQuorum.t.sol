@@ -187,7 +187,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         // Attacker tries to change their tier 1 delegation during scoring phase.
         address attacker = _users[0];
         vm.prank(attacker);
-        vm.expectRevert(abi.encodeWithSignature("DefifaHook_DelegateChangesUnavailableInThisPhase()"));
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateChangesUnavailableInThisPhase.selector);
         _nft.setTierDelegateTo(address(0xdead), 1);
     }
 
@@ -201,7 +201,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.ts() + 1 days);
 
         vm.prank(_users[0]);
-        vm.expectRevert(abi.encodeWithSignature("DefifaHook_DelegateChangesUnavailableInThisPhase()"));
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateChangesUnavailableInThisPhase.selector);
         _nft.setTierDelegateTo(address(0xdead), 1);
     }
 
@@ -231,7 +231,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
 
         // User 0 tries to attest again.
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_AlreadyAttested.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_AlreadyAttested.selector);
         _gov.attestToScorecardFrom(_gameId, proposalId);
     }
 
@@ -291,7 +291,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         assertEq(uint256(state), uint256(DefifaScorecardState.ACTIVE), "1/4 attestors should not reach quorum");
 
         // Attempting to ratify should revert.
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.ratifyScorecardFrom(_gameId, sc);
     }
 
@@ -363,7 +363,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
 
         // User 0 (tier 1, 100% beneficiary of scorecard A) has BWA power = 0 and cannot attest.
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.attestToScorecardFrom(_gameId, proposalA);
 
         // Users 1, 2, 3 like scorecard B (3/4, quorum met).

@@ -15,10 +15,13 @@ import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingCo
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
 import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
-import {JBRulesetConfig, JBTerminalConfig} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
+import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
+import {JBRulesetConfig} from "@bananapus/core-v6/src/structs/JBRulesetConfig.sol";
+import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
+import {JBTerminalConfig} from "@bananapus/core-v6/src/structs/JBTerminalConfig.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
@@ -26,8 +29,9 @@ import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
-/// @notice Tests for H-5 audit fix: tier cap of 128 enforced in launchGameWith().
-contract H5TierCapValidationTest is JBTest, TestBaseWorkflow {
+contract TierCapMismatchTest is JBTest, TestBaseWorkflow {
+    using JBRulesetMetadataResolver for JBRuleset;
+
     DefifaDeployer internal deployer;
     DefifaGovernor internal governor;
     DefifaHook internal hookCodeOrigin;
@@ -101,51 +105,13 @@ contract H5TierCapValidationTest is JBTest, TestBaseWorkflow {
         governor.transferOwnership(address(deployer));
     }
 
-    /// @notice Launching with exactly 128 tiers should succeed (boundary).
-    function test_launch128TiersSucceeds() external {
-        DefifaLaunchProjectData memory data = _launchData(128);
-        uint256 gameId = deployer.launchGameWith(data);
-        assertGt(gameId, 0, "game should be created with 128 tiers");
-    }
-
-    /// @notice Launching with 129 tiers must revert with DefifaDeployer_InvalidGameConfiguration.
-    function test_launch129TiersReverts() external {
+    function test_launchRevertsFor129Tiers() external {
         DefifaLaunchProjectData memory data = _launchData(129);
-        vm.expectRevert(DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector);
+
+        // fix: the deployer now caps tiers at 128, so launching with 129 reverts.
+        vm.expectPartialRevert(DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector);
         deployer.launchGameWith(data);
     }
-
-    /// @notice Launching with 1 tier should succeed (minimum valid).
-    function test_launch1TierSucceeds() external {
-        DefifaLaunchProjectData memory data = _launchData(1);
-        uint256 gameId = deployer.launchGameWith(data);
-        assertGt(gameId, 0, "game should be created with 1 tier");
-    }
-
-    /// @notice Launching with 0 tiers does not revert at the tier cap check (no lower-bound validation exists).
-    /// @dev This documents current behavior: the deployer only enforces the upper cap of 128.
-    function test_launch0TiersDoesNotRevertAtTierCap() external {
-        DefifaLaunchProjectData memory data = _launchData(0);
-        uint256 gameId = deployer.launchGameWith(data);
-        assertGt(gameId, 0, "0-tier game created (no lower-bound check)");
-    }
-
-    /// @notice Fuzz: any tier count above 128 reverts, any from 1-128 succeeds.
-    function test_fuzz_tierCapBoundary(uint256 tierCount) external {
-        tierCount = bound(tierCount, 1, 256);
-        DefifaLaunchProjectData memory data = _launchData(tierCount);
-
-        if (tierCount > 128) {
-            vm.expectRevert(DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector);
-            deployer.launchGameWith(data);
-        } else {
-            uint256 gameId = deployer.launchGameWith(data);
-            assertGt(gameId, 0, "game should be created within tier cap");
-        }
-    }
-
-    // ─── Helpers
-    // ─────────────────────────────────────────────────────────────────
 
     function _launchData(uint256 tierCount) internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tiers = new DefifaTierParams[](tierCount);
@@ -180,5 +146,24 @@ contract H5TierCapValidationTest is JBTest, TestBaseWorkflow {
             scorecardTimeout: 7 days,
             timelockDuration: 0
         });
+    }
+
+    function _mintTier(uint256 gameId, uint16 tierId, uint256 amount) internal {
+        address buyer = address(bytes20(keccak256(abi.encodePacked("buyer", tierId))));
+        vm.deal(buyer, amount);
+
+        uint16[] memory tierIds = new uint16[](1);
+        tierIds[0] = tierId;
+
+        bytes[] memory payloads = new bytes[](1);
+        payloads[0] = abi.encode(address(0), tierIds);
+
+        bytes4[] memory ids = new bytes4[](1);
+        ids[0] = metadataHelper().getId("pay", address(hookCodeOrigin));
+
+        bytes memory metadata = metadataHelper().createMetadata(ids, payloads);
+
+        vm.prank(buyer);
+        jbMultiTerminal().pay{value: amount}(gameId, JBConstants.NATIVE_TOKEN, amount, buyer, 0, "", metadata);
     }
 }

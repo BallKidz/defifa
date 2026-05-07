@@ -193,10 +193,6 @@ interface IDefifaHook is IJB721Hook {
     /// @return The tier name.
     function tierNameOf(uint256 tierId) external view returns (string memory);
 
-    /// @notice The token allocations (Defifa token amount, base protocol token amount).
-    /// @return The Defifa token allocation and the base protocol token allocation.
-    function tokenAllocations() external view returns (uint256, uint256);
-
     /// @notice Get the claimable Defifa and base protocol tokens for a set of token IDs.
     /// @param tokenIds The token IDs to check.
     /// @return The claimable Defifa token amount and base protocol token amount.

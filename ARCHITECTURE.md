@@ -115,7 +115,7 @@ The hook's completion math is intentionally phase-sensitive:
 - fulfillment and ratification coupling:
   `test/regression/FulfillmentBlocksRatification.t.sol`
 - pending reserve effects on completion fairness:
-  `test/audit/PendingReserveSnapshotBypass.t.sol`
+  `test/regression/PendingReserveSnapshotBypass.t.sol`
 
 ## Source Map
 
@@ -128,4 +128,4 @@ The hook's completion math is intentionally phase-sensitive:
 - `test/DefifaHookRegressions.t.sol`
 - `test/DefifaFeeAccounting.t.sol`
 - `test/regression/FulfillmentBlocksRatification.t.sol`
-- `test/audit/PendingReserveSnapshotBypass.t.sol`
+- `test/regression/PendingReserveSnapshotBypass.t.sol`

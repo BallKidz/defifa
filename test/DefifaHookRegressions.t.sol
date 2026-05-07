@@ -38,7 +38,7 @@ contract TimestampReaderRegressions {
 }
 
 /// @title DefifaHookRegressions
-/// @notice Regression tests for audit findings in DefifaHook.
+/// @notice Regression tests for regressions in DefifaHook.
 contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
@@ -204,7 +204,7 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
             DefifaDelegation[] memory delegations = new DefifaDelegation[](1);
             delegations[0] = DefifaDelegation({delegatee: playerC, tierId: 1});
             vm.prank(playerC);
-            vm.expectRevert(DefifaHook.DefifaHook_DelegateChangesUnavailableInThisPhase.selector);
+            vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateChangesUnavailableInThisPhase.selector);
             _nft.setTierDelegatesTo(delegations);
         }
 

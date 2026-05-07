@@ -6,7 +6,7 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 
 - Read `Priority risks` first.
 - Use the detailed sections below to reason about governor power, live supply assumptions, and downstream hook dependencies.
-- Treat `Accepted Behaviors` and `Invariants to Verify` as explicit boundaries for audit scope.
+- Treat `Accepted Behaviors` and `Invariants to Verify` as explicit boundaries for review scope.
 
 ## Priority risks
 

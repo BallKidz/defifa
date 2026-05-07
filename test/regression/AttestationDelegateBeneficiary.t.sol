@@ -31,7 +31,7 @@ import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol"
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 
 /// @title AttestationDelegateBeneficiary
-/// @notice Regression test for H-6: when payer != beneficiary and no explicit delegate is set,
+/// @notice Regression test for when payer != beneficiary and no explicit delegate is set,
 ///         attestation delegation should default to the beneficiary (NFT recipient), not the payer.
 contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
@@ -113,7 +113,7 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
         governor.transferOwnership(address(deployer));
     }
 
-    /// @notice H-6: Default attestation delegate should be the beneficiary, not the payer.
+    /// @notice Default attestation delegate should be the beneficiary, not the payer.
     function test_defaultDelegateIsBeneficiaryNotPayer() public {
         address payer = address(bytes20(keccak256("payer")));
         address beneficiary = address(bytes20(keccak256("beneficiary")));
@@ -142,13 +142,13 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
             metadata: metadata
         });
 
-        // H-6 fix: delegation should be on the beneficiary's account, not the payer's.
+        // fix: delegation should be on the beneficiary's account, not the payer's.
         // The beneficiary's delegate is themselves (default when no explicit delegate is set).
         address beneficiaryDelegate = _nft.getTierDelegateOf(beneficiary, 1);
-        assertEq(beneficiaryDelegate, beneficiary, "H-6: default delegate should be beneficiary, not payer");
+        assertEq(beneficiaryDelegate, beneficiary, "default delegate should be beneficiary, not payer");
         // The payer should have no delegation since they didn't receive attestation units.
         address payerDelegate = _nft.getTierDelegateOf(payer, 1);
-        assertEq(payerDelegate, address(0), "H-6: payer should have no delegation when payer != beneficiary");
+        assertEq(payerDelegate, address(0), "payer should have no delegation when payer != beneficiary");
     }
 
     /// @notice When payer == beneficiary, the default delegate should be that same address.

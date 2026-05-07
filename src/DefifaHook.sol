@@ -47,23 +47,18 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
-    error DefifaHook_BadTierOrder();
-    error DefifaHook_IdenticalTokens();
-    error DefifaHook_DelegateAddressZero();
-    error DefifaHook_DelegateChangesUnavailableInThisPhase();
-    error DefifaHook_GameIsntScoringYet();
-    error DefifaHook_InvalidTierId();
-    error DefifaHook_InvalidCashoutWeights();
-    error DefifaHook_NothingToClaim();
-    error DefifaHook_NothingToMint();
-    error DefifaHook_WrongCurrency();
-    error DefifaHook_Overspending();
-    error DefifaHook_CashoutWeightsAlreadySet();
-    error DefifaHook_ReservedTokenMintingPaused();
-    error DefifaHook_TransfersPaused();
+    error DefifaHook_IdenticalTokens(address defifaToken, address baseProtocolToken);
+    error DefifaHook_DelegateAddressZero(uint256 tierId);
+    error DefifaHook_DelegateChangesUnavailableInThisPhase(uint256 projectId, DefifaGamePhase phase);
+    error DefifaHook_GameIsntScoringYet(uint256 projectId, DefifaGamePhase phase);
+    error DefifaHook_NothingToClaim(uint256 reclaimedAmount, bool beneficiaryReceivedTokens);
+    error DefifaHook_NothingToMint(bool metadataFound, uint256 tierCount);
+    error DefifaHook_WrongCurrency(uint256 expectedCurrency, uint256 actualCurrency);
+    error DefifaHook_Overspending(uint256 leftoverAmount);
+    error DefifaHook_CashoutWeightsAlreadySet(uint256 projectId);
+    error DefifaHook_ReservedTokenMintingPaused(uint256 projectId, uint256 tierId);
+    error DefifaHook_TransfersPaused(uint256 projectId, uint256 tokenId, address from, address to);
     error DefifaHook_Unauthorized(uint256 tokenId, address owner, address caller);
-
-    event PricingCurrencySet(uint256 currency, address caller);
 
     //*********************************************************************//
     // --------------------- public constant properties ------------------ //
@@ -175,34 +170,10 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// between burns and reserves is not linear — it depends on the tier's reserve frequency.
     /// @param tierId The tier ID.
     /// @return The adjusted pending reserve count (floored at 0).
-    // slither-disable-next-line calls-loop
     function adjustedPendingReservesFor(uint256 tierId) public view returns (uint256) {
-        uint256 refundBurns = refundedBurnsFrom[tierId];
-
-        // If no refund burns, return the store's value directly.
-        if (refundBurns == 0) return store.numberOfPendingReservesFor({hook: address(this), tierId: tierId});
-
-        // Get the tier to access reserveFrequency and supply data.
-        JB721Tier memory tier = store.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
-
-        // No reserves if no reserve frequency.
-        if (tier.reserveFrequency == 0) return 0;
-
-        // Calculate the number of reserves already minted.
-        uint256 reservesMinted = store.numberOfReservesMintedFor({hook: address(this), tierId: tierId});
-
-        // Calculate non-reserve mints: initialSupply - remainingSupply - reservesMinted.
-        uint256 nonReserveMints = tier.initialSupply - tier.remainingSupply - reservesMinted;
-
-        // Subtract refund burns from non-reserve mints (burns can't exceed non-reserve mints).
-        uint256 adjustedMints = nonReserveMints > refundBurns ? nonReserveMints - refundBurns : 0;
-
-        // Recalculate available reserves: ceil(adjustedMints / reserveFrequency).
-        uint256 availableReserves = adjustedMints / tier.reserveFrequency;
-        if (adjustedMints % tier.reserveFrequency > 0) ++availableReserves;
-
-        // Return pending = available - already minted (floored at 0).
-        return availableReserves > reservesMinted ? availableReserves - reservesMinted : 0;
+        return DefifaHookLib.adjustedPendingReservesFor({
+            tierId: tierId, hookStore: store, hook: address(this), refundBurns: refundedBurnsFrom[tierId]
+        });
     }
 
     /// @notice The first owner of each token ID, which corresponds to the address that originally contributed to the
@@ -332,30 +303,14 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Cache the store reference in a local variable to avoid repeated SLOAD.
         IJB721TiersHookStore hookStore = store;
 
-        // Calculate the amount paid to mint the tokens that are being burned.
-        uint256 cumulativeMintPrice = DefifaHookLib.computeCumulativeMintPrice({
-            tokenIds: decodedTokenIds, hookStore: hookStore, hook: address(this)
-        });
-
-        // During refund phases, exclude reserve-minted tokens — they were minted for free and have no paid amount
-        // to refund.
-        if (
-            gamePhase == DefifaGamePhase.MINT || gamePhase == DefifaGamePhase.REFUND
+        // During refund phases, reserve-minted tokens were minted for free and have no paid amount to refund.
+        uint256 cumulativeMintPrice = DefifaHookLib.computeCumulativeMintPriceForCashOut({
+            tokenIds: decodedTokenIds,
+            hookStore: hookStore,
+            hook: address(this),
+            excludeReserveMints: gamePhase == DefifaGamePhase.MINT || gamePhase == DefifaGamePhase.REFUND
                 || gamePhase == DefifaGamePhase.NO_CONTEST
-        ) {
-            for (uint256 i; i < decodedTokenIds.length;) {
-                if (isReserveMint[decodedTokenIds[i]]) {
-                    // slither-disable-next-line calls-loop
-                    cumulativeMintPrice -= hookStore.tierOfTokenId({
-                        hook: address(this), tokenId: decodedTokenIds[i], includeResolvedUri: false
-                    }).price;
-                }
-
-                unchecked {
-                    ++i;
-                }
-            }
-        }
+        });
 
         // Use this contract as the only cash out hook.
         hookSpecifications = new JBCashOutHookSpecification[](1);
@@ -428,18 +383,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         return interfaceId == type(IDefifaHook).interfaceId || super.supportsInterface(interfaceId);
     }
 
-    /// @notice The amount of $DEFIFA and $BASE_PROTOCOL tokens this game was allocated from paying the network fee.
-    /// @return defifaTokenAllocation The $DEFIFA token allocation.
-    /// @return baseProtocolTokenAllocation The $BASE_PROTOCOL token allocation.
-    function tokenAllocations()
-        public
-        view
-        returns (uint256 defifaTokenAllocation, uint256 baseProtocolTokenAllocation)
-    {
-        defifaTokenAllocation = DEFIFA_TOKEN.balanceOf(address(this));
-        baseProtocolTokenAllocation = BASE_PROTOCOL_TOKEN.balanceOf(address(this));
-    }
-
     /// @notice The metadata URI of the provided token ID.
     /// @dev Defer to the tokenUriResolver if set, otherwise, use the tokenUri set with the token's tier.
     /// @param tokenId The ID of the token to get the tier URI for.
@@ -459,12 +402,11 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         returns (uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount)
     {
         // If the game isn't complete, we do not have any tokens to claim.
-        if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.COMPLETE) return (0, 0);
+        if (_currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.COMPLETE) return (0, 0);
 
         // Include unminted reserves in the denominator. Once reserves are pending, their future recipients are
         // entitled to fee-token claims as if the reserve NFTs had already been minted; otherwise paid holders could
         // claim too large a share before the reserve mint transaction lands.
-        // slither-disable-next-line unused-return
         return DefifaHookLib.computeTokensClaim({
             tokenIds: tokenIds,
             hookStore: store,
@@ -495,7 +437,11 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         JB721Hook(_directory)
         Ownable(msg.sender)
     {
-        if (address(_defifaToken) == address(_baseProtocolToken)) revert DefifaHook_IdenticalTokens();
+        if (address(_defifaToken) == address(_baseProtocolToken)) {
+            revert DefifaHook_IdenticalTokens({
+                defifaToken: address(_defifaToken), baseProtocolToken: address(_baseProtocolToken)
+            });
+        }
 
         CODE_ORIGIN = address(this);
         DEFIFA_TOKEN = _defifaToken;
@@ -509,7 +455,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice Mints one or more NFTs to the `context.beneficiary` upon payment if conditions are met.
     /// @dev Reverts if the calling contract is not one of the project's terminals.
     /// @param context The payment context passed in by the terminal.
-    // slither-disable-next-line locked-ether
     function afterPayRecordedWith(JBAfterPayRecordedContext calldata context)
         external
         payable
@@ -520,10 +465,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Make sure the caller is a terminal of the project, and that the call is being made on behalf of an
         // interaction with the correct project.
-        if (
-            msg.value != 0 || !DIRECTORY.isTerminalOf({projectId: projectId, terminal: IJBTerminal(msg.sender)})
-                || context.projectId != projectId
-        ) revert JB721Hook_InvalidPay();
+        if (msg.value != 0 || !_isProjectTerminal(projectId) || context.projectId != projectId) {
+            revert JB721Hook_InvalidPay();
+        }
 
         // Process the payment.
         _processPayment(context);
@@ -582,7 +526,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         pricingCurrency = _currency;
         gamePhaseReporter = _gamePhaseReporter;
         gamePotReporter = _gamePotReporter;
-        // slither-disable-next-line missing-zero-check
         defaultAttestationDelegate = _defaultAttestationDelegate;
 
         // Store the base URI if provided.
@@ -597,7 +540,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         }
 
         // Record the provided tiers.
-        // slither-disable-next-line unused-return
         _store.recordAddTiers(_tiers);
 
         // Keep a reference to the number of tier names.
@@ -615,26 +557,21 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Transfer ownership to the initializer.
         _transferOwnership(msg.sender);
-
-        emit PricingCurrencySet(_currency, msg.sender);
     }
 
     /// @notice Mint reserved tokens within the tier for the provided value.
     /// @param tierId The ID of the tier to mint within.
     /// @param count The number of reserved tokens to mint.
-    // slither-disable-next-line reentrancy-benign,reentrancy-no-eth
     function mintReservesFor(uint256 tierId, uint256 count) public override {
         // Minting reserves must not be paused.
-        // slither-disable-next-line calls-loop
-        if (JB721TiersRulesetMetadataResolver.mintPendingReservesPaused(
-                (JBRulesetMetadataResolver.metadata(rulesets.currentOf(PROJECT_ID)))
-            )) revert DefifaHook_ReservedTokenMintingPaused();
+        if (JB721TiersRulesetMetadataResolver.mintPendingReservesPaused(_rulesetMetadata())) {
+            revert DefifaHook_ReservedTokenMintingPaused({projectId: PROJECT_ID, tierId: tierId});
+        }
 
         // Cache the store reference in a local variable to avoid repeated SLOAD.
         IJB721TiersHookStore hookStore = store;
 
         // Keep a reference to the reserved token beneficiary.
-        // slither-disable-next-line calls-loop
         address reservedTokenBeneficiary = hookStore.reserveBeneficiaryOf({hook: address(this), tierId: tierId});
 
         // Get a reference to the old delegate.
@@ -652,21 +589,18 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         }
 
         // Record the minted reserves for the tier.
-        // slither-disable-next-line calls-loop
         uint256[] memory tokenIds = hookStore.recordMintReservesFor({tierId: tierId, count: count});
 
         // Keep a reference to the token ID being iterated on.
         uint256 tokenId;
 
         // Fetch the tier details (needed for votingUnits below).
-        // slither-disable-next-line calls-loop
         JB721Tier memory tier = hookStore.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
 
         // Increment _totalMintCost so reserved recipients can claim their share of fee tokens ($DEFIFA/$NANA).
         // Note: reserved mints dilute existing fee token claimants because they increase the total mint cost
         // denominator without contributing new funds to the fee token balances. This is the intended design —
         // reserved recipients receive a proportional claim on fee tokens as if they had paid to mint.
-        // slither-disable-next-line reentrancy-benign
         _totalMintCost += tier.price * count;
 
         for (uint256 i; i < count;) {
@@ -677,7 +611,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             isReserveMint[tokenId] = true;
 
             // Mint the token to the reserve beneficiary.
-            // slither-disable-next-line reentrancy-no-eth
             _mint({to: reservedTokenBeneficiary, tokenId: tokenId});
 
             emit MintReservedToken(tokenId, tierId, reservedTokenBeneficiary, msg.sender);
@@ -688,7 +621,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         }
 
         // Transfer the attestation units to the delegate.
-        // slither-disable-next-line reentrancy-no-eth
         _transferTierAttestationUnits({
             from: address(0), to: reservedTokenBeneficiary, tierId: tierId, amount: tier.votingUnits * tokenIds.length
         });
@@ -710,10 +642,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     {
         // Make sure the caller is a terminal of the project, and that the call is being made on behalf of an
         // interaction with the correct project.
-        if (
-            msg.value != 0 || !DIRECTORY.isTerminalOf({projectId: PROJECT_ID, terminal: IJBTerminal(msg.sender)})
-                || context.projectId != PROJECT_ID
-        ) revert JB721Hook_InvalidCashOut();
+        if (msg.value != 0 || !_isProjectTerminal(PROJECT_ID) || context.projectId != PROJECT_ID) {
+            revert JB721Hook_InvalidCashOut();
+        }
 
         // Fetch the cash out hook metadata using the corresponding metadata ID.
         (bool metadataExists, bytes memory metadata) = JBMetadataResolver.getDataFor({
@@ -735,7 +666,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         uint256 tokenId;
 
         // Keep track of whether the cashOut is happening during the complete phase.
-        bool isComplete = gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) == DefifaGamePhase.COMPLETE;
+        bool isComplete = _currentGamePhaseOf(PROJECT_ID) == DefifaGamePhase.COMPLETE;
 
         // Cache the store reference in a local variable to avoid repeated SLOAD in the loop.
         IJB721TiersHookStore hookStore = store;
@@ -752,10 +683,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             }
 
             // Burn the token.
-            // slither-disable-next-line reentrancy-no-eth
             _burn(tokenId);
 
-            // slither-disable-next-line calls-loop
             uint256 tierId = hookStore.tierIdOfToken(tokenId);
             if (isComplete) {
                 // Track per-tier redemptions during the complete phase.
@@ -783,13 +712,11 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Increment the amount redeemed if this is the complete phase.
         bool beneficiaryReceivedTokens;
         if (isComplete) {
-            // slither-disable-next-line reentrancy-benign
             amountRedeemed += context.reclaimedAmount.value;
 
             // Claim the $DEFIFA and $NANA tokens for the user.
             // Include pending reserve mint cost in the denominator so that unminted reserves
             // are accounted for, preventing paid holders from claiming a disproportionate share.
-            // slither-disable-next-line reentrancy-events
             beneficiaryReceivedTokens = _claimTokensFor({
                 beneficiary: context.beneficiary,
                 shareToBeneficiary: cumulativeMintPrice,
@@ -801,10 +728,13 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Tokens in 0-weight tiers (losing teams) cannot burn to reclaim fees if no fee tokens were
         // distributed. This is correct behavior — 0-weight means the tier has no claim on the pot. Burning would
         // return 0 value regardless.
-        if (context.reclaimedAmount.value == 0 && !beneficiaryReceivedTokens) revert DefifaHook_NothingToClaim();
+        if (context.reclaimedAmount.value == 0 && !beneficiaryReceivedTokens) {
+            revert DefifaHook_NothingToClaim({
+                reclaimedAmount: context.reclaimedAmount.value, beneficiaryReceivedTokens: beneficiaryReceivedTokens
+            });
+        }
 
         // Decrement the paid mint cost by the cumulative mint price of the tokens being burned.
-        // slither-disable-next-line reentrancy-benign
         _totalMintCost -= cumulativeMintPrice;
     }
 
@@ -819,7 +749,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             JB721TiersMintReservesConfig memory data = mintReservesForTiersData[i];
 
             // Mint for the tier.
-            mintReservesFor(data.tierId, data.count);
+            mintReservesFor({tierId: data.tierId, count: data.count});
 
             unchecked {
                 ++i;
@@ -832,15 +762,15 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @param tierWeights The tier weights to set.
     function setTierCashOutWeightsTo(DefifaTierCashOutWeight[] memory tierWeights) external override onlyOwner {
         // Get a reference to the game phase.
-        DefifaGamePhase gamePhase = gamePhaseReporter.currentGamePhaseOf(PROJECT_ID);
+        DefifaGamePhase gamePhase = _currentGamePhaseOf(PROJECT_ID);
 
         // Make sure the game has ended.
         if (gamePhase != DefifaGamePhase.SCORING) {
-            revert DefifaHook_GameIsntScoringYet();
+            revert DefifaHook_GameIsntScoringYet({projectId: PROJECT_ID, phase: gamePhase});
         }
 
         // Make sure the cashOut weights haven't already been set.
-        if (cashOutWeightIsSet) revert DefifaHook_CashoutWeightsAlreadySet();
+        if (cashOutWeightIsSet) revert DefifaHook_CashoutWeightsAlreadySet({projectId: PROJECT_ID});
 
         // Validate weights and build the array. Reverts on invalid input.
         _tierCashOutWeights =
@@ -857,11 +787,12 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @param tierId The ID of the tier to delegate attestation units for.
     function setTierDelegateTo(address delegatee, uint256 tierId) public virtual override {
         // Make sure a delegate is specified.
-        if (delegatee == address(0)) revert DefifaHook_DelegateAddressZero();
+        if (delegatee == address(0)) revert DefifaHook_DelegateAddressZero({tierId: tierId});
 
         // Make sure the current game phase is the minting phase.
-        if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.MINT) {
-            revert DefifaHook_DelegateChangesUnavailableInThisPhase();
+        DefifaGamePhase gamePhase = _currentGamePhaseOf(PROJECT_ID);
+        if (gamePhase != DefifaGamePhase.MINT) {
+            revert DefifaHook_DelegateChangesUnavailableInThisPhase({projectId: PROJECT_ID, phase: gamePhase});
         }
 
         _delegateTier({account: msg.sender, delegatee: delegatee, tierId: tierId});
@@ -871,8 +802,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @param delegations An array of tiers to set delegates for.
     function setTierDelegatesTo(DefifaDelegation[] memory delegations) external virtual override {
         // Make sure the current game phase is the minting phase.
-        if (gamePhaseReporter.currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.MINT) {
-            revert DefifaHook_DelegateChangesUnavailableInThisPhase();
+        DefifaGamePhase gamePhase = _currentGamePhaseOf(PROJECT_ID);
+        if (gamePhase != DefifaGamePhase.MINT) {
+            revert DefifaHook_DelegateChangesUnavailableInThisPhase({projectId: PROJECT_ID, phase: gamePhase});
         }
 
         // Keep a reference to the number of tier delegates.
@@ -886,7 +818,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             data = delegations[i];
 
             // Make sure a delegate is specified.
-            if (data.delegatee == address(0)) revert DefifaHook_DelegateAddressZero();
+            if (data.delegatee == address(0)) revert DefifaHook_DelegateAddressZero({tierId: data.tierId});
 
             _delegateTier({account: msg.sender, delegatee: data.delegatee, tierId: data.tierId});
 
@@ -897,32 +829,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     }
 
     //*********************************************************************//
-    // ------------------------ internal functions ----------------------- //
+    // ---------------------- internal transactions ---------------------- //
     //*********************************************************************//
-
-    /// @notice Computes the total mint cost of all pending (unminted) reserve NFTs across all tiers.
-    /// @dev Used to include pending reserves in the fee token claim denominator so that paid holders
-    /// cannot claim a disproportionate share before reserves are minted.
-    /// @return cost The total mint cost of pending reserves.
-    function _pendingReserveMintCost() internal view returns (uint256 cost) {
-        IJB721TiersHookStore hookStore = store;
-        uint256 numberOfTiers = hookStore.maxTierIdOf(address(this));
-
-        for (uint256 i; i < numberOfTiers;) {
-            uint256 tierId = i + 1;
-            uint256 pendingReserves = adjustedPendingReservesFor(tierId);
-            if (pendingReserves != 0) {
-                // slither-disable-next-line calls-loop
-                JB721Tier memory tier = hookStore.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
-
-                // Pending reserves dilute claims by the same economic weight as paid mints at this tier's price.
-                cost += pendingReserves * tier.price;
-            }
-            unchecked {
-                ++i;
-            }
-        }
-    }
 
     /// @notice Claims the defifa and base protocol tokens for a beneficiary.
     /// @param beneficiary The address to claim tokens for.
@@ -975,15 +883,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         store.recordBurn(tokenIds);
     }
 
-    /// @notice Gets the amount of attestation units an address has for a particular tier.
-    /// @param account The account to get attestation units for.
-    /// @param tierId The ID of the tier to get attestation units for.
-    /// @return The attestation units.
-    function _getTierAttestationUnits(address account, uint256 tierId) internal view virtual returns (uint256) {
-        // slither-disable-next-line calls-loop
-        return store.tierVotingUnitsOf({hook: address(this), account: account, tierId: tierId});
-    }
-
     /// @notice Mints a token in all provided tiers.
     /// @param amount The amount to base the mints on. All mints' price floors must fit in this amount.
     /// @param mintTierIds An array of tier IDs that are intended to be minted.
@@ -1001,7 +900,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         uint256[] memory tokenIds;
 
         // Record the mint. The returned token IDs correspond to the tiers passed in.
-        // slither-disable-next-line unused-return,reentrancy-benign
         (tokenIds, leftoverAmount,) = store.recordMint({
             amount: amount,
             tierIds: mintTierIds,
@@ -1079,14 +977,18 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @param context The Juicebox standard project payment data.
     function _processPayment(JBAfterPayRecordedContext calldata context) internal override {
         // Make sure the game is being played in the correct currency.
-        if (context.amount.currency != pricingCurrency) revert DefifaHook_WrongCurrency();
+        if (context.amount.currency != pricingCurrency) {
+            revert DefifaHook_WrongCurrency({
+                expectedCurrency: pricingCurrency, actualCurrency: context.amount.currency
+            });
+        }
 
         // Resolve the metadata.
         (bool found, bytes memory metadata) = JBMetadataResolver.getDataFor({
             id: JBMetadataResolver.getId({purpose: "pay", target: CODE_ORIGIN}), metadata: context.payerMetadata
         });
 
-        if (!found) revert DefifaHook_NothingToMint();
+        if (!found) revert DefifaHook_NothingToMint({metadataFound: found, tierCount: 0});
 
         // Decode the metadata.
         (address attestationDelegate, uint16[] memory tierIdsToMint) = abi.decode(metadata, (address, uint16[]));
@@ -1098,7 +1000,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         }
 
         // Make sure something is being minted.
-        if (tierIdsToMint.length == 0) revert DefifaHook_NothingToMint();
+        if (tierIdsToMint.length == 0) {
+            revert DefifaHook_NothingToMint({metadataFound: found, tierCount: tierIdsToMint.length});
+        }
 
         // Compute attestation units per unique tier (validates ascending order, reverts on bad order).
         (uint256[] memory tierIds, uint256[] memory attestationAmounts, uint256 uniqueTierCount) =
@@ -1138,7 +1042,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             _mintAll({amount: context.amount.value, mintTierIds: tierIdsToMint, beneficiary: context.beneficiary});
 
         // Make sure the buyer isn't overspending.
-        if (leftoverAmount != 0) revert DefifaHook_Overspending();
+        if (leftoverAmount != 0) revert DefifaHook_Overspending({leftoverAmount: leftoverAmount});
     }
 
     /// @notice Transfers, mints, or burns tier attestation units. To register a mint, `from` should be zero. To
@@ -1158,7 +1062,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
                 // forge-lint: disable-next-line(unsafe-typecast)
                 uint208 newValue = current + uint208(amount);
                 // forge-lint: disable-next-line(unsafe-typecast)
-                // slither-disable-next-line unused-return
                 _totalTierCheckpoints[tierId].push({key: uint48(block.timestamp), value: newValue});
             }
 
@@ -1168,7 +1071,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
                 // forge-lint: disable-next-line(unsafe-typecast)
                 uint208 newValue = current - uint208(amount);
                 // forge-lint: disable-next-line(unsafe-typecast)
-                // slither-disable-next-line unused-return
                 _totalTierCheckpoints[tierId].push({key: uint48(block.timestamp), value: newValue});
             }
         }
@@ -1202,7 +1104,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         IJB721TiersHookStore hookStore = store;
 
         // Get a reference to the tier.
-        // slither-disable-next-line calls-loop
         JB721Tier memory tier =
             hookStore.tierOfTokenId({hook: address(this), tokenId: tokenId, includeResolvedUri: false});
 
@@ -1213,21 +1114,13 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         if (from != address(0)) {
             // If transfers are pausable, check if they're paused.
             if (tier.flags.transfersPausable) {
-                // Get a reference to the project's current ruleset.
-                // slither-disable-next-line calls-loop
-                JBRuleset memory ruleset = rulesets.currentOf(PROJECT_ID);
-
                 // If transfers are paused and the NFT isn't being transferred to the zero address, revert.
-                if (
-                    to != address(0)
-                        && JB721TiersRulesetMetadataResolver.transfersPaused(
-                            (JBRulesetMetadataResolver.metadata(ruleset))
-                        )
-                ) revert DefifaHook_TransfersPaused();
+                if (to != address(0) && JB721TiersRulesetMetadataResolver.transfersPaused(_rulesetMetadata())) {
+                    revert DefifaHook_TransfersPaused({projectId: PROJECT_ID, tokenId: tokenId, from: from, to: to});
+                }
             }
 
             // If the token isn't already associated with a first owner, store the sender as the first owner.
-            // slither-disable-next-line calls-loop
             if (_firstOwnerOf[tokenId] == address(0)) _firstOwnerOf[tokenId] = from;
         }
 
@@ -1237,9 +1130,48 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         }
 
         // Record the transfer after local delegation state has been finalized.
-        // slither-disable-next-line calls-loop
         hookStore.recordTransferForTier({tierId: tier.id, from: from, to: to});
 
         return from;
+    }
+
+    //*********************************************************************//
+    // -------------------------- internal views ------------------------- //
+    //*********************************************************************//
+
+    /// @notice Returns the current phase for the project.
+    /// @param projectId The project ID to check.
+    /// @return The current game phase.
+    function _currentGamePhaseOf(uint256 projectId) internal view returns (DefifaGamePhase) {
+        return gamePhaseReporter.currentGamePhaseOf(projectId);
+    }
+
+    /// @notice Gets the amount of attestation units an address has for a particular tier.
+    /// @param account The account to get attestation units for.
+    /// @param tierId The ID of the tier to get attestation units for.
+    /// @return The attestation units.
+    function _getTierAttestationUnits(address account, uint256 tierId) internal view virtual returns (uint256) {
+        return store.tierVotingUnitsOf({hook: address(this), account: account, tierId: tierId});
+    }
+
+    /// @notice Returns whether the caller is a terminal for the project.
+    /// @param projectId The project ID to check.
+    /// @return True if the caller is a terminal of the project.
+    function _isProjectTerminal(uint256 projectId) internal view returns (bool) {
+        return DIRECTORY.isTerminalOf({projectId: projectId, terminal: IJBTerminal(msg.sender)});
+    }
+
+    /// @notice Computes the total mint cost of all pending (unminted) reserve NFTs across all tiers.
+    /// @dev Used to include pending reserves in the fee token claim denominator so that paid holders
+    /// cannot claim a disproportionate share before reserves are minted.
+    /// @return cost The total mint cost of pending reserves.
+    function _pendingReserveMintCost() internal view returns (uint256 cost) {
+        return DefifaHookLib.pendingReserveMintCost({hookStore: store, hook: address(this)});
+    }
+
+    /// @notice Returns the current ruleset metadata for this project.
+    /// @return The packed ruleset metadata.
+    function _rulesetMetadata() internal view returns (uint256) {
+        return JBRulesetMetadataResolver.metadata(rulesets.currentOf(PROJECT_ID));
     }
 }

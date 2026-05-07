@@ -8,7 +8,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
 /// @title Same-token constructor guard for DefifaHook
 /// @notice Verifies that the constructor reverts when defifaToken == baseProtocolToken.
-contract Pass13L20Test is Test {
+contract SameTokenConstructorGuardTest is Test {
     IJBDirectory internal directory;
 
     function setUp() public {
@@ -20,7 +20,7 @@ contract Pass13L20Test is Test {
     function test_sameTokenConstructorReverts() public {
         IERC20 token = IERC20(makeAddr("token"));
 
-        vm.expectRevert(DefifaHook.DefifaHook_IdenticalTokens.selector);
+        vm.expectPartialRevert(DefifaHook.DefifaHook_IdenticalTokens.selector);
         new DefifaHook(directory, token, token);
     }
 

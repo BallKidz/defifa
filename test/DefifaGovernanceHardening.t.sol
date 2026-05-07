@@ -327,7 +327,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         // User 0 (100% beneficiary) cannot attest (BWA power = 0, reverts).
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.attestToScorecardFrom(_gameId, scorecardId);
 
         // Users 1 and 2 attest (2 * MAX < adjusted quorum).
@@ -406,7 +406,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.QUEUED));
 
         // Attempting to ratify should revert because state is QUEUED, not SUCCEEDED.
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.ratifyScorecardFrom(_gameId, sc);
     }
 
@@ -576,7 +576,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         // Try to revoke -- should revert because not in ACTIVE state.
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.revokeAttestationFrom(_gameId, scorecardId);
     }
 
@@ -592,7 +592,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         // User 0 has NOT attested. Try to revoke.
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAttested.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAttested.selector);
         _gov.revokeAttestationFrom(_gameId, scorecardId);
     }
 
@@ -740,7 +740,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         );
 
         // --- Cannot ratify during QUEUED ---
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.ratifyScorecardFrom(_gameId, sc);
 
         // --- After timelock expires: SUCCEEDED ---
@@ -776,13 +776,13 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         // User 0 (tier 1, 100% beneficiary) has BWA power = 0. Should revert.
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.attestToScorecardFrom(_gameId, scorecardId);
 
         // Non-holder (no tokens at all) also has BWA power = 0. Should revert.
         address stranger = _addr(999);
         vm.prank(stranger);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.attestToScorecardFrom(_gameId, scorecardId);
     }
 
@@ -1180,7 +1180,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         assertEq(uint256(_gov.stateOf(_gameId, idB)), uint256(DefifaScorecardState.DEFEATED), "B should be DEFEATED");
 
         // Cannot ratify B.
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_AlreadyRatified.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_AlreadyRatified.selector);
         _gov.ratifyScorecardFrom(_gameId, scB);
     }
 

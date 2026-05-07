@@ -125,7 +125,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         _governorImpl.transferOwnership(address(_deployer));
     }
 
-    /// @notice RPT-H-2 FIX VERIFICATION: Pending reserves in quorum + attestation denominator prevent manipulation.
+    /// @notice RPT-FIX VERIFICATION: Pending reserves in quorum + attestation denominator prevent manipulation.
     ///
     /// 1. Four players mint into tiers 1-4 (tiers 1-2 have reserveRate=1, creating pending reserves;
     ///    tiers 3-4 have no reserves)
@@ -191,7 +191,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         );
     }
 
-    /// @notice RPT-H-2 FIX VERIFICATION: Ratification succeeds after reserve mint because quorum is stable.
+    /// @notice RPT-FIX VERIFICATION: Ratification succeeds after reserve mint because quorum is stable.
     function test_ratificationSucceedsAfterReserveMint() external {
         (_pid, _nft, _gov) = _launch(_launchData());
 

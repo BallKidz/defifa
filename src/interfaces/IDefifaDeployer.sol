@@ -20,12 +20,6 @@ interface IDefifaDeployer {
     /// @param reason The revert reason bytes from the failed payout.
     event CommitmentPayoutFailed(uint256 indexed gameId, uint256 amount, bytes reason);
 
-    /// @notice Emitted when a split receives a portion of the game pot.
-    /// @param split The split that received funds.
-    /// @param amount The amount sent to the split.
-    /// @param caller The address that triggered the distribution.
-    event DistributeToSplit(JBSplit split, uint256 amount, address caller);
-
     /// @notice Emitted when a game's commitments have been fulfilled.
     /// @param gameId The ID of the fulfilled game.
     /// @param pot The total game pot that was fulfilled.
@@ -50,16 +44,6 @@ interface IDefifaDeployer {
     /// @param gameId The ID of the game.
     /// @param caller The address that queued the phase transition.
     event QueuedNoContest(uint256 indexed gameId, address caller);
-
-    /// @notice Emitted when a game is queued into its refund phase.
-    /// @param gameId The ID of the game.
-    /// @param caller The address that queued the phase transition.
-    event QueuedRefundPhase(uint256 indexed gameId, address caller);
-
-    /// @notice Emitted when a game is queued into its scoring phase.
-    /// @param gameId The ID of the game.
-    /// @param caller The address that queued the phase transition.
-    event QueuedScoringPhase(uint256 indexed gameId, address caller);
 
     /// @notice The fee divisor for base protocol fees (100 / fee percent).
     /// @return The fee divisor.

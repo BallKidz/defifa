@@ -29,18 +29,17 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
-    error DefifaGovernor_AlreadyAttested();
-    error DefifaGovernor_AlreadyInitialized();
-    error DefifaGovernor_AlreadyRatified();
-    error DefifaGovernor_DuplicateScorecard();
-    error DefifaGovernor_GameNotFound();
-    error DefifaGovernor_GracePeriodTooShort();
-    error DefifaGovernor_IncorrectTierOrder();
-    error DefifaGovernor_NotAllowed();
-    error DefifaGovernor_NotAttested();
-    error DefifaGovernor_Uint48Overflow();
-    error DefifaGovernor_UnknownProposal();
-    error DefifaGovernor_UnownedProposedCashoutValue();
+    error DefifaGovernor_AlreadyAttested(uint256 gameId, uint256 scorecardId, address account);
+    error DefifaGovernor_AlreadyInitialized(uint256 gameId);
+    error DefifaGovernor_AlreadyRatified(uint256 gameId, uint256 scorecardId);
+    error DefifaGovernor_DuplicateScorecard(uint256 gameId, uint256 scorecardId);
+    error DefifaGovernor_GameNotFound(uint256 gameId);
+    error DefifaGovernor_GracePeriodTooShort(uint256 gracePeriod, uint256 minGracePeriod);
+    error DefifaGovernor_NotAllowed(uint256 gameId, uint256 scorecardId, address caller);
+    error DefifaGovernor_NotAttested(uint256 gameId, uint256 scorecardId, address account);
+    error DefifaGovernor_Uint48Overflow(uint256 value, uint256 max);
+    error DefifaGovernor_UnknownProposal(uint256 gameId, uint256 scorecardId);
+    error DefifaGovernor_UnownedProposedCashoutValue(uint256 gameId, uint256 tierId, uint256 cashOutWeight);
 
     //*********************************************************************//
     // ------------------------- public constants ------------------------ //
@@ -135,12 +134,11 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @return weight The attestation weight that was applied.
     function attestToScorecardFrom(uint256 gameId, uint256 scorecardId) external override returns (uint256 weight) {
         // Get the game's current funding cycle along with its metadata.
-        // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Make sure the game is in its scoring phase.
         if (IDefifaHook(metadata.dataHook).gamePhaseReporter().currentGamePhaseOf(gameId) != DefifaGamePhase.SCORING) {
-            revert DefifaGovernor_NotAllowed();
+            revert DefifaGovernor_NotAllowed({gameId: gameId, scorecardId: scorecardId, caller: msg.sender});
         }
 
         // Keep a reference to the scorecard being attested to.
@@ -154,14 +152,16 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             state != DefifaScorecardState.ACTIVE && state != DefifaScorecardState.SUCCEEDED
                 && state != DefifaScorecardState.QUEUED
         ) {
-            revert DefifaGovernor_NotAllowed();
+            revert DefifaGovernor_NotAllowed({gameId: gameId, scorecardId: scorecardId, caller: msg.sender});
         }
 
         // Keep a reference to the attestations for the scorecard.
         DefifaAttestations storage attestations = _scorecardAttestationsOf[gameId][scorecardId];
 
         // Make sure the account isn't attesting to the same scorecard again.
-        if (attestations.attestedWeightOf[msg.sender] != 0) revert DefifaGovernor_AlreadyAttested();
+        if (attestations.attestedWeightOf[msg.sender] != 0) {
+            revert DefifaGovernor_AlreadyAttested({gameId: gameId, scorecardId: scorecardId, account: msg.sender});
+        }
 
         // Get a reference to the BWA-adjusted attestation weight, snapshotted at one second before
         // `attestationsBegin`. Using `attestationsBegin - 1` ensures the checkpoint is from before the
@@ -172,7 +172,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Revert if BWA reduces this account's power to zero (e.g. 100% beneficiary of the scorecard).
         // Without this guard, zero-weight attestors could call repeatedly since attestedWeightOf stays 0.
-        if (weight == 0) revert DefifaGovernor_NotAllowed();
+        if (weight == 0) {
+            revert DefifaGovernor_NotAllowed({gameId: gameId, scorecardId: scorecardId, caller: msg.sender});
+        }
 
         // Increase the attestation count.
         attestations.count += weight;
@@ -201,10 +203,11 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         returns (uint256 scorecardId)
     {
         // Make sure a scorecard hasn't been ratified yet.
-        if (ratifiedScorecardIdOf[gameId] != 0) revert DefifaGovernor_AlreadyRatified();
+        if (ratifiedScorecardIdOf[gameId] != 0) {
+            revert DefifaGovernor_AlreadyRatified({gameId: gameId, scorecardId: ratifiedScorecardIdOf[gameId]});
+        }
 
         // Get the game's current funding cycle along with its metadata.
-        // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Build the calldata to the target.
@@ -215,7 +218,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Make sure the proposal being ratified has succeeded.
         if (stateOf({gameId: gameId, scorecardId: scorecardId}) != DefifaScorecardState.SUCCEEDED) {
-            revert DefifaGovernor_NotAllowed();
+            revert DefifaGovernor_NotAllowed({gameId: gameId, scorecardId: scorecardId, caller: msg.sender});
         }
 
         // Set the ratified scorecard.
@@ -223,14 +226,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Execute the scorecard via low-level call since the governor is the delegate's owner.
         (bool success, bytes memory returndata) = metadata.dataHook.call(scorecardCalldata);
-        // slither-disable-next-line unused-return
         Address.verifyCallResult({success: success, returndata: returndata});
 
         // Fulfill any commitments for the game. The internal try-catch in fulfillCommitmentsOf
         // handles sendPayoutsOf failures, ensuring the final ruleset is always queued.
         IDefifaDeployer(CONTROLLER.PROJECTS().ownerOf(gameId)).fulfillCommitmentsOf(gameId);
 
-        // slither-disable-next-line reentrancy-events
         emit ScorecardRatified(gameId, scorecardId, msg.sender);
     }
 
@@ -242,14 +243,16 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     function revokeAttestationFrom(uint256 gameId, uint256 scorecardId) external virtual override {
         // Only allow revocation during ACTIVE phase.
         if (stateOf({gameId: gameId, scorecardId: scorecardId}) != DefifaScorecardState.ACTIVE) {
-            revert DefifaGovernor_NotAllowed();
+            revert DefifaGovernor_NotAllowed({gameId: gameId, scorecardId: scorecardId, caller: msg.sender});
         }
 
         DefifaAttestations storage attestations = _scorecardAttestationsOf[gameId][scorecardId];
         uint256 weight = attestations.attestedWeightOf[msg.sender];
 
         // Must have previously attested.
-        if (weight == 0) revert DefifaGovernor_NotAttested();
+        if (weight == 0) {
+            revert DefifaGovernor_NotAttested({gameId: gameId, scorecardId: scorecardId, account: msg.sender});
+        }
 
         // Subtract the weight and clear the attestation.
         attestations.count -= weight;
@@ -277,32 +280,32 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         returns (uint256 scorecardId)
     {
         // Make sure a proposal hasn't yet been ratified.
-        if (ratifiedScorecardIdOf[gameId] != 0) revert DefifaGovernor_AlreadyRatified();
+        if (ratifiedScorecardIdOf[gameId] != 0) {
+            revert DefifaGovernor_AlreadyRatified({gameId: gameId, scorecardId: ratifiedScorecardIdOf[gameId]});
+        }
 
         // Make sure the game has been initialized.
-        // slither-disable-next-line incorrect-equality
-        if (_packedScorecardInfoOf[gameId] == 0) revert DefifaGovernor_GameNotFound();
+        if (_packedScorecardInfoOf[gameId] == 0) revert DefifaGovernor_GameNotFound({gameId: gameId});
 
         // Keep a reference to the number of tier weights in the proposed scorecard.
         uint256 numberOfTierWeights = tierWeights.length;
 
         // Get the game's current funding cycle along with its metadata.
-        // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Make sure the game is in its scoring phase.
         if (IDefifaHook(metadata.dataHook).gamePhaseReporter().currentGamePhaseOf(gameId) != DefifaGamePhase.SCORING) {
-            revert DefifaGovernor_NotAllowed();
+            revert DefifaGovernor_NotAllowed({gameId: gameId, scorecardId: 0, caller: msg.sender});
         }
 
         // If there's a weight assigned to the tier, make sure there is a token backed by it.
-        // slither-disable-next-line calls-loop
         for (uint256 i; i < numberOfTierWeights;) {
             // A nonzero cashout weight is only valid once that tier has live ownership.
-            // slither-disable-next-line calls-loop
             uint256 currentTierSupply = IDefifaHook(metadata.dataHook).currentSupplyOfTier(tierWeights[i].id);
             if (tierWeights[i].cashOutWeight > 0 && currentTierSupply == 0) {
-                revert DefifaGovernor_UnownedProposedCashoutValue();
+                revert DefifaGovernor_UnownedProposedCashoutValue({
+                    gameId: gameId, tierId: tierWeights[i].id, cashOutWeight: tierWeights[i].cashOutWeight
+                });
             }
             unchecked {
                 ++i;
@@ -314,7 +317,6 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Run the same structural validation the hook will apply at ratification time so malformed
         // scorecards fail on submission instead of reaching a misleading SUCCEEDED state first.
-        // slither-disable-next-line unused-return
         DefifaHookLib.validateAndBuildWeights({tierWeights: tierWeights, hookStore: hookStore, hook: metadata.dataHook});
 
         // Hash the scorecard.
@@ -323,7 +325,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Store the scorecard.
         DefifaScorecard storage scorecard = _scorecardOf[gameId][scorecardId];
-        if (scorecard.attestationsBegin != 0) revert DefifaGovernor_DuplicateScorecard();
+        if (scorecard.attestationsBegin != 0) {
+            revert DefifaGovernor_DuplicateScorecard({gameId: gameId, scorecardId: scorecardId});
+        }
 
         uint256 attestationStartTime = attestationStartTimeOf(gameId);
 
@@ -340,7 +344,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // This prevents the grace period from expiring before attestations even start
         // when a scorecard is submitted early.
         uint256 gracePeriodEnds = uint256(attestationsBegin) + attestationGracePeriodOf(gameId);
-        if (gracePeriodEnds > type(uint48).max) revert DefifaGovernor_Uint48Overflow();
+        if (gracePeriodEnds > type(uint48).max) {
+            revert DefifaGovernor_Uint48Overflow({value: gracePeriodEnds, max: type(uint48).max});
+        }
         // Safe after the explicit max check above.
         // forge-lint: disable-next-line(unsafe-typecast)
         scorecard.gracePeriodEnds = uint48(gracePeriodEnds);
@@ -360,16 +366,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         {
             // Cache the number of tiers to avoid re-reading from storage.
             uint256 numberOfTiers = hookStore.maxTierIdOf(metadata.dataHook);
-            // slither-disable-next-line calls-loop
             for (uint256 i; i < numberOfTiers;) {
                 uint256 tierId = i + 1;
-                // slither-disable-next-line calls-loop
                 JB721Tier memory tier =
                     hookStore.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
                 // Use adjusted pending reserves that account for refund-phase burns.
-                // slither-disable-next-line calls-loop
                 uint256 pendingReserves = IDefifaHook(metadata.dataHook).adjustedPendingReservesFor(tierId);
-                // slither-disable-next-line calls-loop
                 uint256 submittedTierAttestationUnits =
                     IDefifaHook(metadata.dataHook).currentSupplyOfTier(tierId) * tier.votingUnits;
                 _pendingReservesSnapshotOf[gameId][scorecardId][tierId] = pendingReserves;
@@ -483,18 +485,28 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         onlyOwner
     {
         // Make sure the game hasn't already been initialized.
-        if (_packedScorecardInfoOf[gameId] != 0) revert DefifaGovernor_AlreadyInitialized();
+        if (_packedScorecardInfoOf[gameId] != 0) revert DefifaGovernor_AlreadyInitialized({gameId: gameId});
 
         // Set a default attestation start time if needed.
         if (attestationStartTime == 0) attestationStartTime = block.timestamp;
 
         // Enforce a minimum grace period to prevent instant ratification.
-        if (attestationGracePeriod < MIN_ATTESTATION_GRACE_PERIOD) revert DefifaGovernor_GracePeriodTooShort();
+        if (attestationGracePeriod < MIN_ATTESTATION_GRACE_PERIOD) {
+            revert DefifaGovernor_GracePeriodTooShort({
+                gracePeriod: attestationGracePeriod, minGracePeriod: MIN_ATTESTATION_GRACE_PERIOD
+            });
+        }
 
         // Ensure values fit within their allocated 48-bit widths before packing.
-        if (attestationStartTime > type(uint48).max) revert DefifaGovernor_Uint48Overflow();
-        if (attestationGracePeriod > type(uint48).max) revert DefifaGovernor_Uint48Overflow();
-        if (timelockDuration > type(uint48).max) revert DefifaGovernor_Uint48Overflow();
+        if (attestationStartTime > type(uint48).max) {
+            revert DefifaGovernor_Uint48Overflow({value: attestationStartTime, max: type(uint48).max});
+        }
+        if (attestationGracePeriod > type(uint48).max) {
+            revert DefifaGovernor_Uint48Overflow({value: attestationGracePeriod, max: type(uint48).max});
+        }
+        if (timelockDuration > type(uint48).max) {
+            revert DefifaGovernor_Uint48Overflow({value: timelockDuration, max: type(uint48).max});
+        }
 
         // Pack the values.
         uint256 packed;
@@ -555,7 +567,6 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         returns (uint256 attestationPower)
     {
         // Get the game's current funding cycle along with its metadata.
-        // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Get a reference to the hook and its store.
@@ -570,12 +581,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             uint256 tierId = i + 1;
 
             // Get this account's attestation units within the tier (snapshot at timestamp).
-            // slither-disable-next-line calls-loop
             uint256 tierAttestationUnitsForAccount =
                 hook.getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
 
             // Get the total attestation units for this tier (snapshot at timestamp).
-            // slither-disable-next-line calls-loop
             uint256 tierTotalAttestationUnits =
                 hook.getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp});
 
@@ -585,10 +594,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             // pending reserves decrease by the same amount — so no one's voting power shifts.
             {
                 // Use adjusted pending reserves that account for refund-phase burns.
-                // slither-disable-next-line calls-loop
                 uint256 pendingReserves = IDefifaHook(metadata.dataHook).adjustedPendingReservesFor(tierId);
                 if (pendingReserves != 0) {
-                    // slither-disable-next-line calls-loop
                     JB721Tier memory tier =
                         store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
                     tierTotalAttestationUnits += pendingReserves * tier.votingUnits;
@@ -634,7 +641,6 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         returns (uint256 bwaAttestationPower)
     {
         // Get the game's current funding cycle along with its metadata.
-        // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Get a reference to the hook and its store.
@@ -652,7 +658,6 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             uint256 tierId = i + 1;
 
             // Get this account's attestation units within the tier (snapshot at timestamp).
-            // slither-disable-next-line calls-loop
             uint256 tierAttestationUnitsForAccount =
                 hook.getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
 
@@ -660,7 +665,6 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                 // Start from the checkpointed tier total at the requested timestamp.
                 // If reserve mints happened after submission, clamp them out before adding the
                 // pending-reserve snapshot back in so each reserve unit is counted exactly once.
-                // slither-disable-next-line calls-loop
                 uint256 tierTotalAttestationUnits =
                     hook.getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp});
                 uint256 submittedTierAttestationUnits = _submittedTierAttestationUnitsOf[gameId][scorecardId][tierId];
@@ -672,7 +676,6 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                 // Add back the snapshotted pending reserves.
                 uint256 pendingReserves = _pendingReservesSnapshotOf[gameId][scorecardId][tierId];
                 if (pendingReserves != 0) {
-                    // slither-disable-next-line calls-loop
                     JB721Tier memory tier =
                         store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
                     tierTotalAttestationUnits += pendingReserves * tier.votingUnits;
@@ -709,7 +712,6 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @return The quorum number of attestations.
     function quorum(uint256 gameId) public view override returns (uint256) {
         // Get the game's current funding cycle along with its metadata.
-        // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Get a reference to the hook and its store.
@@ -729,10 +731,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             // Pending reserves still belong economically to the reserve beneficiary, even after the
             // last paid token in the tier is burned during REFUND, so excluding them would let a
             // burner erase another participant's quorum contribution without erasing their claim.
-            // slither-disable-next-line calls-loop
             uint256 currentTierSupply = hook.currentSupplyOfTier(tierId);
             // Use adjusted pending reserves that account for refund-phase burns.
-            // slither-disable-next-line calls-loop
             uint256 pendingReserves = hook.adjustedPendingReservesFor(tierId);
             if (currentTierSupply != 0 || pendingReserves != 0) {
                 eligibleTierWeights += MAX_ATTESTATION_POWER_TIER;
@@ -769,9 +769,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         DefifaScorecard memory scorecard = _scorecardOf[gameId][scorecardId];
 
         // Make sure the proposal is known.
-        // slither-disable-next-line incorrect-equality
         if (scorecard.attestationsBegin == 0) {
-            revert DefifaGovernor_UnknownProposal();
+            revert DefifaGovernor_UnknownProposal({gameId: gameId, scorecardId: scorecardId});
         }
 
         // If the scorecard has attestations beginning in the future, the state is PENDING.

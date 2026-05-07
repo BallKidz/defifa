@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {DefifaUSDCTest} from "../DefifaUSDC.t.sol";
+import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierCashOutWeight} from "../../src/structs/DefifaTierCashOutWeight.sol";
 import {DefifaTierParams} from "../../src/structs/DefifaTierParams.sol";
@@ -199,7 +200,7 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
             timelockDuration: 0
         });
 
-        vm.expectRevert(abi.encodeWithSignature("DefifaDeployer_InvalidCurrency()"));
+        vm.expectPartialRevert(DefifaDeployer.DefifaDeployer_InvalidCurrency.selector);
         deployer.launchGameWith(d);
     }
 

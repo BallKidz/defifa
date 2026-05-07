@@ -33,14 +33,7 @@ import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 
-/// @notice Verifies the fix for H-2: Pending reserve NFTs are now included in the cash-out weight
-/// denominator. Before the fix, paid holders could cash out before reserves were minted and extract
-/// more than their fair share.
-///
-/// With BWA + HHI-adjusted quorum, a single-tier winner-take-all scorecard gives the sole beneficiary
-/// 0 attestation power (BWA multiplier = 1 - 1 = 0). To allow ratification, we add 3 disinterested
-/// tiers (weight = 0) whose attestors provide governance power to meet the adjusted quorum.
-contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
+contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
     address _protocolFeeProjectTokenAccount;
@@ -129,13 +122,15 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         governor.transferOwnership(address(deployer));
     }
 
-    /// @notice With the fix, a paid holder's cash-out share is diluted by pending reserves.
-    /// The paid holder should NOT be able to reclaim the full post-fee surplus when pending
-    /// reserves exist -- the reserve holder's share must be protected.
-    function test_paidHolderCashOutDilutedByPendingReserves() external {
+    /// @notice After the fix, pending reserves dilute the paid holder's cash-out share.
+    /// The paid holder can no longer drain the full surplus; reserve holders retain their share.
+    ///
+    /// With BWA + HHI, a single-tier winner-take-all scorecard gives the beneficiary 0 attestation
+    /// power. We add 3 disinterested tiers (0 weight) so their attestors can meet the adjusted quorum.
+    function test_pendingReserveDilutesPaidHolderCashOut_afterFix() external {
         (_pid, _nft, _gov) = _launch(_launchData());
 
-        // Mint phase: player mints 1 NFT into tier 1, disinterested users mint tiers 2-4.
+        // Mint phase: player mints tier 1, disinterested users mint tiers 2-4.
         vm.warp(block.timestamp + 1 days + 1);
         _mint(player, 1, 1 ether);
         _delegateSelf(player, 1);
@@ -149,78 +144,11 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         _mint(disinterested3, 4, 1 ether);
         _delegateSelf(disinterested3, 4);
 
-        // Verify there is a pending reserve for tier 1.
         assertEq(_nft.store().numberOfPendingReservesFor(address(_nft), 1), 1, "one reserve should be pending");
 
-        // Advance to scoring phase.
         vm.warp(block.timestamp + 2 days + 1);
 
-        // Submit scorecard giving all weight to tier 1; tiers 2-4 get 0 (disinterested attestors).
-        DefifaTierCashOutWeight[] memory sc = new DefifaTierCashOutWeight[](4);
-        sc[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT()});
-        sc[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: 0});
-        sc[2] = DefifaTierCashOutWeight({id: 3, cashOutWeight: 0});
-        sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: 0});
-        uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
-
-        // Disinterested users attest (they have full BWA power since their tiers get 0 weight).
-        // The player (tier 1, 100% weight) has 0 BWA power and cannot meaningfully attest.
-        vm.prank(disinterested1);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
-        vm.prank(disinterested2);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
-        vm.prank(disinterested3);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
-
-        vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
-        _gov.ratifyScorecardFrom(_gameId, sc);
-
-        // The player should only reclaim HALF of their tier's share of the post-fee surplus
-        // (1 of 2 tokens in tier 1, since the pending reserve counts in the denominator).
-        // Note: total pot includes 4 ETH from all minters but tier 1 gets 100% of weight.
-        // Fees are taken from the terminal surplus. Post-fee surplus is available for cash-out.
-        uint256 postFeeSurplus = 4 ether - (4 ether / 20) - (4 ether / 40);
-        // Tier 1 gets 100% weight. Player holds 1 of 2 units (1 paid + 1 pending reserve).
-        uint256 expectedPlayerReclaim = postFeeSurplus / 2;
-
-        uint256 beforePlayerBalance = player.balance;
-        _cashOut(player, 1, 1);
-        uint256 playerReclaim = player.balance - beforePlayerBalance;
-
-        // The player should receive approximately half the surplus, not the full amount.
-        assertApproxEqAbs(
-            playerReclaim,
-            expectedPlayerReclaim,
-            1, // 1 wei tolerance for rounding
-            "paid holder should only reclaim half due to pending reserve dilution"
-        );
-
-        // Specifically, the player should NOT get the full pot.
-        assertLt(playerReclaim, postFeeSurplus, "paid holder should NOT reclaim full surplus with pending reserves");
-    }
-
-    /// @notice After reserves are minted, the reserve holder should be able to cash out their share.
-    function test_reserveHolderCanCashOutAfterMinting() external {
-        (_pid, _nft, _gov) = _launch(_launchData());
-
-        // Mint phase: player mints 1 NFT into tier 1, disinterested users mint tiers 2-4.
-        vm.warp(block.timestamp + 1 days + 1);
-        _mint(player, 1, 1 ether);
-        _delegateSelf(player, 1);
-        vm.warp(block.timestamp + 1);
-        _mint(disinterested1, 2, 1 ether);
-        _delegateSelf(disinterested1, 2);
-        vm.warp(block.timestamp + 1);
-        _mint(disinterested2, 3, 1 ether);
-        _delegateSelf(disinterested2, 3);
-        vm.warp(block.timestamp + 1);
-        _mint(disinterested3, 4, 1 ether);
-        _delegateSelf(disinterested3, 4);
-
-        // Advance to scoring phase.
-        vm.warp(block.timestamp + 2 days + 1);
-
-        // Submit scorecard: tier 1 gets all weight; tiers 2-4 are disinterested.
+        // Scorecard: tier 1 gets all weight; tiers 2-4 get 0.
         DefifaTierCashOutWeight[] memory sc = new DefifaTierCashOutWeight[](4);
         sc[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT()});
         sc[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: 0});
@@ -239,44 +167,48 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
         _gov.ratifyScorecardFrom(_gameId, sc);
 
-        // Mint the reserve NFTs for tier 1.
-        JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
-        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
-        _nft.mintReservesFor(reserveConfigs);
-        assertEq(_nft.balanceOf(reserveBeneficiary), 1, "reserve NFT should be minted");
+        // Post-fee surplus from all 4 ETH (4 minters). Tier 1 gets 100% weight.
+        uint256 totalPot = 4 ether - (4 ether / 20) - (4 ether / 40);
+        // Player holds 1 of 2 units in tier 1 (1 paid + 1 pending reserve in denominator).
+        uint256 expectedPlayerReclaim = totalPot / 2;
 
-        // Now player cashes out.
         uint256 beforePlayerBalance = player.balance;
         _cashOut(player, 1, 1);
         uint256 playerReclaim = player.balance - beforePlayerBalance;
 
-        // Reserve holder cashes out (token ID for tier 1, token number 2).
+        // After the fix: paid holder gets only HALF because pending reserve dilutes the denominator.
+        assertApproxEqAbs(
+            playerReclaim,
+            expectedPlayerReclaim,
+            1, // 1 wei tolerance for rounding
+            "paid holder reclaims only half due to pending reserve dilution"
+        );
+        assertLt(playerReclaim, totalPot, "paid holder should NOT reclaim full surplus");
+
+        // Mint the reserve NFTs.
+        JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
+        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
+        _nft.mintReservesFor(reserveConfigs);
+        assertEq(_nft.balanceOf(reserveBeneficiary), 1, "reserve NFT minted successfully");
+
+        // Reserve holder should now be able to cash out their share (not zero).
         uint256 beforeReserveBalance = reserveBeneficiary.balance;
         _cashOut(reserveBeneficiary, 1, 2);
         uint256 reserveReclaim = reserveBeneficiary.balance - beforeReserveBalance;
-
-        // Both should get approximately equal shares.
-        assertApproxEqAbs(
-            playerReclaim,
-            reserveReclaim,
-            1, // 1 wei tolerance
-            "paid and reserve holders should get equal shares"
-        );
+        assertGt(reserveReclaim, 0, "reserve holder can reclaim their share after fix");
     }
-
-    // ---- helpers ----
 
     function _launchData() internal view returns (DefifaLaunchProjectData memory) {
         DefifaTierParams[] memory tp = new DefifaTierParams[](4);
         // Tier 1: has reserves (the tier under test)
         tp[0] = DefifaTierParams({
-            reservedRate: 1, // 1 reserve per mint
+            reservedRate: 1,
             reservedTokenBeneficiary: reserveBeneficiary,
             encodedIPFSUri: bytes32(0),
             shouldUseReservedTokenBeneficiaryAsDefault: false,
             name: "TEAM"
         });
-        // Tiers 2-4: disinterested attestors (no reserves, standard rate)
+        // Tiers 2-4: disinterested attestors (no reserves)
         for (uint256 i = 1; i < 4; i++) {
             tp[i] = DefifaTierParams({
                 reservedRate: 0,

@@ -16,8 +16,8 @@ import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol"
 import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-contract CodexNemesisBeneficiaryMismatchTest is DefifaFeeAccountingTest {
-    function test_codexNemesis_cashOutFeeTokensGoToBeneficiary() external {
+contract RegressionBeneficiaryMismatchTest is DefifaFeeAccountingTest {
+    function test_regression_cashOutFeeTokensGoToBeneficiary() external {
         DefifaLaunchProjectData memory defifaData = _getDefifaLaunchDataWithSplits(4, new JBSplit[](0));
         (uint256 projectId, DefifaHook nft, DefifaGovernor gov) = _createDefifaProject(defifaData);
 
@@ -69,7 +69,7 @@ contract CodexNemesisBeneficiaryMismatchTest is DefifaFeeAccountingTest {
         );
     }
 
-    function test_codexNemesis_tokensClaimablePreviewIncludesPendingReserveCost() external {
+    function test_regression_tokensClaimablePreviewIncludesPendingReserveCost() external {
         address reserveBeneficiary = address(bytes20(keccak256("reserve beneficiary")));
         DefifaLaunchProjectData memory defifaData = _launchDataWithTier1Reserves(reserveBeneficiary);
         (uint256 projectId, DefifaHook nft, DefifaGovernor gov) = _createDefifaProject(defifaData);
