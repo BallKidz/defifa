@@ -613,7 +613,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             // Mint the token to the reserve beneficiary.
             _mint({to: reservedTokenBeneficiary, tokenId: tokenId});
 
-            emit MintReservedToken(tokenId, tierId, reservedTokenBeneficiary, msg.sender);
+            emit MintReservedToken({
+                tokenId: tokenId, tierId: tierId, beneficiary: reservedTokenBeneficiary, caller: msg.sender
+            });
 
             unchecked {
                 ++i;
@@ -779,7 +781,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Mark the cashOut weight as set.
         cashOutWeightIsSet = true;
 
-        emit TierCashOutWeightsSet(tierWeights, msg.sender);
+        emit TierCashOutWeightsSet({tierWeights: tierWeights, caller: msg.sender});
     }
 
     /// @notice Delegate this account's voting power for a single tier to a specified delegate.
@@ -865,7 +867,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Store the new delegatee
         _tierDelegation[account][tierId] = delegatee;
 
-        emit DelegateChanged(account, oldDelegate, delegatee);
+        emit DelegateChanged({delegator: account, fromDelegate: oldDelegate, toDelegate: delegatee});
 
         // Move the attestations.
         _moveTierDelegateAttestations({
@@ -923,7 +925,13 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             // Mint the tokens.
             _mint({to: beneficiary, tokenId: tokenId});
 
-            emit Mint(tokenId, mintTierIds[i], beneficiary, amount, msg.sender);
+            emit Mint({
+                tokenId: tokenId,
+                tierId: mintTierIds[i],
+                beneficiary: beneficiary,
+                totalAmountContributed: amount,
+                caller: msg.sender
+            });
 
             unchecked {
                 ++i;
@@ -954,7 +962,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
                 // forge-lint: disable-next-line(unsafe-typecast)
                 value: current - uint208(amount)
             });
-            emit TierDelegateAttestationsChanged(from, tierId, oldValue, newValue, msg.sender);
+            emit TierDelegateAttestationsChanged({
+                delegate: from, tierId: tierId, previousBalance: oldValue, newBalance: newValue, caller: msg.sender
+            });
         }
 
         // If not moving to the zero address, update the checkpoints to add the amount.
@@ -969,7 +979,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
                 // forge-lint: disable-next-line(unsafe-typecast)
                 value: current + uint208(amount)
             });
-            emit TierDelegateAttestationsChanged(to, tierId, oldValue, newValue, msg.sender);
+            emit TierDelegateAttestationsChanged({
+                delegate: to, tierId: tierId, previousBalance: oldValue, newBalance: newValue, caller: msg.sender
+            });
         }
     }
 
@@ -1085,7 +1097,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         if (toDelegate == address(0) && to != address(0)) {
             toDelegate = to;
             _tierDelegation[to][tierId] = to;
-            emit DelegateChanged(to, address(0), to);
+            emit DelegateChanged({delegator: to, fromDelegate: address(0), toDelegate: to});
         }
 
         // Move delegated attestations.

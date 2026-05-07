@@ -187,7 +187,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Store the BWA weight that was added (used for accurate subtraction on revoke).
         attestations.attestedWeightOf[msg.sender] = weight;
 
-        emit ScorecardAttested(gameId, scorecardId, weight, msg.sender);
+        emit ScorecardAttested({gameId: gameId, scorecardId: scorecardId, weight: weight, caller: msg.sender});
     }
 
     /// @notice Ratifies a scorecard that has been approved.
@@ -232,7 +232,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // handles sendPayoutsOf failures, ensuring the final ruleset is always queued.
         IDefifaDeployer(CONTROLLER.PROJECTS().ownerOf(gameId)).fulfillCommitmentsOf(gameId);
 
-        emit ScorecardRatified(gameId, scorecardId, msg.sender);
+        emit ScorecardRatified({gameId: gameId, scorecardId: scorecardId, caller: msg.sender});
     }
 
     /// @notice Revoke a previously submitted attestation. Only allowed during the ACTIVE phase.
@@ -264,7 +264,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             _quorumReachedAtOf[gameId][scorecardId] = 0;
         }
 
-        emit AttestationRevoked(gameId, scorecardId, msg.sender, weight);
+        emit AttestationRevoked({gameId: gameId, scorecardId: scorecardId, account: msg.sender, weight: weight});
     }
 
     /// @notice Submits a scorecard to be attested to.
@@ -423,7 +423,13 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             defaultAttestationDelegateProposalOf[gameId] = scorecardId;
         }
 
-        emit ScorecardSubmitted(gameId, scorecardId, tierWeights, msg.sender == defaultAttestationDelegate, msg.sender);
+        emit ScorecardSubmitted({
+            gameId: gameId,
+            scorecardId: scorecardId,
+            tierWeights: tierWeights,
+            isDefaultAttestationDelegate: msg.sender == defaultAttestationDelegate,
+            caller: msg.sender
+        });
     }
 
     //*********************************************************************//
@@ -520,7 +526,13 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Store the packed value.
         _packedScorecardInfoOf[gameId] = packed;
 
-        emit GameInitialized(gameId, attestationStartTime, attestationGracePeriod, timelockDuration, msg.sender);
+        emit GameInitialized({
+            gameId: gameId,
+            attestationStartTime: attestationStartTime,
+            attestationGracePeriod: attestationGracePeriod,
+            timelockDuration: timelockDuration,
+            caller: msg.sender
+        });
     }
 
     //*********************************************************************//
