@@ -829,22 +829,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     }
 
     //*********************************************************************//
-    // ------------------------ internal functions ----------------------- //
+    // ---------------------- internal transactions ---------------------- //
     //*********************************************************************//
-
-    /// @notice Computes the total mint cost of all pending (unminted) reserve NFTs across all tiers.
-    /// @dev Used to include pending reserves in the fee token claim denominator so that paid holders
-    /// cannot claim a disproportionate share before reserves are minted.
-    /// @return cost The total mint cost of pending reserves.
-    function _pendingReserveMintCost() internal view returns (uint256 cost) {
-        return DefifaHookLib.pendingReserveMintCost({hookStore: store, hook: address(this)});
-    }
-
-    /// @notice Returns the current ruleset metadata for this project.
-    /// @return The packed ruleset metadata.
-    function _rulesetMetadata() internal view returns (uint256) {
-        return JBRulesetMetadataResolver.metadata(rulesets.currentOf(PROJECT_ID));
-    }
 
     /// @notice Claims the defifa and base protocol tokens for a beneficiary.
     /// @param beneficiary The address to claim tokens for.
@@ -866,13 +852,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             defifaToken: DEFIFA_TOKEN,
             baseProtocolToken: BASE_PROTOCOL_TOKEN
         });
-    }
-
-    /// @notice Returns the current phase for the project.
-    /// @param projectId The project ID to check.
-    /// @return The current game phase.
-    function _currentGamePhaseOf(uint256 projectId) internal view returns (DefifaGamePhase) {
-        return gamePhaseReporter.currentGamePhaseOf(projectId);
     }
 
     /// @notice Delegate all attestation units for the specified tier.
@@ -902,21 +881,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     function _didBurn(uint256[] memory tokenIds) internal virtual override {
         // Add to burned counter.
         store.recordBurn(tokenIds);
-    }
-
-    /// @notice Gets the amount of attestation units an address has for a particular tier.
-    /// @param account The account to get attestation units for.
-    /// @param tierId The ID of the tier to get attestation units for.
-    /// @return The attestation units.
-    function _getTierAttestationUnits(address account, uint256 tierId) internal view virtual returns (uint256) {
-        return store.tierVotingUnitsOf({hook: address(this), account: account, tierId: tierId});
-    }
-
-    /// @notice Returns whether the caller is a terminal for the project.
-    /// @param projectId The project ID to check.
-    /// @return True if the caller is a terminal of the project.
-    function _isProjectTerminal(uint256 projectId) internal view returns (bool) {
-        return DIRECTORY.isTerminalOf({projectId: projectId, terminal: IJBTerminal(msg.sender)});
     }
 
     /// @notice Mints a token in all provided tiers.
@@ -1169,5 +1133,45 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         hookStore.recordTransferForTier({tierId: tier.id, from: from, to: to});
 
         return from;
+    }
+
+    //*********************************************************************//
+    // -------------------------- internal views ------------------------- //
+    //*********************************************************************//
+
+    /// @notice Returns the current phase for the project.
+    /// @param projectId The project ID to check.
+    /// @return The current game phase.
+    function _currentGamePhaseOf(uint256 projectId) internal view returns (DefifaGamePhase) {
+        return gamePhaseReporter.currentGamePhaseOf(projectId);
+    }
+
+    /// @notice Gets the amount of attestation units an address has for a particular tier.
+    /// @param account The account to get attestation units for.
+    /// @param tierId The ID of the tier to get attestation units for.
+    /// @return The attestation units.
+    function _getTierAttestationUnits(address account, uint256 tierId) internal view virtual returns (uint256) {
+        return store.tierVotingUnitsOf({hook: address(this), account: account, tierId: tierId});
+    }
+
+    /// @notice Returns whether the caller is a terminal for the project.
+    /// @param projectId The project ID to check.
+    /// @return True if the caller is a terminal of the project.
+    function _isProjectTerminal(uint256 projectId) internal view returns (bool) {
+        return DIRECTORY.isTerminalOf({projectId: projectId, terminal: IJBTerminal(msg.sender)});
+    }
+
+    /// @notice Computes the total mint cost of all pending (unminted) reserve NFTs across all tiers.
+    /// @dev Used to include pending reserves in the fee token claim denominator so that paid holders
+    /// cannot claim a disproportionate share before reserves are minted.
+    /// @return cost The total mint cost of pending reserves.
+    function _pendingReserveMintCost() internal view returns (uint256 cost) {
+        return DefifaHookLib.pendingReserveMintCost({hookStore: store, hook: address(this)});
+    }
+
+    /// @notice Returns the current ruleset metadata for this project.
+    /// @return The packed ruleset metadata.
+    function _rulesetMetadata() internal view returns (uint256) {
+        return JBRulesetMetadataResolver.metadata(rulesets.currentOf(PROJECT_ID));
     }
 }
