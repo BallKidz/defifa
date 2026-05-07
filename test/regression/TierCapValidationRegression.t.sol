@@ -111,7 +111,7 @@ contract TierCapValidationRegressionTest is JBTest, TestBaseWorkflow {
     /// @notice Launching with 129 tiers must revert with DefifaDeployer_InvalidGameConfiguration.
     function test_launch129TiersReverts() external {
         DefifaLaunchProjectData memory data = _launchData(129);
-        vm.expectRevert(DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector);
+        vm.expectPartialRevert(DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector);
         deployer.launchGameWith(data);
     }
 
@@ -136,7 +136,7 @@ contract TierCapValidationRegressionTest is JBTest, TestBaseWorkflow {
         DefifaLaunchProjectData memory data = _launchData(tierCount);
 
         if (tierCount > 128) {
-            vm.expectRevert(DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector);
+            vm.expectPartialRevert(DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector);
             deployer.launchGameWith(data);
         } else {
             uint256 gameId = deployer.launchGameWith(data);

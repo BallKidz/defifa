@@ -310,7 +310,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             rawMetadata[0] = uint16(i + 1); // reward tier, 1 indexed
             bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
             // Pay to the project and mint an NFT
-            vm.expectRevert(JBTerminalStore.JBTerminalStore_RulesetPaymentPaused.selector);
+            vm.expectPartialRevert(JBTerminalStore.JBTerminalStore_RulesetPaymentPaused.selector);
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(
                 _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
@@ -327,7 +327,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             rawMetadata[0] = uint16(i + 1); // reward tier, 1 indexed
             bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
             // Pay to the project and mint an NFT
-            vm.expectRevert(JBTerminalStore.JBTerminalStore_RulesetPaymentPaused.selector);
+            vm.expectPartialRevert(JBTerminalStore.JBTerminalStore_RulesetPaymentPaused.selector);
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(
                 _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
@@ -449,7 +449,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // Forward the amount of blocks needed to reach the end (and round up)
         vm.warp(_tsReader.timestamp() + _governor.attestationGracePeriodOf(_gameId) + 1);
         // Execute the proposal
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _governor.ratifyScorecardFrom(_gameId, scorecards);
     }
 
@@ -765,7 +765,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         //deployer.queueNextPhaseOf(_projectId);
 
         vm.prank(_users[0]);
-        vm.expectRevert(abi.encodeWithSignature("DefifaHook_DelegateChangesUnavailableInThisPhase()"));
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateChangesUnavailableInThisPhase.selector);
         _nft.setTierDelegateTo(_users[1], 1);
     }
 
@@ -1023,7 +1023,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             scorecards[i].cashOutWeight = i % 2 == 0 ? 1e18 / (scorecards.length / 2) : 0;
         }
 
-        vm.expectRevert(abi.encodeWithSignature("DefifaGovernor_UnownedProposedCashoutValue()"));
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_UnownedProposedCashoutValue.selector);
         // Forward time so proposals can be created
         _governor.submitScorecardFor(_gameId, scorecards);
     }
@@ -1124,7 +1124,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             _governor.attestToScorecardFrom(_gameId, _proposalId);
         }
         // Execute the proposal — should fail because grace period hasn't ended
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _governor.ratifyScorecardFrom(_gameId, scorecards);
     }
 
@@ -1228,7 +1228,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             scorecards[i].cashOutWeight = cashOutWeight;
         }
 
-        vm.expectRevert(DefifaHookLib.DefifaHook_InvalidCashoutWeights.selector);
+        vm.expectPartialRevert(DefifaHookLib.DefifaHook_InvalidCashoutWeights.selector);
         _governor.submitScorecardFor(_gameId, scorecards);
     }
 

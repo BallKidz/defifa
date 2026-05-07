@@ -1,8 +1,8 @@
-# Review Guide
+# Audit Instructions
 
-Defifa is a staged prediction-game system built on Juicebox and the tiered 721 stack. Review it as a governance-and-settlement protocol, not just an NFT game.
+Defifa is a staged prediction-game system built on Juicebox and the tiered 721 stack. Audit it as a governance-and-settlement protocol, not just an NFT game.
 
-## Review Objective
+## Audit Objective
 
 Find issues that:
 
@@ -85,7 +85,7 @@ The contracts split responsibility as follows:
 
 ## Accepted Risks Or Behaviors
 
-- Governance and settlement are intentionally phase-heavy, so timestamp and lifecycle transitions are core review targets rather than edge cases.
+- Governance and settlement are intentionally phase-heavy, so timestamp and lifecycle transitions are core audit targets rather than edge cases.
 
 ## Verification
 

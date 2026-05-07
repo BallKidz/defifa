@@ -915,7 +915,7 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
 
         // The same scorecardId should be unknown for Game B (different hooks produce different hashes).
         // Trying to query it on Game B should revert.
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_UnknownProposal.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_UnknownProposal.selector);
         governor.stateOf(gameIdB, scorecardIdA);
     }
 

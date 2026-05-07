@@ -21,8 +21,54 @@ library DefifaHookLib {
     error DefifaHook_InvalidTierId(uint256 tierId, uint256 actualTierId, uint256 maxTierId, uint256 category);
     error DefifaHook_InvalidCashoutWeights(uint256 totalWeight, uint256 expectedWeight);
 
+    event ClaimedTokens(
+        address indexed beneficiary, uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount, address caller
+    );
+
     /// @notice The total cashOut weight that can be divided among tiers.
     uint256 internal constant TOTAL_CASHOUT_WEIGHT = 1_000_000_000_000_000_000;
+
+    /// @notice Returns the adjusted pending reserve count for a tier, accounting for refund-phase burns.
+    /// @param tierId The tier ID.
+    /// @param hookStore The 721 tiers hook store.
+    /// @param hook The hook address.
+    /// @param refundBurns The number of refund-phase burns for the tier.
+    /// @return The adjusted pending reserve count.
+    function adjustedPendingReservesFor(
+        uint256 tierId,
+        IJB721TiersHookStore hookStore,
+        address hook,
+        uint256 refundBurns
+    )
+        public
+        view
+        returns (uint256)
+    {
+        // If no refund burns, return the store's value directly.
+        if (refundBurns == 0) return hookStore.numberOfPendingReservesFor({hook: hook, tierId: tierId});
+
+        // Get the tier to access reserveFrequency and supply data.
+        JB721Tier memory tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
+
+        // No reserves if no reserve frequency.
+        if (tier.reserveFrequency == 0) return 0;
+
+        // Calculate the number of reserves already minted.
+        uint256 reservesMinted = hookStore.numberOfReservesMintedFor({hook: hook, tierId: tierId});
+
+        // Calculate non-reserve mints: initialSupply - remainingSupply - reservesMinted.
+        uint256 nonReserveMints = tier.initialSupply - tier.remainingSupply - reservesMinted;
+
+        // Subtract refund burns from non-reserve mints (burns can't exceed non-reserve mints).
+        uint256 adjustedMints = nonReserveMints > refundBurns ? nonReserveMints - refundBurns : 0;
+
+        // Recalculate available reserves: ceil(adjustedMints / reserveFrequency).
+        uint256 availableReserves = adjustedMints / tier.reserveFrequency;
+        if (adjustedMints % tier.reserveFrequency > 0) ++availableReserves;
+
+        // Return pending = available - already minted (floored at 0).
+        return availableReserves > reservesMinted ? availableReserves - reservesMinted : 0;
+    }
 
     /// @notice Validates tier cash out weights and returns the weight array to store.
     /// @param tierWeights The tier weights to validate and set.
@@ -231,11 +277,13 @@ library DefifaHookLib {
     /// @param tokenIds The token IDs.
     /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
+    /// @param excludeReserveMints Whether reserve-minted tokens should be excluded.
     /// @return cumulativeMintPrice The total mint price.
-    function computeCumulativeMintPrice(
+    function computeCumulativeMintPriceForCashOut(
         uint256[] memory tokenIds,
         IJB721TiersHookStore hookStore,
-        address hook
+        address hook,
+        bool excludeReserveMints
     )
         public
         view
@@ -243,6 +291,7 @@ library DefifaHookLib {
     {
         uint256 numberOfTokenIds = tokenIds.length;
         for (uint256 i; i < numberOfTokenIds; i++) {
+            if (excludeReserveMints && IDefifaHook(hook).isReserveMint(tokenIds[i])) continue;
             cumulativeMintPrice += hookStore.tierOfTokenId({
                 hook: hook, tokenId: tokenIds[i], includeResolvedUri: false
             }).price;
@@ -297,6 +346,26 @@ library DefifaHookLib {
     {
         JB721Tier memory tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
         return tier.initialSupply - (tier.remainingSupply + hookStore.numberOfBurnedFor({hook: hook, tierId: tierId}));
+    }
+
+    /// @notice Computes the total mint cost of all pending reserve NFTs across all tiers.
+    /// @param hookStore The 721 tiers hook store.
+    /// @param hook The hook address.
+    /// @return cost The total pending reserve mint cost.
+    function pendingReserveMintCost(IJB721TiersHookStore hookStore, address hook) public view returns (uint256 cost) {
+        uint256 numberOfTiers = hookStore.maxTierIdOf(hook);
+
+        for (uint256 i; i < numberOfTiers;) {
+            uint256 tierId = i + 1;
+            uint256 pendingReserves = IDefifaHook(hook).adjustedPendingReservesFor(tierId);
+            if (pendingReserves != 0) {
+                JB721Tier memory tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
+                cost += pendingReserves * tier.price;
+            }
+            unchecked {
+                ++i;
+            }
+        }
     }
 
     /// @notice Computes the attestation units for tiers during payment processing.
@@ -388,7 +457,7 @@ library DefifaHookLib {
         if (defifaAmount != 0) defifaToken.safeTransfer({to: beneficiary, value: defifaAmount});
         if (baseProtocolAmount != 0) baseProtocolToken.safeTransfer({to: beneficiary, value: baseProtocolAmount});
 
-        emit IDefifaHook.ClaimedTokens({
+        emit ClaimedTokens({
             beneficiary: beneficiary,
             defifaTokenAmount: defifaAmount,
             baseProtocolTokenAmount: baseProtocolAmount,

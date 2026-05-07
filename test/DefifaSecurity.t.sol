@@ -255,7 +255,7 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             sc[i].cashOutWeight = (_nft.TOTAL_CASHOUT_WEIGHT() * 30) / 100; // 120% total
         }
 
-        vm.expectRevert(DefifaHookLib.DefifaHook_InvalidCashoutWeights.selector);
+        vm.expectPartialRevert(DefifaHookLib.DefifaHook_InvalidCashoutWeights.selector);
         _gov.submitScorecardFor(_gameId, sc);
     }
 
@@ -268,13 +268,13 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         // REFUND phase
         vm.warp(block.timestamp + 1 days);
         vm.prank(_users[0]);
-        vm.expectRevert(abi.encodeWithSignature("DefifaHook_DelegateChangesUnavailableInThisPhase()"));
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateChangesUnavailableInThisPhase.selector);
         _nft.setTierDelegateTo(address(1), 1);
 
         // SCORING phase
         vm.warp(block.timestamp + 2 days);
         vm.prank(_users[0]);
-        vm.expectRevert(abi.encodeWithSignature("DefifaHook_DelegateChangesUnavailableInThisPhase()"));
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateChangesUnavailableInThisPhase.selector);
         _nft.setTierDelegateTo(address(1), 1);
     }
 
@@ -501,7 +501,7 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
 
         // Cash out during scoring before scorecard — weight=0 means NOTHING_TO_CLAIM revert
         bytes memory meta = _cashOutMeta(1, 1);
-        vm.expectRevert(DefifaHook.DefifaHook_NothingToClaim.selector);
+        vm.expectPartialRevert(DefifaHook.DefifaHook_NothingToClaim.selector);
         vm.prank(_users[0]);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({

@@ -134,7 +134,7 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
         });
 
         // Second initialization for the same gameId should revert.
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_AlreadyInitialized.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_AlreadyInitialized.selector);
         _standaloneGov.initializeGame({
             gameId: gameId, attestationStartTime: block.timestamp, attestationGracePeriod: 2 days, timelockDuration: 0
         });
@@ -162,7 +162,7 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
         // type(uint48).max + 1 should overflow the 48-bit packing.
         uint256 overflowStartTime = uint256(type(uint48).max) + 1;
 
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
         _standaloneGov.initializeGame({
             gameId: 99, attestationStartTime: overflowStartTime, attestationGracePeriod: 2 days, timelockDuration: 0
         });
@@ -177,7 +177,7 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
         // type(uint48).max + 1 should overflow the 48-bit packing.
         uint256 overflowGracePeriod = uint256(type(uint48).max) + 1;
 
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
         _standaloneGov.initializeGame({
             gameId: 100,
             attestationStartTime: block.timestamp,
@@ -194,7 +194,7 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
 
         // _users[0] owns an NFT in tier 1 during the MINT phase.
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
         _nft.setTierDelegateTo({delegatee: address(0), tierId: 1});
     }
 
@@ -208,7 +208,7 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
         delegations[0] = DefifaDelegation({delegatee: address(0), tierId: 1});
 
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
         _nft.setTierDelegatesTo(delegations);
     }
 
@@ -224,7 +224,7 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
         delegations[1] = DefifaDelegation({delegatee: address(0), tierId: 2});
 
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
         _nft.setTierDelegatesTo(delegations);
     }
 

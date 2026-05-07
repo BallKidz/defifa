@@ -20,7 +20,7 @@ contract SameTokenConstructorGuardTest is Test {
     function test_sameTokenConstructorReverts() public {
         IERC20 token = IERC20(makeAddr("token"));
 
-        vm.expectRevert(DefifaHook.DefifaHook_IdenticalTokens.selector);
+        vm.expectPartialRevert(DefifaHook.DefifaHook_IdenticalTokens.selector);
         new DefifaHook(directory, token, token);
     }
 

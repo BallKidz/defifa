@@ -147,7 +147,7 @@ contract DefifaRegressionFixesTest is JBTest, TestBaseWorkflow {
             timelockDuration: 1 hours
         });
 
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_GracePeriodTooShort.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_GracePeriodTooShort.selector);
         deployer.launchGameWith(d);
     }
 

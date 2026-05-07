@@ -340,7 +340,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             sc[i].cashOutWeight = (_nft.TOTAL_CASHOUT_WEIGHT() * 30) / 100; // 120% total
         }
 
-        vm.expectRevert(DefifaHookLib.DefifaHook_InvalidCashoutWeights.selector);
+        vm.expectPartialRevert(DefifaHookLib.DefifaHook_InvalidCashoutWeights.selector);
         _gov.submitScorecardFor(_gameId, sc);
     }
 
@@ -357,7 +357,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             sc[i].cashOutWeight = (_nft.TOTAL_CASHOUT_WEIGHT() * 20) / 100; // 80% total
         }
 
-        vm.expectRevert(DefifaHookLib.DefifaHook_InvalidCashoutWeights.selector);
+        vm.expectPartialRevert(DefifaHookLib.DefifaHook_InvalidCashoutWeights.selector);
         _gov.submitScorecardFor(_gameId, sc);
     }
 
@@ -379,7 +379,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
         // Second attestation should revert.
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_AlreadyAttested.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_AlreadyAttested.selector);
         _gov.attestToScorecardFrom(_gameId, pid);
     }
 
@@ -394,7 +394,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
         _gov.submitScorecardFor(_gameId, sc);
 
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_DuplicateScorecard.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_DuplicateScorecard.selector);
         _gov.submitScorecardFor(_gameId, sc);
     }
 
@@ -409,7 +409,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
         _attestAndRatify(sc);
 
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_AlreadyRatified.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_AlreadyRatified.selector);
         _gov.ratifyScorecardFrom(_gameId, sc);
     }
 
@@ -429,7 +429,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         // because cashOutWeightIsSet is true. But since governor already ratified, the hook owner is the governor.
         // The governor can't call setTierCashOutWeightsTo directly without going through ratification again.
         // The ratification path will revert with AlreadyRatified.
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_AlreadyRatified.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_AlreadyRatified.selector);
         _gov.ratifyScorecardFrom(_gameId, sc);
     }
 
@@ -444,14 +444,14 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.timestamp() + 1 days);
 
         vm.prank(_users[0]);
-        vm.expectRevert(abi.encodeWithSignature("DefifaHook_DelegateChangesUnavailableInThisPhase()"));
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateChangesUnavailableInThisPhase.selector);
         _nft.setTierDelegateTo(address(1), 1);
 
         // SCORING phase.
         _toScoring();
 
         vm.prank(_users[0]);
-        vm.expectRevert(abi.encodeWithSignature("DefifaHook_DelegateChangesUnavailableInThisPhase()"));
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateChangesUnavailableInThisPhase.selector);
         _nft.setTierDelegateTo(address(1), 1);
     }
 
@@ -465,7 +465,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
         bytes memory meta = _cashOutMeta(1, 1);
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaHook.DefifaHook_NothingToClaim.selector);
+        vm.expectPartialRevert(DefifaHook.DefifaHook_NothingToClaim.selector);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
             holder: _users[0],
@@ -529,7 +529,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         // forge-lint: disable-next-line(divide-before-multiply)
         sc[7].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT() - ((_nft.TOTAL_CASHOUT_WEIGHT() / 8) * 7);
 
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_UnownedProposedCashoutValue.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_UnownedProposedCashoutValue.selector);
         _gov.submitScorecardFor(_gameId, sc);
     }
 
@@ -545,7 +545,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
 
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.submitScorecardFor(_gameId, sc);
     }
 
@@ -568,7 +568,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         // Submit a different scorecard? Can't — already ratified.
         DefifaTierCashOutWeight[] memory sc2 = _buildScorecard(4);
         sc2[0].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT();
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_AlreadyRatified.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_AlreadyRatified.selector);
         _gov.submitScorecardFor(_gameId, sc2);
     }
 
@@ -672,7 +672,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         _setupGame(4, 1 ether);
         _toScoring();
 
-        vm.expectRevert(DefifaDeployer.DefifaDeployer_CantFulfillYet.selector);
+        vm.expectPartialRevert(DefifaDeployer.DefifaDeployer_CantFulfillYet.selector);
         deployer.fulfillCommitmentsOf(_pid);
     }
 
@@ -815,7 +815,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
         deployer.triggerNoContestFor(_pid);
 
-        vm.expectRevert(DefifaDeployer.DefifaDeployer_NoContestAlreadyTriggered.selector);
+        vm.expectPartialRevert(DefifaDeployer.DefifaDeployer_NoContestAlreadyTriggered.selector);
         deployer.triggerNoContestFor(_pid);
     }
 
@@ -827,7 +827,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         _setupGame(4, 1 ether);
         _toScoring();
 
-        vm.expectRevert(DefifaDeployer.DefifaDeployer_NotNoContest.selector);
+        vm.expectPartialRevert(DefifaDeployer.DefifaDeployer_NotNoContest.selector);
         deployer.triggerNoContestFor(_pid);
     }
 
@@ -855,7 +855,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.warp(d.start + 7 days + 1);
         assertEq(uint256(deployer.currentGamePhaseOf(_pid)), uint256(DefifaGamePhase.COMPLETE));
 
-        vm.expectRevert(DefifaDeployer.DefifaDeployer_NotNoContest.selector);
+        vm.expectPartialRevert(DefifaDeployer.DefifaDeployer_NotNoContest.selector);
         deployer.triggerNoContestFor(_pid);
     }
 
@@ -1360,7 +1360,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         // Non-holder attests — should revert because BWA weight is 0.
         address stranger = _addr(999);
         vm.prank(stranger);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.attestToScorecardFrom(_gameId, pid);
     }
 
@@ -1373,13 +1373,13 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
         // Both setTierDelegateTo and setTierDelegatesTo revert on address(0).
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
         _nft.setTierDelegateTo(address(0), 1);
 
         DefifaDelegation[] memory dd = new DefifaDelegation[](1);
         dd[0] = DefifaDelegation({delegatee: address(0), tierId: 1});
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
         _nft.setTierDelegatesTo(dd);
     }
 
@@ -1438,7 +1438,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         // No scorecard ratified yet. Cash out with 0 weight → hook reverts with NothingToClaim.
         bytes memory meta = _cashOutMeta(1, 1);
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaHook.DefifaHook_NothingToClaim.selector);
+        vm.expectPartialRevert(DefifaHook.DefifaHook_NothingToClaim.selector);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
             holder: _users[0],
@@ -1500,7 +1500,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         DefifaDelegation[] memory dd = new DefifaDelegation[](1);
         dd[0] = DefifaDelegation({delegatee: _users[0], tierId: 1});
         vm.prank(_users[0]);
-        vm.expectRevert(DefifaHook.DefifaHook_DelegateChangesUnavailableInThisPhase.selector);
+        vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateChangesUnavailableInThisPhase.selector);
         _nft.setTierDelegatesTo(dd);
     }
 
@@ -1682,7 +1682,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         assertEq(uint256(_gov.stateOf(_gameId, pid)), uint256(DefifaScorecardState.ACTIVE));
 
         // Ratification should fail.
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.ratifyScorecardFrom(_gameId, sc);
     }
 
@@ -1827,7 +1827,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         // Still in MINT phase.
 
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.submitScorecardFor(_gameId, sc);
     }
 
@@ -1949,7 +1949,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         _gov.submitScorecardFor(_gameId, sc);
 
         // No attestations yet — try to ratify.
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
         _gov.ratifyScorecardFrom(_gameId, sc);
     }
 
@@ -1962,7 +1962,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         _toScoring();
 
         // Query state for a non-existent scorecard.
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_UnknownProposal.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_UnknownProposal.selector);
         _gov.stateOf(_gameId, 12_345);
     }
 
@@ -2010,7 +2010,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         sc[2] = DefifaTierCashOutWeight({id: 2, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT() / 4});
         sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT() / 4});
 
-        vm.expectRevert(DefifaHookLib.DefifaHook_BadTierOrder.selector);
+        vm.expectPartialRevert(DefifaHookLib.DefifaHook_BadTierOrder.selector);
         _gov.submitScorecardFor(_gameId, sc);
     }
 
@@ -2071,7 +2071,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             timelockDuration: 0
         });
 
-        vm.expectRevert(DefifaGovernor.DefifaGovernor_GracePeriodTooShort.selector);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_GracePeriodTooShort.selector);
         _launch(d);
     }
 
