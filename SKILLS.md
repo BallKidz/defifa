@@ -43,4 +43,4 @@ Defifa is an onchain prediction game system built on Juicebox. This repo package
 - Defifa-specific cash-out weights and governance thresholds sit on top of `nana-721-hook-v6` and `nana-core-v6`.
 - When a task mentions NFT rendering or metadata, confirm whether it belongs in [`src/DefifaTokenUriResolver.sol`](./src/DefifaTokenUriResolver.sol).
 - If you edit phase transitions, check lifecycle, governance, and fee-accounting tests together.
-- If ratification, attestation, or quorum behavior changes, re-read the audit and regression tests before trusting a clean happy-path result.
+- If ratification, attestation, or quorum behavior changes, re-read the review and regression tests before trusting a clean happy-path result.

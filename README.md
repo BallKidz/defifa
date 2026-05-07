@@ -9,7 +9,7 @@ User journeys: [USER_JOURNEYS.md](./USER_JOURNEYS.md)
 Skills: [SKILLS.md](./SKILLS.md)  
 Risks: [RISKS.md](./RISKS.md)  
 Administration: [ADMINISTRATION.md](./ADMINISTRATION.md)  
-Audit instructions: [AUDIT_INSTRUCTIONS.md](./AUDIT_INSTRUCTIONS.md)
+Review instructions: [REVIEW_GUIDE.md](./REVIEW_GUIDE.md)
 
 ## What This Repo Owns
 
@@ -117,7 +117,7 @@ src/
   libraries/
   structs/
 test/
-  governance, fee-accounting, no-contest, adversarial, regression, fork, and audit coverage
+  governance, fee-accounting, no-contest, adversarial, regression, fork, and review coverage
 script/
   Deploy.s.sol
   helpers/
@@ -141,8 +141,8 @@ references/
 - [`test/DefifaFeeAccounting.t.sol`](./test/DefifaFeeAccounting.t.sol)
 - [`test/DefifaNoContest.t.sol`](./test/DefifaNoContest.t.sol)
 - [`test/DefifaAdversarialQuorum.t.sol`](./test/DefifaAdversarialQuorum.t.sol)
-- [`test/audit/PendingReserveDilution.t.sol`](./test/audit/PendingReserveDilution.t.sol)
-- [`test/audit/AttestationDoubleCount.t.sol`](./test/audit/AttestationDoubleCount.t.sol)
+- [`test/regression/PendingReserveDilution.t.sol`](./test/regression/PendingReserveDilution.t.sol)
+- [`test/regression/AttestationDoubleCount.t.sol`](./test/regression/AttestationDoubleCount.t.sol)
 - [`test/regression/GracePeriodBypass.t.sol`](./test/regression/GracePeriodBypass.t.sol)
 
 ## Deployment Notes

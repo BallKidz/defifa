@@ -40,10 +40,10 @@ contract TimestampReader2 {
     }
 }
 
-/// @title Pass12FixesTest
-/// @notice Tests for audit findings M-43 (timeout validation with effective grace period)
-///         and M-44 (tokensClaimableFor overquote due to missing pending reserve cost).
-contract Pass12FixesTest is JBTest, TestBaseWorkflow {
+/// @title DefifaRegressionFixesTest
+/// @notice Tests for regressions (timeout validation with effective grace period)
+///         and (tokensClaimableFor overquote due to missing pending reserve cost).
+contract DefifaRegressionFixesTest is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
     TimestampReader2 private _tsReader = new TimestampReader2();
@@ -135,7 +135,7 @@ contract Pass12FixesTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // M-43: Timeout validation uses effective (clamped) grace period
+    // Timeout validation uses effective (clamped) grace period
     // =========================================================================
 
     /// @notice Launching with grace=1s should revert because the governor enforces a
@@ -165,14 +165,14 @@ contract Pass12FixesTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // M-44: tokensClaimableFor includes pending reserve mint cost
+    // tokensClaimableFor includes pending reserve mint cost
     // =========================================================================
 
     /// @notice After minting with reserves, tokensClaimableFor should use totalMintCost + pendingReserveMintCost
     ///         as the denominator — matching the actual claim logic in afterCashOutRecordedWith.
     ///         This mirrors the proven working pattern from
     /// AdjustedPendingReserves.t.sol::test_cashOutWeight_usesAdjustedReserves.
-    function test_M44_fix_preview_includes_reserves() external {
+    function test_previewIncludesPendingReserveCost() external {
         // Launch a game with reserveFrequency=1 so each paid mint generates 1 pending reserve.
         DefifaLaunchProjectData memory d = _launchDataWithReserves(1);
         (_pid, _nft, _gov) = _launch(d);

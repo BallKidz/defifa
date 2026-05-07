@@ -38,7 +38,7 @@ contract TimestampReaderRegressions {
 }
 
 /// @title DefifaHookRegressions
-/// @notice Regression tests for audit findings in DefifaHook.
+/// @notice Regression tests for regressions in DefifaHook.
 contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 

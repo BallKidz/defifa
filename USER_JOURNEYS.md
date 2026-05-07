@@ -9,7 +9,7 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 - game creators launching a new Defifa market with fixed timing, tiers, and fee routing
 - players minting outcome pieces during MINT and later redeeming or refunding them
 - attestors and delegates submitting, supporting, revoking, and ratifying scorecards during SCORING
-- auditors tracing where game fairness depends on shared 721-store behavior, governor state, and core terminal flows
+- reviewers tracing where game fairness depends on shared 721-store behavior, governor state, and core terminal flows
 - operators handling no-contest recovery or optional fee-project ownership locking
 
 ## Key Surfaces

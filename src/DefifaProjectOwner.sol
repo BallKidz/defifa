@@ -17,7 +17,7 @@ contract DefifaProjectOwner is IERC721Receiver {
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
-    error DefifaProjectOwner_InvalidSender();
+    error DefifaProjectOwner_InvalidSender(address caller, address expectedSender);
 
     //*********************************************************************//
     // --------------- public immutable stored properties ---------------- //
@@ -64,7 +64,9 @@ contract DefifaProjectOwner is IERC721Receiver {
         operator;
 
         // Make sure the 721 received is the JBProjects contract.
-        if (msg.sender != address(PROJECTS)) revert DefifaProjectOwner_InvalidSender();
+        if (msg.sender != address(PROJECTS)) {
+            revert DefifaProjectOwner_InvalidSender({caller: msg.sender, expectedSender: address(PROJECTS)});
+        }
 
         // Set the correct permission.
         uint8[] memory permissionIds = new uint8[](1);

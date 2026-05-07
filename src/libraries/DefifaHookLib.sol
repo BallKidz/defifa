@@ -17,13 +17,9 @@ import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
 library DefifaHookLib {
     using SafeERC20 for IERC20;
 
-    error DefifaHook_BadTierOrder();
-    error DefifaHook_InvalidTierId();
-    error DefifaHook_InvalidCashoutWeights();
-
-    event ClaimedTokens(
-        address indexed beneficiary, uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount, address caller
-    );
+    error DefifaHook_BadTierOrder(uint256 previousTierId, uint256 tierId);
+    error DefifaHook_InvalidTierId(uint256 tierId, uint256 actualTierId, uint256 maxTierId, uint256 category);
+    error DefifaHook_InvalidCashoutWeights(uint256 totalWeight, uint256 expectedWeight);
 
     /// @notice The total cashOut weight that can be divided among tiers.
     uint256 internal constant TOTAL_CASHOUT_WEIGHT = 1_000_000_000_000_000_000;
@@ -59,22 +55,35 @@ library DefifaHookLib {
 
         for (uint256 i; i < numberOfTierWeights;) {
             // Enforce strict ascending order to prevent duplicate tier IDs.
-            if (tierWeights[i].id <= lastTierId && i != 0) revert DefifaHook_BadTierOrder();
+            if (tierWeights[i].id <= lastTierId && i != 0) {
+                revert DefifaHook_BadTierOrder({previousTierId: lastTierId, tierId: tierWeights[i].id});
+            }
             lastTierId = tierWeights[i].id;
 
             // Get the tier.
-            // slither-disable-next-line calls-loop
             tier = hookStore.tierOf({hook: hook, id: tierWeights[i].id, includeResolvedUri: false});
 
             // Guard against uint32 truncation: if the caller passes a tier ID > type(uint32).max,
             // the store may silently truncate and return a different tier.
-            if (tierWeights[i].id != tier.id) revert DefifaHook_InvalidTierId();
+            if (tierWeights[i].id != tier.id) {
+                revert DefifaHook_InvalidTierId({
+                    tierId: tierWeights[i].id, actualTierId: tier.id, maxTierId: maxTierId, category: tier.category
+                });
+            }
 
             // Can't set a cashOut weight for tiers not in category 0.
-            if (tier.category != 0) revert DefifaHook_InvalidTierId();
+            if (tier.category != 0) {
+                revert DefifaHook_InvalidTierId({
+                    tierId: tierWeights[i].id, actualTierId: tier.id, maxTierId: maxTierId, category: tier.category
+                });
+            }
 
             // Attempting to set the cashOut weight for a tier that does not exist (yet) reverts.
-            if (tier.id > maxTierId) revert DefifaHook_InvalidTierId();
+            if (tier.id > maxTierId) {
+                revert DefifaHook_InvalidTierId({
+                    tierId: tierWeights[i].id, actualTierId: tier.id, maxTierId: maxTierId, category: tier.category
+                });
+            }
 
             // Save the tier weight. Tiers are 1 indexed and should be stored 0 indexed.
             weights[tier.id - 1] = tierWeights[i].cashOutWeight;
@@ -88,7 +97,11 @@ library DefifaHookLib {
         }
 
         // Make sure the cumulative amount is exactly the total cashOut weight.
-        if (cumulativeCashOutWeight != TOTAL_CASHOUT_WEIGHT) revert DefifaHook_InvalidCashoutWeights();
+        if (cumulativeCashOutWeight != TOTAL_CASHOUT_WEIGHT) {
+            revert DefifaHook_InvalidCashoutWeights({
+                totalWeight: cumulativeCashOutWeight, expectedWeight: TOTAL_CASHOUT_WEIGHT
+            });
+        }
     }
 
     /// @notice Compute the cash out weight for a single token.
@@ -110,11 +123,9 @@ library DefifaHookLib {
         returns (uint256)
     {
         // Keep a reference to the token's tier ID.
-        // slither-disable-next-line calls-loop
         uint256 tierId = hookStore.tierIdOfToken(tokenId);
 
         // Keep a reference to the tier.
-        // slither-disable-next-line calls-loop
         JB721Tier memory tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
 
         // Get the tier's weight.
@@ -124,7 +135,6 @@ library DefifaHookLib {
         if (weight == 0) return 0;
 
         // Get the amount of tokens that have already been burned.
-        // slither-disable-next-line calls-loop
         uint256 burnedTokens = hookStore.numberOfBurnedFor({hook: hook, tierId: tierId});
 
         // If no tiers were minted, nothing to redeem.
@@ -135,7 +145,6 @@ library DefifaHookLib {
             tier.initialSupply - tier.remainingSupply - (burnedTokens - tokensRedeemedFrom[tierId]);
 
         // Include pending (unminted) reserve NFTs in the denominator, adjusted for refund-phase burns.
-        // slither-disable-next-line calls-loop
         totalTokensForCashoutInTier += IDefifaHook(hook).adjustedPendingReservesFor(tierId);
 
         // Calculate the percentage of the tier cashOut amount a single token counts for.
@@ -208,7 +217,6 @@ library DefifaHookLib {
         // Calculate the amount paid to mint the tokens that are being burned.
         uint256 cumulativeMintPrice;
         for (uint256 i; i < numberOfTokens; i++) {
-            // slither-disable-next-line calls-loop
             cumulativeMintPrice += hookStore.tierOfTokenId({
                 hook: hook, tokenId: tokenIds[i], includeResolvedUri: false
             }).price;
@@ -235,7 +243,6 @@ library DefifaHookLib {
     {
         uint256 numberOfTokenIds = tokenIds.length;
         for (uint256 i; i < numberOfTokenIds; i++) {
-            // slither-disable-next-line calls-loop
             cumulativeMintPrice += hookStore.tierOfTokenId({
                 hook: hook, tokenId: tokenIds[i], includeResolvedUri: false
             }).price;
@@ -327,9 +334,10 @@ library DefifaHookLib {
                     attestationAmounts[count] = accumulated;
                     count++;
                 }
-                if (tierIdsToMint[i] < currentTierId) revert DefifaHook_BadTierOrder();
+                if (tierIdsToMint[i] < currentTierId) {
+                    revert DefifaHook_BadTierOrder({previousTierId: currentTierId, tierId: tierIdsToMint[i]});
+                }
                 currentTierId = tierIdsToMint[i];
-                // slither-disable-next-line calls-loop
                 attestationUnits =
                 hookStore.tierOf({hook: hook, id: currentTierId, includeResolvedUri: false}).votingUnits;
                 accumulated = attestationUnits;
@@ -380,7 +388,12 @@ library DefifaHookLib {
         if (defifaAmount != 0) defifaToken.safeTransfer({to: beneficiary, value: defifaAmount});
         if (baseProtocolAmount != 0) baseProtocolToken.safeTransfer({to: beneficiary, value: baseProtocolAmount});
 
-        emit ClaimedTokens(beneficiary, defifaAmount, baseProtocolAmount, msg.sender);
+        emit IDefifaHook.ClaimedTokens({
+            beneficiary: beneficiary,
+            defifaTokenAmount: defifaAmount,
+            baseProtocolTokenAmount: baseProtocolAmount,
+            caller: msg.sender
+        });
 
         return (defifaAmount != 0 || baseProtocolAmount != 0);
     }

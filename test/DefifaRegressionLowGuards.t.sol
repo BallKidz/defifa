@@ -30,12 +30,12 @@ import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
 
-/// @title DefifaAuditLowGuardsTest
-/// @notice Tests for validation guards added in the audit/low-findings branch:
+/// @title DefifaRegressionLowGuardsTest
+/// @notice Tests for validation guards added in the regression branch:
 ///   - DefifaGovernor_AlreadyInitialized (re-initialization guard)
 ///   - uint48 overflow checks on attestationStartTime and attestationGracePeriod
 ///   - DefifaHook_DelegateAddressZero (address(0) delegation guard)
-contract DefifaAuditLowGuardsTest is JBTest, TestBaseWorkflow {
+contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
     address _protocolFeeProjectTokenAccount;

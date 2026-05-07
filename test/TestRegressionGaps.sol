@@ -36,7 +36,7 @@ import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRules
 import {JBMultiTerminal} from "@bananapus/core-v6/src/JBMultiTerminal.sol";
 
 /// @notice Mock ERC-20 token with configurable decimals for testing.
-contract AuditGapsMockToken is ERC20 {
+contract RegressionGapsMockToken is ERC20 {
     uint8 private _decimals;
 
     constructor(string memory name_, string memory symbol_, uint8 decimals_) ERC20(name_, symbol_) {
@@ -53,7 +53,7 @@ contract AuditGapsMockToken is ERC20 {
 }
 
 /// @dev Helper to read block.timestamp via an external call, bypassing the via-ir optimizer's timestamp caching.
-contract AuditGapsTimestampReader {
+contract RegressionGapsTimestampReader {
     function timestamp() external view returns (uint256) {
         return block.timestamp;
     }
@@ -63,15 +63,15 @@ contract AuditGapsTimestampReader {
 // GAP 1: ERC-20 GAMES
 // =============================================================================
 
-/// @title TestAuditGapsERC20Games
+/// @title TestRegressionGapsERC20Games
 /// @notice Tests Defifa game mechanics when using ERC-20 tokens instead of native ETH.
 /// Exercises 18-decimal ERC-20 token flows: minting, refunding, scoring, fee fulfillment,
 /// cash-out distribution, and no-contest mechanisms.
-contract TestAuditGapsERC20Games is JBTest, TestBaseWorkflow {
+contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
-    AuditGapsTimestampReader private _tsReader;
-    AuditGapsMockToken token;
+    RegressionGapsTimestampReader private _tsReader;
+    RegressionGapsMockToken token;
 
     address _protocolFeeProjectTokenAccount;
     address _defifaProjectTokenAccount;
@@ -93,8 +93,8 @@ contract TestAuditGapsERC20Games is JBTest, TestBaseWorkflow {
     function setUp() public virtual override {
         super.setUp();
 
-        _tsReader = new AuditGapsTimestampReader();
-        token = new AuditGapsMockToken("Test Token", "TT", 18);
+        _tsReader = new RegressionGapsTimestampReader();
+        token = new RegressionGapsMockToken("Test Token", "TT", 18);
 
         // Terminal configurations using the ERC-20.
         JBAccountingContext[] memory _tokens = new JBAccountingContext[](1);
@@ -527,14 +527,14 @@ contract TestAuditGapsERC20Games is JBTest, TestBaseWorkflow {
 // GAP 2: MULTI-GAME GOVERNOR ISOLATION
 // =============================================================================
 
-/// @title TestAuditGapsMultiGameIsolation
+/// @title TestRegressionGapsMultiGameIsolation
 /// @notice Tests that multiple simultaneous Defifa games are properly isolated.
 /// Ensures governor actions on one game (scorecard submission, attestation,
 /// ratification) do not affect the other game.
-contract TestAuditGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
+contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
-    AuditGapsTimestampReader private _tsReader;
+    RegressionGapsTimestampReader private _tsReader;
 
     address _protocolFeeProjectTokenAccount;
     address _defifaProjectTokenAccount;
@@ -561,7 +561,7 @@ contract TestAuditGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
     function setUp() public virtual override {
         super.setUp();
 
-        _tsReader = new AuditGapsTimestampReader();
+        _tsReader = new RegressionGapsTimestampReader();
 
         JBAccountingContext[] memory _tokens = new JBAccountingContext[](1);
         _tokens[0] = JBAccountingContext({token: JBConstants.NATIVE_TOKEN, decimals: 18, currency: JBCurrencyIds.ETH});

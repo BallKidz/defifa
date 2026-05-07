@@ -340,7 +340,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             sc[i].cashOutWeight = (_nft.TOTAL_CASHOUT_WEIGHT() * 30) / 100; // 120% total
         }
 
-        vm.expectRevert(DefifaHook.DefifaHook_InvalidCashoutWeights.selector);
+        vm.expectRevert(DefifaHookLib.DefifaHook_InvalidCashoutWeights.selector);
         _gov.submitScorecardFor(_gameId, sc);
     }
 
@@ -357,7 +357,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             sc[i].cashOutWeight = (_nft.TOTAL_CASHOUT_WEIGHT() * 20) / 100; // 80% total
         }
 
-        vm.expectRevert(DefifaHook.DefifaHook_InvalidCashoutWeights.selector);
+        vm.expectRevert(DefifaHookLib.DefifaHook_InvalidCashoutWeights.selector);
         _gov.submitScorecardFor(_gameId, sc);
     }
 

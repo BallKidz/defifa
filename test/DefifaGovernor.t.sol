@@ -23,6 +23,7 @@ import {DefifaDelegation} from "../src/structs/DefifaDelegation.sol";
 import {DefifaLaunchProjectData} from "../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../src/structs/DefifaTierParams.sol";
 import {DefifaTierCashOutWeight} from "../src/structs/DefifaTierCashOutWeight.sol";
+import {DefifaHookLib} from "../src/libraries/DefifaHookLib.sol";
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
@@ -1227,7 +1228,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             scorecards[i].cashOutWeight = cashOutWeight;
         }
 
-        vm.expectRevert(DefifaHook.DefifaHook_InvalidCashoutWeights.selector);
+        vm.expectRevert(DefifaHookLib.DefifaHook_InvalidCashoutWeights.selector);
         _governor.submitScorecardFor(_gameId, scorecards);
     }
 

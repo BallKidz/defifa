@@ -21,6 +21,7 @@ import {DefifaDelegation} from "../src/structs/DefifaDelegation.sol";
 import {DefifaLaunchProjectData} from "../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../src/structs/DefifaTierParams.sol";
 import {DefifaTierCashOutWeight} from "../src/structs/DefifaTierCashOutWeight.sol";
+import {DefifaHookLib} from "../src/libraries/DefifaHookLib.sol";
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
 import {JBTerminalConfig} from "@bananapus/core-v6/src/structs/JBTerminalConfig.sol";
 import {JBRulesetConfig} from "@bananapus/core-v6/src/structs/JBRulesetConfig.sol";
@@ -254,7 +255,7 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             sc[i].cashOutWeight = (_nft.TOTAL_CASHOUT_WEIGHT() * 30) / 100; // 120% total
         }
 
-        vm.expectRevert(DefifaHook.DefifaHook_InvalidCashoutWeights.selector);
+        vm.expectRevert(DefifaHookLib.DefifaHook_InvalidCashoutWeights.selector);
         _gov.submitScorecardFor(_gameId, sc);
     }
 

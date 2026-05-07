@@ -205,27 +205,30 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
                 gamePhaseText,
                 "</text>",
                 '<text x="10" y="85" style="font-size:26px; font-family: Capsules-500; font-weight:500; fill: #c0b3f1;">',
-                _getSubstring(titleSvg, 0, 30),
+                _getSubstring({str: titleSvg, startIndex: 0, endIndex: 30}),
                 "</text>",
                 '<text x="10" y="120" style="font-size:26px; font-family: Capsules-500; font-weight:500; fill: #c0b3f1;">',
-                _getSubstring(titleSvg, 30, 60),
+                _getSubstring({str: titleSvg, startIndex: 30, endIndex: 60}),
                 "</text>",
                 '<text x="10" y="205" style="font-size:80px; font-family: Capsules-700; font-weight:700; fill: #fea282;">',
-                bytes(_getSubstring(teamSvg, 20, 30)).length != 0 && bytes(_getSubstring(teamSvg, 10, 20)).length != 0
-                    ? _getSubstring(teamSvg, 0, 10)
+                bytes(_getSubstring({str: teamSvg, startIndex: 20, endIndex: 30})).length != 0
+                    && bytes(_getSubstring({str: teamSvg, startIndex: 10, endIndex: 20})).length != 0
+                    ? _getSubstring({str: teamSvg, startIndex: 0, endIndex: 10})
                     : "",
                 "</text>",
                 '<text x="10" y="295" style="font-size:80px; font-family: Capsules-700; font-weight:700; fill: #fea282;">',
-                bytes(_getSubstring(teamSvg, 20, 30)).length != 0
-                    ? _getSubstring(teamSvg, 10, 20)
-                    : bytes(_getSubstring(teamSvg, 10, 20)).length != 0 ? _getSubstring(teamSvg, 0, 10) : "",
+                bytes(_getSubstring({str: teamSvg, startIndex: 20, endIndex: 30})).length != 0
+                    ? _getSubstring({str: teamSvg, startIndex: 10, endIndex: 20})
+                    : bytes(_getSubstring({str: teamSvg, startIndex: 10, endIndex: 20})).length != 0
+                        ? _getSubstring({str: teamSvg, startIndex: 0, endIndex: 10})
+                        : "",
                 "</text>",
                 '<text x="10" y="385" style="font-size:80px; font-family: Capsules-700; font-weight:700; fill: #fea282;">',
-                bytes(_getSubstring(teamSvg, 20, 30)).length != 0
-                    ? _getSubstring(teamSvg, 20, 30)
-                    : bytes(_getSubstring(teamSvg, 10, 20)).length != 0
-                        ? _getSubstring(teamSvg, 10, 20)
-                        : _getSubstring(teamSvg, 0, 10),
+                bytes(_getSubstring({str: teamSvg, startIndex: 20, endIndex: 30})).length != 0
+                    ? _getSubstring({str: teamSvg, startIndex: 20, endIndex: 30})
+                    : bytes(_getSubstring({str: teamSvg, startIndex: 10, endIndex: 20})).length != 0
+                        ? _getSubstring({str: teamSvg, startIndex: 10, endIndex: 20})
+                        : _getSubstring({str: teamSvg, startIndex: 0, endIndex: 10}),
                 "</text>",
                 '<text x="10" y="430" style="font-size:16px; font-family: Capsules-500; font-weight:500; fill: #c0b3f1;">TOKEN ID: ',
                 tokenId.toString(),
@@ -240,7 +243,6 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
             )
         );
         parts[3] = string('"}');
-        // slither-disable-next-line encode-packed-collision
         return string.concat(parts[0], Base64.encode(abi.encodePacked(parts[1], parts[2], parts[3])));
     }
 

@@ -54,18 +54,14 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
-    error DefifaDeployer_CantFulfillYet();
-    error DefifaDeployer_GameOver();
-    error DefifaDeployer_InvalidFeePercent();
-    error DefifaDeployer_InvalidGameConfiguration();
-    error DefifaDeployer_IncorrectDecimalAmount();
-    error DefifaDeployer_InvalidCurrency();
-    error DefifaDeployer_NotNoContest();
-    error DefifaDeployer_NoContestAlreadyTriggered();
-    error DefifaDeployer_TerminalNotFound();
-    error DefifaDeployer_PhaseAlreadyQueued();
-    error DefifaDeployer_SplitsDontAddUp();
-    error DefifaDeployer_UnexpectedTerminalCurrency();
+    error DefifaDeployer_CantFulfillYet(uint256 gameId);
+    error DefifaDeployer_InvalidGameConfiguration(
+        uint256 start, uint256 mintPeriodDuration, uint256 refundPeriodDuration, uint256 tierCount
+    );
+    error DefifaDeployer_InvalidCurrency(address token, uint256 currency);
+    error DefifaDeployer_NotNoContest(uint256 gameId, DefifaGamePhase phase);
+    error DefifaDeployer_NoContestAlreadyTriggered(uint256 gameId);
+    error DefifaDeployer_SplitsDontAddUp(uint256 totalPercent, uint256 maxPercent);
 
     //*********************************************************************//
     // ----------------------- internal properties ----------------------- //
@@ -182,7 +178,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Get the game's current funding cycle along with its metadata.
         JBRuleset memory currentRuleset = CONTROLLER.RULESETS().currentOf(gameId);
         // Get the game's queued funding cycle along with its metadata.
-        // slither-disable-next-line unused-return
         (JBRuleset memory queuedRuleset,) = CONTROLLER.RULESETS().latestQueuedOf(gameId);
 
         // If the configurations are the same and the game hasn't ended, queueing is still needed.
@@ -294,7 +289,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         uint256 _baseProtocolProjectId,
         IJB721TiersHookStore _hookStore
     ) {
-        // slither-disable-next-line missing-zero-check
         HOOK_CODE_ORIGIN = _hookCodeOrigin;
         TOKEN_URI_RESOLVER = _tokenUriResolver;
         GOVERNOR = _governor;
@@ -313,19 +307,17 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
     /// @notice Fulfill split amounts between all splits for a game.
     /// @param gameId The ID of the game to fulfill splits for.
-    // slither-disable-next-line reentrancy-benign,reentrancy-no-eth
     function fulfillCommitmentsOf(uint256 gameId) external virtual override {
         // Make sure commitments haven't already been fulfilled.
         if (commitmentsFulfilledFor[gameId]) return;
         commitmentsFulfilledFor[gameId] = true;
 
         // Get the game's current funding cycle along with its metadata.
-        // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Make sure the game's commitments can be fulfilled.
         if (!IDefifaHook(metadata.dataHook).cashOutWeightIsSet()) {
-            revert DefifaDeployer_CantFulfillYet();
+            revert DefifaDeployer_CantFulfillYet({gameId: gameId});
         }
 
         // Get the game token and the terminal.
@@ -337,10 +329,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         uint256 pot = terminal.STORE().balanceOf({terminal: address(terminal), projectId: gameId, token: token});
 
         // If the pot is empty, queue the final ruleset without attempting payouts.
-        // slither-disable-next-line incorrect-equality
         if (pot == 0) {
             _queueFinalRuleset({gameId: gameId, metadata: metadata});
-            // slither-disable-next-line reentrancy-events
             emit FulfilledCommitments({gameId: gameId, pot: 0, caller: msg.sender});
             return;
         }
@@ -356,7 +346,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Use the ruleset's baseCurrency — this matches the currency under which payout limits were stored
         // at launch time, regardless of whether the token is native ETH or an ERC-20.
         // Wrapped in try-catch so the final ruleset is always queued even if payout fails.
-        // slither-disable-next-line unused-return,reentrancy-no-eth
         try terminal.sendPayoutsOf({
             projectId: gameId, token: token, amount: feeAmount, currency: metadata.baseCurrency, minTokensPaidOut: 0
         }) {}
@@ -364,21 +353,18 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             // Payout failed — fee stays in pot. Reset to 0 so currentGamePotOf
             // doesn't double-count the fee.
             fulfilledCommitmentsOf[gameId] = 0;
-            // slither-disable-next-line reentrancy-events
             emit CommitmentPayoutFailed({gameId: gameId, amount: feeAmount, reason: reason});
         }
 
         // Queue the final ruleset and emit.
         _queueFinalRuleset({gameId: gameId, metadata: metadata});
 
-        // slither-disable-next-line reentrancy-events
         emit FulfilledCommitments({gameId: gameId, pot: pot, caller: msg.sender});
     }
 
     /// @notice Launches a new game owned by this contract with a DefifaHook attached.
     /// @param launchProjectData Data necessary to fulfill the transaction to launch a game.
     /// @return gameId The ID of the newly configured game.
-    // slither-disable-next-line reentrancy-benign,reentrancy-no-eth
     function launchGameWith(DefifaLaunchProjectData memory launchProjectData)
         external
         override
@@ -391,7 +377,14 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         if (launchProjectData.start == 0) {
             uint256 start =
                 currentTimestamp + launchProjectData.mintPeriodDuration + launchProjectData.refundPeriodDuration;
-            if (start > type(uint48).max) revert DefifaDeployer_InvalidGameConfiguration();
+            if (start > type(uint48).max) {
+                revert DefifaDeployer_InvalidGameConfiguration({
+                    start: start,
+                    mintPeriodDuration: launchProjectData.mintPeriodDuration,
+                    refundPeriodDuration: launchProjectData.refundPeriodDuration,
+                    tierCount: launchProjectData.tiers.length
+                });
+            }
 
             // Casting to uint48 is safe because `start` was bounded above.
             // forge-lint: disable-next-line(unsafe-typecast)
@@ -399,7 +392,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         }
         // If callers provide a future start with no mint duration, derive a mint window that begins now and ends
         // before the refund window. This preserves the requested start while keeping minting immediately available.
-        // slither-disable-next-line incorrect-equality
         else if (
             launchProjectData.mintPeriodDuration == 0
                 && launchProjectData.start > currentTimestamp + launchProjectData.refundPeriodDuration
@@ -410,20 +402,34 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         // Make sure the provided gameplay timestamps are sequential and that there is a mint duration.
         if (
-            // slither-disable-next-line incorrect-equality
             launchProjectData.mintPeriodDuration == 0
                 || launchProjectData.start
                     < currentTimestamp + launchProjectData.refundPeriodDuration + launchProjectData.mintPeriodDuration
-        ) revert DefifaDeployer_InvalidGameConfiguration();
+        ) {
+            revert DefifaDeployer_InvalidGameConfiguration({
+                start: launchProjectData.start,
+                mintPeriodDuration: launchProjectData.mintPeriodDuration,
+                refundPeriodDuration: launchProjectData.refundPeriodDuration,
+                tierCount: launchProjectData.tiers.length
+            });
+        }
 
         // The hook and governor hardcode uint256[128] tier-weight tables, so reject games with more than 128 tiers.
-        if (launchProjectData.tiers.length > 128) revert DefifaDeployer_InvalidGameConfiguration();
+        if (launchProjectData.tiers.length > 128) {
+            revert DefifaDeployer_InvalidGameConfiguration({
+                start: launchProjectData.start,
+                mintPeriodDuration: launchProjectData.mintPeriodDuration,
+                refundPeriodDuration: launchProjectData.refundPeriodDuration,
+                tierCount: launchProjectData.tiers.length
+            });
+        }
 
         // Reject ERC-20 games with a zero currency. A zero baseCurrency would cause payout limit lookups
         // in fulfillCommitmentsOf to silently fail, skipping all commitment payouts.
-        // slither-disable-next-line incorrect-equality
         if (launchProjectData.token.token != JBConstants.NATIVE_TOKEN && launchProjectData.token.currency == 0) {
-            revert DefifaDeployer_InvalidCurrency();
+            revert DefifaDeployer_InvalidCurrency({
+                token: launchProjectData.token.token, currency: launchProjectData.token.currency
+            });
         }
 
         // If a scorecard timeout is set, it must exceed the full ratification window:
@@ -437,7 +443,14 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             if (
                 launchProjectData.scorecardTimeout
                     <= attestationDelay + launchProjectData.attestationGracePeriod + launchProjectData.timelockDuration
-            ) revert DefifaDeployer_InvalidGameConfiguration();
+            ) {
+                revert DefifaDeployer_InvalidGameConfiguration({
+                    start: launchProjectData.start,
+                    mintPeriodDuration: launchProjectData.mintPeriodDuration,
+                    refundPeriodDuration: launchProjectData.refundPeriodDuration,
+                    tierCount: launchProjectData.tiers.length
+                });
+            }
         }
 
         // Reserve the game ID up front so permissionless project creations cannot invalidate hook deployment.
@@ -542,7 +555,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         }
 
         // Increment the nonce for this deployment.
-        // slither-disable-next-line reentrancy-benign
         uint256 currentNonce = ++_nonce;
 
         // Clone deterministically using sender and nonce to prevent front-running.
@@ -601,7 +613,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             bytecode: _cloneCreationCodeFor(address(HOOK_CODE_ORIGIN))
         });
 
-        // slither-disable-next-line reentrancy-events
         emit LaunchGame(gameId, hook, GOVERNOR, uriResolver, msg.sender);
     }
 
@@ -617,12 +628,13 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @param gameId The ID of the game to trigger no-contest for.
     function triggerNoContestFor(uint256 gameId) external override {
         // Make sure the game is currently in NO_CONTEST phase.
-        if (currentGamePhaseOf(gameId) != DefifaGamePhase.NO_CONTEST) {
-            revert DefifaDeployer_NotNoContest();
+        DefifaGamePhase phase = currentGamePhaseOf(gameId);
+        if (phase != DefifaGamePhase.NO_CONTEST) {
+            revert DefifaDeployer_NotNoContest({gameId: gameId, phase: phase});
         }
 
         // Make sure no-contest hasn't already been triggered.
-        if (noContestTriggeredFor[gameId]) revert DefifaDeployer_NoContestAlreadyTriggered();
+        if (noContestTriggeredFor[gameId]) revert DefifaDeployer_NoContestAlreadyTriggered({gameId: gameId});
 
         // Mark as triggered.
         // Note: the queued ruleset does not take effect until the current ruleset's cycle ends (or immediately
@@ -632,7 +644,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         noContestTriggeredFor[gameId] = true;
 
         // Get the game's current ruleset metadata for the data hook address.
-        // slither-disable-next-line unused-return
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Queue a new ruleset without payout limits so surplus = balance, enabling refunds.
@@ -673,12 +684,10 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         });
 
         // Queue the no-contest refund ruleset.
-        // slither-disable-next-line unused-return
         CONTROLLER.queueRulesetsOf({
             projectId: gameId, rulesetConfigurations: rulesetConfigs, memo: "Defifa game: no contest."
         });
 
-        // slither-disable-next-line reentrancy-events
         emit QueuedNoContest(gameId, msg.sender);
     }
 
@@ -711,10 +720,13 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         }
 
         // Validate that total fee splits don't exceed 100%.
-        if (totalAbsolutePercent > JBConstants.SPLITS_TOTAL_PERCENT) revert DefifaDeployer_SplitsDontAddUp();
+        if (totalAbsolutePercent > JBConstants.SPLITS_TOTAL_PERCENT) {
+            revert DefifaDeployer_SplitsDontAddUp({
+                totalPercent: totalAbsolutePercent, maxPercent: JBConstants.SPLITS_TOTAL_PERCENT
+            });
+        }
 
         // Store the total absolute percent for use in fulfillCommitmentsOf.
-        // slither-disable-next-line reentrancy-benign
         _commitmentPercentOf[gameId] = totalAbsolutePercent;
 
         // Build the splits array: user splits + Defifa + NANA (NANA last to absorb rounding).
@@ -943,7 +955,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         });
 
         // Launch the rulesets for the reserved project and set the project URI in the same controller call.
-        // slither-disable-next-line unused-return
         CONTROLLER.launchRulesetsFor({
             projectId: gameId,
             projectUri: launchProjectData.projectUri,
@@ -994,7 +1005,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             fundAccessLimitGroups: new JBFundAccessLimitGroup[](0)
         });
 
-        // slither-disable-next-line unused-return
         CONTROLLER.queueRulesetsOf({
             projectId: gameId, rulesetConfigurations: rulesetConfigs, memo: "Defifa game has finished."
         });
