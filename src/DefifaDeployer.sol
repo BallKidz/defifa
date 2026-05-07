@@ -613,7 +613,9 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             bytecode: _cloneCreationCodeFor(address(HOOK_CODE_ORIGIN))
         });
 
-        emit LaunchGame(gameId, hook, GOVERNOR, uriResolver, msg.sender);
+        emit LaunchGame({
+            gameId: gameId, hook: hook, governor: GOVERNOR, tokenUriResolver: uriResolver, caller: msg.sender
+        });
     }
 
     /// @notice Allows this contract to receive 721s.
@@ -688,7 +690,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             projectId: gameId, rulesetConfigurations: rulesetConfigs, memo: "Defifa game: no contest."
         });
 
-        emit QueuedNoContest(gameId, msg.sender);
+        emit QueuedNoContest({gameId: gameId, caller: msg.sender});
     }
 
     //*********************************************************************//
