@@ -205,7 +205,7 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
                 allowAddPriceFeed: false,
                 ownerMustSendPayouts: false,
                 holdFees: false,
-                useTotalSurplusForCashOuts: false,
+                scopeCashOutsToLocalBalances: true,
                 useDataHookForPay: true,
                 useDataHookForCashOut: true,
                 dataHook: address(0),
