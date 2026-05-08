@@ -285,7 +285,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         )
     {
         // Make sure (fungible) project tokens aren't also being cashed out.
-        if (context.cashOutCount > 0) revert JB721Hook_UnexpectedTokenCashedOut();
+        if (context.cashOutCount > 0) revert JB721Hook_UnexpectedTokenCashedOut({cashOutCount: context.cashOutCount});
 
         // Fetch the cash out hook metadata using the corresponding metadata ID.
         (bool metadataExists, bytes memory metadata) = JBMetadataResolver.getDataFor({
@@ -466,7 +466,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Make sure the caller is a terminal of the project, and that the call is being made on behalf of an
         // interaction with the correct project.
         if (msg.value != 0 || !_isProjectTerminal(projectId) || context.projectId != projectId) {
-            revert JB721Hook_InvalidPay();
+            revert JB721Hook_InvalidPay({caller: msg.sender, contextProjectId: context.projectId, projectId: projectId});
         }
 
         // Process the payment.
@@ -645,7 +645,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Make sure the caller is a terminal of the project, and that the call is being made on behalf of an
         // interaction with the correct project.
         if (msg.value != 0 || !_isProjectTerminal(PROJECT_ID) || context.projectId != PROJECT_ID) {
-            revert JB721Hook_InvalidCashOut();
+            revert JB721Hook_InvalidCashOut({
+                caller: msg.sender, contextProjectId: context.projectId, projectId: PROJECT_ID, msgValue: msg.value
+            });
         }
 
         // Fetch the cash out hook metadata using the corresponding metadata ID.
