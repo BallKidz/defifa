@@ -117,6 +117,11 @@ interface IDefifaHook is IJB721Hook {
     /// @return The Defifa ERC-20 token.
     function DEFIFA_TOKEN() external view returns (IERC20);
 
+    /// @notice The cumulative mint price of all paid and reserved NFTs. Decremented on burns/refunds. Used as the
+    /// participation metric — immune to `addToBalanceOf` inflation because only actual mints increment it.
+    /// @return The total mint cost in the game's payment token.
+    function totalMintCost() external view returns (uint256);
+
     /// @notice The first owner of a given token ID.
     /// @param tokenId The token ID.
     /// @return The address of the first owner.

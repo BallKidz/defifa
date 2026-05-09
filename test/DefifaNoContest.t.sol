@@ -125,14 +125,14 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
     // MIN PARTICIPATION THRESHOLD
     // =========================================================================
 
-    /// @notice Game with balance below minParticipation returns NO_CONTEST.
+    /// @notice Game with mint cost below minParticipation returns NO_CONTEST.
     function testMinParticipation_belowThreshold_noContest() external {
-        // Set threshold to 5 ETH, but only mint 1 ETH total
+        // Set threshold to 5 ETH, but only mint 1 NFT at 1 ETH → totalMintCost = 1 ETH < 5 ETH
         DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 5 ether, 0);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
-        // Mint 1 token at 1 ETH — pot = 1 ETH < 5 ETH threshold
+        // Mint 1 NFT at 1 ETH — totalMintCost = 1 ETH < 5 ETH threshold
         _users = new address[](1);
         _users[0] = _addr(0);
         _mint(_users[0], 1, 1 ether);
@@ -148,9 +148,9 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         );
     }
 
-    /// @notice Game with token supply at or above minParticipation proceeds to SCORING.
+    /// @notice Game with mint cost at or above minParticipation proceeds to SCORING.
     function testMinParticipation_atThreshold_scoring() external {
-        // Set threshold to 4e18 tokens, mint exactly 4e18 tokens
+        // Set threshold to 4 ETH, mint exactly 4 NFTs at 1 ETH each → totalMintCost = 4 ETH
         DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 4 ether, 0);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
@@ -163,13 +163,9 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
             vm.warp(block.timestamp + 1);
         }
 
-        // Defifa games use weight=0 so `pay` doesn't mint fungible tokens.
-        // Mint project tokens to simulate the token supply that gamePhaseOf now checks.
-        _mintProjectTokens(_users[0], 4 ether);
-
         _toScoring();
 
-        // Token supply = 4e18 >= 4e18 threshold → SCORING
+        // totalMintCost = 4 ETH >= 4 ETH threshold → SCORING
         assertEq(
             uint256(deployer.currentGamePhaseOf(_pid)), uint256(DefifaGamePhase.SCORING), "phase should be SCORING"
         );
@@ -489,9 +485,9 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         );
     }
 
-    /// @notice When both set and token supply is above threshold, timeout triggers eventually.
+    /// @notice When both set and mint cost is above threshold, timeout triggers eventually.
     function testBothMechanisms_timeoutTriggersIfThresholdMet() external {
-        // Threshold: 2e18 tokens, Timeout: 7 days — mint 4e18 tokens
+        // Threshold: 2 ETH, Timeout: 7 days — mint 4 NFTs at 1 ETH each → totalMintCost = 4 ETH
         DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 2 ether, uint32(7 days));
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
@@ -504,13 +500,9 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
             vm.warp(block.timestamp + 1);
         }
 
-        // Defifa games use weight=0 so `pay` doesn't mint fungible tokens.
-        // Mint project tokens to simulate the token supply that gamePhaseOf now checks.
-        _mintProjectTokens(_users[0], 4 ether);
-
         _toScoring();
 
-        // Token supply = 4e18 > 2e18 threshold → SCORING
+        // totalMintCost = 4 ETH > 2 ETH threshold → SCORING
         assertEq(uint256(deployer.currentGamePhaseOf(_pid)), uint256(DefifaGamePhase.SCORING), "should be SCORING");
 
         // After timeout → NO_CONTEST
@@ -946,13 +938,5 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
             beneficiary: payable(user),
             metadata: meta
         });
-    }
-
-    /// @dev Mints fungible project tokens by pranking as the terminal. Defifa games use weight=0 so `pay` does not
-    /// mint fungible tokens. This helper simulates the token supply that `gamePhaseOf` now checks via
-    /// `CONTROLLER.TOKENS().totalSupplyOf(gameId)`.
-    function _mintProjectTokens(address beneficiary, uint256 amount) internal {
-        vm.prank(address(jbMultiTerminal()));
-        jbController().mintTokensOf(_pid, amount, beneficiary, "", false);
     }
 }

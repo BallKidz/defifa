@@ -30,8 +30,9 @@ import {DefifaTierParams} from "./DefifaTierParams.sol";
 /// @custom:member defaultAttestationDelegate The address that'll be set as the attestation delegate by default.
 /// @custom:member defaultTokenUriResolver The contract used to resolve token URIs if not provided by a tier
 /// specifically. @custom:member terminal The payment terminal where the project will accept funds through.
-/// @custom:member minParticipation The minimum treasury balance required for the game to proceed to scoring. If the
-/// balance is below this when scoring would begin, the game enters NO_CONTEST. Set to 0 to disable. @custom:member
+/// @custom:member minParticipation The minimum cumulative NFT mint cost required for the game to proceed to scoring.
+/// Compared against the hook's `totalMintCost` (immune to `addToBalanceOf` inflation). If below this when scoring
+/// would begin, the game enters NO_CONTEST. Set to 0 to disable. @custom:member
 /// scorecardTimeout The maximum time (in seconds) after the scoring phase begins for a scorecard to be ratified. If
 /// exceeded, the game enters NO_CONTEST. Set to 0 to disable.
 struct DefifaLaunchProjectData {
