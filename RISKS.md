@@ -22,6 +22,7 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 - **Deployer as project owner.** The deployer owns game projects and controls ruleset queuing and commitment fulfillment.
 - **DefifaProjectOwner irrecoverability.** Once the project NFT is transferred there, it cannot be recovered.
 - **External dependencies.** Core protocol and shared 721-store behavior remain upstream trust boundaries.
+- **Terminal provenance is the launcher's responsibility.** The hook authenticates terminals via directory registration, not implementation identity. A game is only as trustworthy as the terminal its launcher chose. Users must verify a game's terminal before participating.
 - **Default attestation delegate.** If set, it can accumulate meaningful governance power across new minters.
 
 ## 2. Economic Risks
@@ -86,6 +87,10 @@ Completion and ratification paths use one-way state to prevent replay or double-
 
 This is conservative, but it prevents users from front-running reserve dilution out of governance power or fee-token distribution.
 
-### 8.5 One-tier games always resolve via no-contest
+### 8.5 Launcher-selected terminals are trusted per game
+
+`DefifaDeployer.launchGameWith(...)` is permissionless and allows the launcher to choose the terminal registered for the game. `DefifaHook` trusts any registered terminal as the source of pay and cash-out callbacks. This means a malicious launcher can register a callback-forging terminal that fabricates hook contexts without recording real payments. Users and integrators must verify a game's registered terminal before trusting or participating in it. The same applies to scorecard timing parameters and tier configuration — a game's safety depends on the launcher choosing sane inputs. Frontends and aggregators should cross-reference a game's terminal against the canonical `JBMultiTerminal` for the chain before displaying it as trustworthy.
+
+### 8.6 One-tier games always resolve via no-contest
 
 A single-tier game cannot complete normal governance because the governance attestation model gives zero weight to holders of a tier that receives 100% of the scorecard, making quorum unreachable. This is expected: the game falls through to `NO_CONTEST` once `scorecardTimeout` elapses, and players recover their mint price via the permissionless `triggerNoContestFor()` refund path that queues a refund ruleset. This only works when `scorecardTimeout > 0`. A one-tier game launched with `scorecardTimeout = 0` disables the timeout path entirely, and funds become permanently locked with no exit. Game deployers must ensure `scorecardTimeout > 0` for single-tier configurations.

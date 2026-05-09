@@ -97,10 +97,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @dev _tierId The ID of the tier to get a name for.
     mapping(uint256 => string) internal _tierNameOf;
 
-    /// @notice The cumulative mint price of all tokens (paid and reserved). Used as the denominator for fee token
-    /// ($DEFIFA/$NANA) distribution.
-    uint256 internal _totalMintCost;
-
     //*********************************************************************//
     // ---------------- public immutable stored properties --------------- //
     //*********************************************************************//
@@ -114,6 +110,10 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     //*********************************************************************//
     // --------------------- public stored properties -------------------- //
     //*********************************************************************//
+
+    /// @notice The cumulative mint price of all paid and reserved NFTs. Decremented on burns/refunds. Used as the
+    /// participation metric — immune to `addToBalanceOf` inflation because only actual mints increment it.
+    uint256 public override totalMintCost;
 
     /// @notice The amount that has been redeemed from this game, refunds are not counted.
     uint256 public override amountRedeemed;
@@ -411,7 +411,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             tokenIds: tokenIds,
             hookStore: store,
             hook: address(this),
-            totalMintCost: _totalMintCost + _pendingReserveMintCost(),
+            totalMintCost: totalMintCost + _pendingReserveMintCost(),
             defifaBalance: DEFIFA_TOKEN.balanceOf(address(this)),
             baseProtocolBalance: BASE_PROTOCOL_TOKEN.balanceOf(address(this))
         });
@@ -597,11 +597,11 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Fetch the tier details (needed for votingUnits below).
         JB721Tier memory tier = hookStore.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
 
-        // Increment _totalMintCost so reserved recipients can claim their share of fee tokens ($DEFIFA/$NANA).
+        // Increment totalMintCost so reserved recipients can claim their share of fee tokens ($DEFIFA/$NANA).
         // Note: reserved mints dilute existing fee token claimants because they increase the total mint cost
         // denominator without contributing new funds to the fee token balances. This is the intended design —
         // reserved recipients receive a proportional claim on fee tokens as if they had paid to mint.
-        _totalMintCost += tier.price * count;
+        totalMintCost += tier.price * count;
 
         for (uint256 i; i < count;) {
             // Set the token ID.
@@ -724,7 +724,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             beneficiaryReceivedTokens = _claimTokensFor({
                 beneficiary: context.beneficiary,
                 shareToBeneficiary: cumulativeMintPrice,
-                outOfTotal: _totalMintCost + _pendingReserveMintCost()
+                outOfTotal: totalMintCost + _pendingReserveMintCost()
             });
         }
 
@@ -739,7 +739,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         }
 
         // Decrement the paid mint cost by the cumulative mint price of the tokens being burned.
-        _totalMintCost -= cumulativeMintPrice;
+        totalMintCost -= cumulativeMintPrice;
     }
 
     /// @notice Mint reserved tokens within the tier for the provided value.
@@ -917,7 +917,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         uint256 tokenId;
 
         // Increment the paid mint cost.
-        _totalMintCost += amount;
+        totalMintCost += amount;
 
         // Loop through each token ID and mint.
         for (uint256 i; i < mintsLength;) {

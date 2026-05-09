@@ -186,7 +186,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
     /// @notice The safety mechanism parameters of a game.
     /// @param gameId The ID of the game to get the safety params of.
-    /// @return minParticipation The minimum treasury balance for the game to proceed to scoring.
+    /// @return minParticipation The minimum cumulative NFT mint cost for the game to proceed to scoring.
     /// @return scorecardTimeout The maximum time after scoring begins for a scorecard to be ratified.
     function safetyParamsOf(uint256 gameId)
         external
@@ -249,12 +249,13 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Get the game's ops data for the safety mechanism checks. Cache to avoid repeated SLOAD.
         DefifaOpsData memory ops = _opsOf[gameId];
 
-        // Check minimum participation threshold using token supply (not terminal balance).
-        // Token supply reflects actual minted participation — direct `addToBalanceOf` top-ups
-        // don't mint tokens and therefore can't bypass this check.
+        // Check minimum participation threshold using cumulative NFT mint cost from the hook.
+        // Terminal balance is NOT used because `addToBalanceOf` can inflate it without minting NFTs.
+        // `totalMintCost` tracks only actual paid mint value and is decremented on refunds/burns.
         if (ops.minParticipation > 0) {
-            uint256 totalTokenSupply = CONTROLLER.TOKENS().totalSupplyOf(gameId);
-            if (totalTokenSupply < ops.minParticipation) return DefifaGamePhase.NO_CONTEST;
+            if (IDefifaHook(metadata.dataHook).totalMintCost() < ops.minParticipation) {
+                return DefifaGamePhase.NO_CONTEST;
+            }
         }
 
         // Check scorecard ratification timeout: if enough time has passed without a ratified scorecard, the game is
