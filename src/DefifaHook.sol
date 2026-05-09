@@ -588,6 +588,11 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             });
         }
 
+        // Cap count by the refund-adjusted pending reserves to prevent inflating totalMintCost
+        // from already-refunded mints whose reserve liability no longer exists.
+        uint256 adjusted = adjustedPendingReservesFor(tierId);
+        if (count > adjusted) count = adjusted;
+
         // Record the minted reserves for the tier.
         uint256[] memory tokenIds = hookStore.recordMintReservesFor({tierId: tierId, count: count});
 
