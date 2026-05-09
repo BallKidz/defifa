@@ -210,7 +210,7 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
             defaultAttestationDelegate: address(0),
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
-            minParticipation: 2 ether,
+            minParticipation: 3 ether,
             scorecardTimeout: 100_382,
             timelockDuration: 0
         });
