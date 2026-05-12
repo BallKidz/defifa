@@ -114,10 +114,20 @@ contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
         _governorImpl.transferOwnership(address(_deployer));
     }
 
-    function test_singleTierGameWithZeroTimeoutCanLaunch() external {
+    /// @notice One-tier games with `scorecardTimeout == 0` are rejected at launch (quorum unreachable -> permanent
+    /// lock).
+    function test_singleTierGameWithZeroTimeoutIsRejectedAtLaunch() external {
         DefifaLaunchProjectData memory data = _launchData();
-        uint256 gameId = _deployer.launchGameWith(data);
-        assertGt(gameId, 0);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector,
+                data.start,
+                data.mintPeriodDuration,
+                data.refundPeriodDuration,
+                data.tiers.length
+            )
+        );
+        _deployer.launchGameWith(data);
     }
 
     function _launchData() internal view returns (DefifaLaunchProjectData memory) {
