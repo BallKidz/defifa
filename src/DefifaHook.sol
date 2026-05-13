@@ -57,6 +57,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     error DefifaHook_Overspending(uint256 leftoverAmount);
     error DefifaHook_CashoutWeightsAlreadySet(uint256 projectId);
     error DefifaHook_ReservedTokenMintingPaused(uint256 projectId, uint256 tierId);
+    error DefifaHook_ReservedTokenMintingBlockedInNoContest(uint256 projectId, uint256 tierId);
     error DefifaHook_TransfersPaused(uint256 projectId, uint256 tokenId, address from, address to);
     error DefifaHook_Unauthorized(uint256 tokenId, address owner, address caller);
 
@@ -566,6 +567,13 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Minting reserves must not be paused.
         if (JB721TiersRulesetMetadataResolver.mintPendingReservesPaused(_rulesetMetadata())) {
             revert DefifaHook_ReservedTokenMintingPaused({projectId: PROJECT_ID, tierId: tierId});
+        }
+
+        // Block reserve minting while the game is in NO_CONTEST. Reserve mints inflate `totalMintCost` (so reserved
+        // recipients can claim fee tokens), which would otherwise let a game that failed `minParticipation` revive
+        // back to SCORING via free notional face value before `triggerNoContestFor` latches the failure.
+        if (_currentGamePhaseOf(PROJECT_ID) == DefifaGamePhase.NO_CONTEST) {
+            revert DefifaHook_ReservedTokenMintingBlockedInNoContest({projectId: PROJECT_ID, tierId: tierId});
         }
 
         // Cache the store reference in a local variable to avoid repeated SLOAD.
