@@ -23,8 +23,12 @@ This file instead describes the current v6 repo at a high level and the broad mi
 ## Local review remediations
 
 - Reserve-minted NFTs are now excluded from refund calculations during MINT, REFUND, and NO_CONTEST phases. A public `isReserveMint` mapping tracks which tokens were created via tier reserve frequency rather than paid for. `beforeCashOutRecordedWith` subtracts their tier price from `cumulativeMintPrice`, preventing reserve beneficiaries from withdrawing funds they never contributed.
+<<<<<<< fix/bd-cap-reserve-mints-by-adjusted-count
+- Reserve minting now caps `count` by `adjustedPendingReservesFor(tierId)` inside `DefifaHook.mintReservesFor`. Without the cap, a caller could request more reserves than the refund-adjusted pending balance, inflating `totalMintCost` from already-refunded mints and breaking the supply-vs-pending-reserves invariant that fee-token claims rely on.
+=======
 - One-tier games now revert at launch with `DefifaDeployer_InvalidGameConfiguration` if `scorecardTimeout == 0`. A one-tier game cannot reach quorum (the BWA multiplier reduces the sole tier's power to zero), so a zero timeout would leave funds permanently locked with no exit path. Enforcement moves this from a launcher-side responsibility (previously documented in `RISKS.md §8.6`) to a contract-level guarantee.
 - `DefifaHook.mintReservesFor` now reverts with `DefifaHook_ReservedTokenMintingBlockedInNoContest` while the game is in `NO_CONTEST`. Reserve mints inflate `totalMintCost` so reserved recipients can claim fee tokens; without the block, a game that failed `minParticipation` could be revived back to SCORING via free notional face value before `triggerNoContestFor` latches the failure.
+>>>>>>> main
 
 ## Migration notes
 

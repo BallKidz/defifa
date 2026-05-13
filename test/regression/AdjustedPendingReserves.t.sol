@@ -12,6 +12,7 @@ import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
+import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
@@ -338,6 +339,103 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
 
         uint256 expectedWeight = _nft.TOTAL_CASHOUT_WEIGHT() / 4;
         assertEq(weight, expectedWeight, "cashout weight denominator includes adjusted reserves");
+    }
+
+    // ================================================================
+    // Test 7: BD — reserve mints after full refund do not inflate totalMintCost
+    // ================================================================
+    function test_reserveMintAfterFullRefund_doesNotInflateTotalMintCost() external {
+        // Use reserveFrequency=1 so each paid mint generates 1 pending reserve.
+        DefifaLaunchProjectData memory data = _launchData(1);
+        (_pid, _nft, _gov) = _launch(data);
+
+        // MINT phase: player mints 2 tokens from tier 1 (pays 2 ETH).
+        vm.warp(data.start - data.mintPeriodDuration - data.refundPeriodDuration);
+        _mint(player, 1, 1 ether);
+        vm.warp(_tsReader.timestamp() + 1);
+        _mint(player, 1, 1 ether);
+        vm.warp(_tsReader.timestamp() + 1);
+
+        assertEq(_nft.totalMintCost(), 2 ether, "totalMintCost = 2 ETH after 2 paid mints");
+
+        // Store shows 2 pending reserves (freq=1, 2 paid mints).
+        assertEq(
+            _nft.store().numberOfPendingReservesFor(address(_nft), 1), 2, "store shows 2 pending reserves before refund"
+        );
+
+        // REFUND phase: player refunds both tokens.
+        vm.warp(data.start - data.refundPeriodDuration);
+        _cashOut(player, 1, 1);
+        vm.warp(_tsReader.timestamp() + 1);
+        _cashOut(player, 1, 2);
+        vm.warp(_tsReader.timestamp() + 1);
+
+        assertEq(_nft.totalMintCost(), 0, "totalMintCost = 0 after full refund");
+
+        // Store still shows 2 pending reserves (unaware of refund burns).
+        assertEq(
+            _nft.store().numberOfPendingReservesFor(address(_nft), 1),
+            2,
+            "store still shows 2 pending (unaware of burns)"
+        );
+
+        // adjustedPendingReservesFor correctly returns 0 (adjusted for refund burns).
+        assertEq(_nft.adjustedPendingReservesFor(1), 0, "adjusted pending = 0 after full refund");
+
+        // Advance to SCORING phase where reserve minting is allowed.
+        vm.warp(data.start);
+
+        // Attempt to mint reserves — should be capped to 0 by adjustedPendingReservesFor.
+        // Without the fix, this would add 2 * 1 ETH = 2 ETH back to totalMintCost.
+        JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
+        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 2});
+        _nft.mintReservesFor(reserveConfigs);
+
+        // With the fix: totalMintCost should still be 0 (no ghost reserves minted).
+        assertEq(_nft.totalMintCost(), 0, "totalMintCost must remain 0 - reserve mints capped by adjusted count");
+    }
+
+    // ================================================================
+    // Test 8: BD — partial refund caps reserve mints to adjusted count
+    // ================================================================
+    function test_partialRefund_capsReserveMintCount() external {
+        // Use reserveFrequency=1 so each paid mint generates 1 pending reserve.
+        DefifaLaunchProjectData memory data = _launchData(1);
+        (_pid, _nft, _gov) = _launch(data);
+
+        // MINT phase: 4 paid mints (4 ETH, 4 pending reserves).
+        vm.warp(data.start - data.mintPeriodDuration - data.refundPeriodDuration);
+        for (uint256 i; i < 4; i++) {
+            _mint(player, 1, 1 ether);
+            vm.warp(_tsReader.timestamp() + 1);
+        }
+
+        assertEq(_nft.totalMintCost(), 4 ether, "4 ETH paid");
+
+        // REFUND phase: refund 3 of 4 tokens.
+        vm.warp(data.start - data.refundPeriodDuration);
+        for (uint256 i = 1; i <= 3; i++) {
+            _cashOut(player, 1, i);
+            vm.warp(_tsReader.timestamp() + 1);
+        }
+
+        // totalMintCost decremented by 3 refunds.
+        assertEq(_nft.totalMintCost(), 1 ether, "1 ETH after 3 refunds");
+
+        // Store shows 4 pending, but adjusted shows only 1 (adjustedMints=4-3=1, ceil(1/1)=1).
+        assertEq(_nft.store().numberOfPendingReservesFor(address(_nft), 1), 4, "store: 4 pending");
+        assertEq(_nft.adjustedPendingReservesFor(1), 1, "adjusted: 1 pending");
+
+        // Advance to SCORING phase where reserve minting is allowed.
+        vm.warp(data.start);
+
+        // Try to mint all 4 reserves — should be capped to 1.
+        JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
+        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 4});
+        _nft.mintReservesFor(reserveConfigs);
+
+        // Only 1 reserve should have been minted (1 ETH added), not 4 (4 ETH).
+        assertEq(_nft.totalMintCost(), 2 ether, "totalMintCost = 1 ETH paid + 1 ETH reserve = 2 ETH");
     }
 
     // ---- helpers ----
