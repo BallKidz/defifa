@@ -23,6 +23,7 @@ This file instead describes the current v6 repo at a high level and the broad mi
 ## Local review remediations
 
 - Reserve-minted NFTs are now excluded from refund calculations during MINT, REFUND, and NO_CONTEST phases. A public `isReserveMint` mapping tracks which tokens were created via tier reserve frequency rather than paid for. `beforeCashOutRecordedWith` subtracts their tier price from `cumulativeMintPrice`, preventing reserve beneficiaries from withdrawing funds they never contributed.
+- Reserve minting now caps `count` by `adjustedPendingReservesFor(tierId)` inside `DefifaHook.mintReservesFor`. Without the cap, a caller could request more reserves than the refund-adjusted pending balance, inflating `totalMintCost` from already-refunded mints and breaking the supply-vs-pending-reserves invariant that fee-token claims rely on.
 
 ## Migration notes
 
