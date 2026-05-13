@@ -425,6 +425,20 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             });
         }
 
+        // One-tier games cannot reach quorum (the BWA multiplier reduces the sole beneficiary tier's power to zero),
+        // so they must have a nonzero scorecardTimeout to resolve via NO_CONTEST. Without a timeout they would lock
+        // forever with no exit. Two-tier games are also rounding-fragile (see RISKS.md §8.6) and should set a
+        // scorecardTimeout, but this is not enforced at the contract level because some configurations can still
+        // reach quorum with luck-of-the-draw holder distributions.
+        if (launchProjectData.tiers.length == 1 && launchProjectData.scorecardTimeout == 0) {
+            revert DefifaDeployer_InvalidGameConfiguration({
+                start: launchProjectData.start,
+                mintPeriodDuration: launchProjectData.mintPeriodDuration,
+                refundPeriodDuration: launchProjectData.refundPeriodDuration,
+                tierCount: launchProjectData.tiers.length
+            });
+        }
+
         // Reject ERC-20 games with a zero currency. A zero baseCurrency would cause payout limit lookups
         // in fulfillCommitmentsOf to silently fail, skipping all commitment payouts.
         if (launchProjectData.token.token != JBConstants.NATIVE_TOKEN && launchProjectData.token.currency == 0) {

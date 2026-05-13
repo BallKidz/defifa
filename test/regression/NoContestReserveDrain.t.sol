@@ -109,7 +109,10 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
         _governorImpl.transferOwnership(address(_deployer));
     }
 
-    function test_noContestReserveMintExcludedFromRefund() external {
+    /// @notice Reserve minting is blocked while the game is in NO_CONTEST. Without this guard, reserve mints would
+    /// inflate `totalMintCost` and revive a game that failed `minParticipation` past the NO_CONTEST check before
+    /// `triggerNoContestFor` latches the failure.
+    function test_noContestBlocksReserveMint() external {
         DefifaLaunchProjectData memory data = _launchData();
         uint256 projectId = _deployer.launchGameWith(data);
 
@@ -136,39 +139,18 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
 
         JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
         reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
+        vm.expectRevert(
+            abi.encodeWithSelector(DefifaHook.DefifaHook_ReservedTokenMintingBlockedInNoContest.selector, projectId, 1)
+        );
         hook.mintReservesFor(reserveConfigs);
-
-        assertEq(hook.balanceOf(_reserveBeneficiary), 1, "reserve beneficiary received a free NFT");
-        assertTrue(hook.isReserveMint(_generateTokenId(1, 2)), "token flagged as reserve mint");
 
         _deployer.triggerNoContestFor(projectId);
 
-        // Build metadata for the reserve token cashout before calling expectRevert.
-        uint256 reserveTokenId = _generateTokenId(1, 2);
-        uint256[] memory reserveTokenIds = new uint256[](1);
-        reserveTokenIds[0] = reserveTokenId;
-        bytes memory reserveCashOutMetadata = _buildCashOutMetadata(reserveTokenIds);
-
-        // The reserve beneficiary's cashout reverts — reserve-minted tokens are excluded from refund calculations.
-        vm.prank(_reserveBeneficiary);
-        vm.expectRevert();
-        jbMultiTerminal()
-            .cashOutTokensOf(
-                _reserveBeneficiary,
-                projectId,
-                0,
-                JBConstants.NATIVE_TOKEN,
-                0,
-                payable(_reserveBeneficiary),
-                reserveCashOutMetadata
-            );
-
-        // The paid player can still get their full refund.
+        // The paid player can still get their full refund through the no-contest path.
         uint256 playerTokenId = _generateTokenId(1, 1);
         uint256 balanceBefore = _player.balance;
         _cashOut(projectId, _player, playerTokenId);
 
-        // Player gets full refund (1 ether minus fee).
         assertTrue(_player.balance > balanceBefore, "player received refund");
         assertEq(hook.balanceOf(_player), 0, "player NFT burned");
     }

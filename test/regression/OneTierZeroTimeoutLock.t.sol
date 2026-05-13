@@ -113,9 +113,21 @@ contract OneTierZeroTimeoutLockTest is JBTest, TestBaseWorkflow {
         governor.transferOwnership(address(deployer));
     }
 
-    function test_oneTier_zeroTimeout_canLaunch() external {
-        projectId = deployer.launchGameWith(_launchData());
-        assertGt(projectId, 0);
+    /// @notice One-tier games with `scorecardTimeout == 0` are rejected at launch. Quorum is unreachable for
+    /// one- and two-tier games (BWA reduces beneficiary tier weight to zero, and two-tier games have zero
+    /// rounding headroom), so without a timeout the game would be permanently locked.
+    function test_oneTier_zeroTimeout_isRejectedAtLaunch() external {
+        DefifaLaunchProjectData memory data = _launchData();
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector,
+                data.start,
+                data.mintPeriodDuration,
+                data.refundPeriodDuration,
+                data.tiers.length
+            )
+        );
+        deployer.launchGameWith(data);
     }
 
     function _launchData() internal view returns (DefifaLaunchProjectData memory) {
