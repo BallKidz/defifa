@@ -29,6 +29,9 @@ import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
 import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
 import {JBMultiTerminal} from "@bananapus/core-v6/src/JBMultiTerminal.sol";
+import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
+import {IJBCashOutTerminal} from "@bananapus/core-v6/src/interfaces/IJBCashOutTerminal.sol";
+import {DefifaSingleTierVerifier} from "./helpers/DefifaSingleTierVerifier.sol";
 import {JBRulesetConfig, JBTerminalConfig} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
@@ -59,11 +62,14 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaSingleTierVerifier singleTierVerifier;
 
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
     function setUp() public virtual override {
         super.setUp();
+
+        singleTierVerifier = new DefifaSingleTierVerifier();
 
         // Terminal configurations.
         JBAccountingContext[] memory _tokens = new JBAccountingContext[](1);
@@ -887,57 +893,32 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         _governor.ratifyScorecardFrom(_gameId, scorecards);
         vm.warp(block.timestamp + 1);
 
-        uint256 _pot = jbMultiTerminal().currentSurplusOf(_projectId, new address[](0), 18, JBCurrencyIds.ETH);
-
-        // Verify that the cashOutWeights actually changed
+        // Pre-build the per-user cash-out metadata so the verifier can run the redemption loop without touching
+        // any test-contract-internal helpers. Verification then runs in `singleTierVerifier` over an external
+        // CALL — that boundary keeps Yul under the stack budget for this otherwise-too-tall fuzz body.
+        bytes[] memory cashOutMetadatas = new bytes[](_users.length);
         for (uint256 i = 0; i < _users.length; i++) {
-            address _user = _users[i];
             uint256 _tier = i <= nOfOtherTiers ? i + 1 : nOfOtherTiers + 1;
-            // Craft the metadata: redeem the tokenId
-            bytes memory cashOutMetadata;
-            {
-                uint256[] memory cashOutId = new uint256[](1);
-                cashOutId[0] = _generateTokenId(_tier, _tier == nOfOtherTiers + 1 ? i - nOfOtherTiers + 1 : 1);
-                cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutId));
-            }
-            uint256 _expectedTierCashOut;
-            {
-                // Calculate how much weight his tier has
-                uint256 _tierWeight = _tier == nOfOtherTiers + 1
-                    ? uint256(baseCashOutWeight) + uint256(winningTierExtraWeight)
-                    : baseCashOutWeight;
-
-                // If the cashOut is 0 this will revert
-                vm.prank(_user);
-                JBMultiTerminal(address(jbMultiTerminal()))
-                    .cashOutTokensOf({
-                    holder: _user,
-                    projectId: _projectId,
-                    cashOutCount: 0,
-                    tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                    minTokensReclaimed: 0,
-                    beneficiary: payable(_user),
-                    metadata: cashOutMetadata
-                });
-                // We calculate the expected output based on the given distribution and how much is in the pot
-                _expectedTierCashOut = (_pot * _tierWeight) / totalWeight;
-            }
-            {
-                // If this is the winning tier then the amount is divided among the nUsersWithWinningTier
-                if (_tier == nOfOtherTiers + 1) {
-                    _expectedTierCashOut = _expectedTierCashOut / nUsersWithWinningTier;
-                }
-            }
-            // Assert that our expected tier cashOut is ~equal to the actual amount
-            // Allowing for some rounding errors, max allowed error is 0.000001 ether
-            assertApproxEqRel(_expectedTierCashOut, _user.balance, 0.0001 ether);
+            uint256[] memory cashOutId = new uint256[](1);
+            cashOutId[0] = _generateTokenId(_tier, _tier == nOfOtherTiers + 1 ? i - nOfOtherTiers + 1 : 1);
+            cashOutMetadatas[i] = _buildCashOutMetadata(abi.encode(cashOutId));
         }
-        // All NFTs should have been redeemed, only some dust should be left
-        // Max allowed dust is 0.0001
-        uint256 remainingSurplus =
-            jbMultiTerminal().currentSurplusOf(_projectId, new address[](0), 18, JBCurrencyIds.ETH);
-        assertApproxEqAbs(
-            remainingSurplus, _pot * (totalCashOutWeight - assignedCashOutWeight) / totalCashOutWeight, 10 ** 14
+
+        singleTierVerifier.verify(
+            DefifaSingleTierVerifier.Args({
+                terminal: IJBTerminal(address(jbMultiTerminal())),
+                cashOutTerminal: IJBCashOutTerminal(address(jbMultiTerminal())),
+                users: _users,
+                cashOutMetadatas: cashOutMetadatas,
+                projectId: _projectId,
+                nOfOtherTiers: nOfOtherTiers,
+                nUsersWithWinningTier: nUsersWithWinningTier,
+                totalWeight: totalWeight,
+                totalCashOutWeight: totalCashOutWeight,
+                assignedCashOutWeight: assignedCashOutWeight,
+                baseCashOutWeight: baseCashOutWeight,
+                winningTierExtraWeight: winningTierExtraWeight
+            })
         );
     }
 
