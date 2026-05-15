@@ -82,6 +82,7 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
                 ownerMustSendPayouts: false,
                 holdFees: false,
                 scopeCashOutsToLocalBalances: true,
+                pauseCrossProjectFeeFreeInflows: false,
                 useDataHookForPay: true,
                 useDataHookForCashOut: true,
                 dataHook: address(0),
