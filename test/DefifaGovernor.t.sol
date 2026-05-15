@@ -495,11 +495,11 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
                 _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
             );
             // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
-            vm.warp(block.timestamp + 1);
+            vm.warp(_tsReader.timestamp() + 1);
             assertEq(
                 _governor.MAX_ATTESTATION_POWER_TIER(),
                 // forge-lint: disable-next-line(unsafe-typecast)
-                _governor.getAttestationWeight(_gameId, _users[i], uint48(block.timestamp))
+                _governor.getAttestationWeight(_gameId, _users[i], uint48(_tsReader.timestamp()))
             );
             // Have a user mint and refund the tier
             mintAndRefund(_nft, _projectId, i + 1);
@@ -532,7 +532,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // Forward time so proposals can be created
         uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
         // Forward time so voting becomes active
-        vm.warp(block.timestamp + _governor.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.timestamp() + _governor.attestationStartTimeOf(_gameId) + 1);
         // No voting delay after the initial voting delay has passed in
         //assertEq(_governor.attestationStartTimeOf(_gameId), 0);
         // All the users vote
@@ -545,7 +545,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             try _governor.attestToScorecardFrom(_gameId, _proposalId) {} catch {}
         }
         // each block is of 12 secs
-        vm.warp(block.timestamp + _governor.attestationGracePeriodOf(_gameId));
+        vm.warp(_tsReader.timestamp() + _governor.attestationGracePeriodOf(_gameId));
 
         _governor.ratifyScorecardFrom(_gameId, scorecards);
         // Move forward 1 block to start the new ruleset.
