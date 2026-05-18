@@ -407,10 +407,10 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             }
 
             // maxShare² in totalCashOutWeight scale (nonlinear: gentle for moderate, steep for extreme).
-            uint256 maxShareSquared = mulDiv(maxWeight, maxWeight, totalCashOutWeight);
+            uint256 maxShareSquared = mulDiv({x: maxWeight, y: maxWeight, denominator: totalCashOutWeight});
 
             // Penalty fills headroom proportional to concentration².
-            adjustedQuorum += mulDiv(headroom, maxShareSquared, totalCashOutWeight);
+            adjustedQuorum += mulDiv({x: headroom, y: maxShareSquared, denominator: totalCashOutWeight});
         }
 
         scorecard.quorumSnapshot = adjustedQuorum;

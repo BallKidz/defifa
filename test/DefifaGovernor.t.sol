@@ -459,6 +459,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         _governor.ratifyScorecardFrom(_gameId, scorecards);
     }
 
+    /// forge-config: default.fuzz.runs = 64
     function testSetCashOutRatesAndRedeem_multipleTiers(uint8 nTiers, uint8[] calldata distribution) public {
         nTiers = uint8(bound(uint256(nTiers), 11, 99));
         vm.assume(distribution.length > 0 && distribution.length < nTiers);
@@ -775,6 +776,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         _nft.setTierDelegateTo(_users[1], 1);
     }
 
+    /// forge-config: default.fuzz.runs = 64
     function testSetCashOutRatesAndRedeem_singleTier(
         uint8 nUsersWithWinningTier,
         uint8 winningTierExtraWeight,
@@ -938,7 +940,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         tierParams[0] = DefifaTierParams({
             reservedRate: 0,
             reservedTokenBeneficiary: address(0),
-            encodedIPFSUri: bytes32(0), // this way we dont need more tokenUris
+            encodedIpfsUri: bytes32(0), // this way we dont need more tokenUris
             shouldUseReservedTokenBeneficiaryAsDefault: false,
             name: "DEFIFA"
         });
@@ -1219,7 +1221,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             tierParams[i] = DefifaTierParams({
                 reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
-                encodedIPFSUri: bytes32(0), // this way we dont need more tokenUris
+                encodedIpfsUri: bytes32(0), // this way we dont need more tokenUris
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
                 name: "DEFIFA"
             });

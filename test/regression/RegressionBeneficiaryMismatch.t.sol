@@ -121,7 +121,7 @@ contract RegressionBeneficiaryMismatchTest is DefifaFeeAccountingTest {
         tierParams[0] = DefifaTierParams({
             reservedRate: 1,
             reservedTokenBeneficiary: reserveBeneficiary,
-            encodedIPFSUri: bytes32(0),
+            encodedIpfsUri: bytes32(0),
             shouldUseReservedTokenBeneficiaryAsDefault: false,
             name: "TEAM1"
         });
@@ -129,7 +129,7 @@ contract RegressionBeneficiaryMismatchTest is DefifaFeeAccountingTest {
             tierParams[i] = DefifaTierParams({
                 reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
-                encodedIPFSUri: bytes32(0),
+                encodedIpfsUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
                 name: "TEAM"
             });

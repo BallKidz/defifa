@@ -106,20 +106,20 @@ contract DeployMainnet is Script, Sphinx {
 
     function deploy() public sphinx {
         DefifaHook hook = new DefifaHook{salt: _salt}({
-            _directory: core.directory, _defifaToken: defifaToken, _baseProtocolToken: baseProtocolToken
+            directory: core.directory, defifaToken: defifaToken, baseProtocolToken: baseProtocolToken
         });
         DefifaTokenUriResolver tokenUriResolver = new DefifaTokenUriResolver{salt: _salt}(_typeface);
         DefifaGovernor governor = new DefifaGovernor{salt: _salt}({controller: core.controller, owner: safeAddress()});
         JB721TiersHookStore hookStore = new JB721TiersHookStore{salt: _salt}();
         DefifaDeployer deployer = new DefifaDeployer{salt: _salt}({
-            _hookCodeOrigin: address(hook),
-            _tokenUriResolver: tokenUriResolver,
-            _governor: governor,
-            _controller: core.controller,
-            _registry: registry.registry,
-            _defifaProjectId: _defifaProjectId,
-            _baseProtocolProjectId: _baseProtocolProjectId,
-            _hookStore: hookStore
+            hookCodeOrigin: address(hook),
+            tokenUriResolver: tokenUriResolver,
+            governor: governor,
+            controller: core.controller,
+            registry: registry.registry,
+            defifaProjectId: _defifaProjectId,
+            baseProtocolProjectId: _baseProtocolProjectId,
+            hookStore: hookStore
         });
 
         governor.transferOwnership(address(deployer));

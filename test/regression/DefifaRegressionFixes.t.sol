@@ -264,7 +264,7 @@ contract DefifaRegressionFixesTest is JBTest, TestBaseWorkflow {
             tp[i] = DefifaTierParams({
                 reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
-                encodedIPFSUri: bytes32(0),
+                encodedIpfsUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
                 name: "TEAM"
             });
@@ -299,7 +299,7 @@ contract DefifaRegressionFixesTest is JBTest, TestBaseWorkflow {
         tp[0] = DefifaTierParams({
             reservedRate: tier1Freq,
             reservedTokenBeneficiary: reserveBeneficiary,
-            encodedIPFSUri: bytes32(0),
+            encodedIpfsUri: bytes32(0),
             shouldUseReservedTokenBeneficiaryAsDefault: false,
             name: "TEAM1"
         });
@@ -307,7 +307,7 @@ contract DefifaRegressionFixesTest is JBTest, TestBaseWorkflow {
         tp[1] = DefifaTierParams({
             reservedRate: 0,
             reservedTokenBeneficiary: address(0),
-            encodedIPFSUri: bytes32(0),
+            encodedIpfsUri: bytes32(0),
             shouldUseReservedTokenBeneficiaryAsDefault: false,
             name: "TEAM2"
         });
@@ -315,14 +315,14 @@ contract DefifaRegressionFixesTest is JBTest, TestBaseWorkflow {
         tp[2] = DefifaTierParams({
             reservedRate: 0,
             reservedTokenBeneficiary: address(0),
-            encodedIPFSUri: bytes32(0),
+            encodedIpfsUri: bytes32(0),
             shouldUseReservedTokenBeneficiaryAsDefault: false,
             name: "TEAM3"
         });
         tp[3] = DefifaTierParams({
             reservedRate: 0,
             reservedTokenBeneficiary: address(0),
-            encodedIPFSUri: bytes32(0),
+            encodedIpfsUri: bytes32(0),
             shouldUseReservedTokenBeneficiaryAsDefault: false,
             name: "TEAM4"
         });

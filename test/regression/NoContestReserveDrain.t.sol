@@ -170,7 +170,7 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
         tierParams[0] = DefifaTierParams({
             reservedRate: 1,
             reservedTokenBeneficiary: _reserveBeneficiary,
-            encodedIPFSUri: bytes32(0),
+            encodedIpfsUri: bytes32(0),
             shouldUseReservedTokenBeneficiaryAsDefault: false,
             name: "SOLE"
         });

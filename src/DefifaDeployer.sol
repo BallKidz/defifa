@@ -273,31 +273,32 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     // -------------------------- constructor ---------------------------- //
     //*********************************************************************//
 
-    /// @param _hookCodeOrigin The code of the Defifa hook.
-    /// @param _tokenUriResolver The standard default token URI resolver.
-    /// @param _governor The Defifa governor.
-    /// @param _controller The controller to use to launch the game from.
-    /// @param _registry The contract storing references to the deployer of each hook.
-    /// @param _defifaProjectId The ID of the project that should take the fee from the games.
-    /// @param _baseProtocolProjectId The ID of the protocol project that'll receive fees from fulfilling commitments.
+    /// @param hookCodeOrigin The code of the Defifa hook.
+    /// @param tokenUriResolver The standard default token URI resolver.
+    /// @param governor The Defifa governor.
+    /// @param controller The controller to use to launch the game from.
+    /// @param registry The contract storing references to the deployer of each hook.
+    /// @param defifaProjectId The ID of the project that should take the fee from the games.
+    /// @param baseProtocolProjectId The ID of the protocol project that'll receive fees from fulfilling commitments.
+    /// @param hookStore The store used by Defifa hooks.
     constructor(
-        address _hookCodeOrigin,
-        IJB721TokenUriResolver _tokenUriResolver,
-        IDefifaGovernor _governor,
-        IJBController _controller,
-        IJBAddressRegistry _registry,
-        uint256 _defifaProjectId,
-        uint256 _baseProtocolProjectId,
-        IJB721TiersHookStore _hookStore
+        address hookCodeOrigin,
+        IJB721TokenUriResolver tokenUriResolver,
+        IDefifaGovernor governor,
+        IJBController controller,
+        IJBAddressRegistry registry,
+        uint256 defifaProjectId,
+        uint256 baseProtocolProjectId,
+        IJB721TiersHookStore hookStore
     ) {
-        HOOK_CODE_ORIGIN = _hookCodeOrigin;
-        TOKEN_URI_RESOLVER = _tokenUriResolver;
-        GOVERNOR = _governor;
-        CONTROLLER = _controller;
-        REGISTRY = _registry;
-        DEFIFA_PROJECT_ID = _defifaProjectId;
-        BASE_PROTOCOL_PROJECT_ID = _baseProtocolProjectId;
-        HOOK_STORE = _hookStore;
+        HOOK_CODE_ORIGIN = hookCodeOrigin;
+        TOKEN_URI_RESOLVER = tokenUriResolver;
+        GOVERNOR = governor;
+        CONTROLLER = controller;
+        REGISTRY = registry;
+        DEFIFA_PROJECT_ID = defifaProjectId;
+        BASE_PROTOCOL_PROJECT_ID = baseProtocolProjectId;
+        HOOK_STORE = hookStore;
         /// @dev Uses the deployer address as group ID. Game scoring rulesets use uint160(token) as group ID.
         SPLIT_GROUP = uint256(uint160(address(this)));
     }
@@ -545,7 +546,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 votingUnits: 0,
                 reserveFrequency: defifaTier.reservedRate,
                 reserveBeneficiary: defifaTier.reservedTokenBeneficiary,
-                encodedIPFSUri: defifaTier.encodedIPFSUri,
+                encodedIPFSUri: defifaTier.encodedIpfsUri,
                 category: 0,
                 discountPercent: 0,
                 flags: JB721TierConfigFlags({

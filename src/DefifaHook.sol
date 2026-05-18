@@ -390,7 +390,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @return The token URI corresponding with the tier or the tokenUriResolver URI.
     function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
         // Use the resolver.
-        return store.tokenUriResolverOf(address(this)).tokenUriOf(address(this), tokenId);
+        return store.tokenUriResolverOf(address(this)).tokenUriOf({nft: address(this), tokenId: tokenId});
     }
 
     /// @notice The amount of $DEFIFA and $BASE_PROTOCOL tokens claimable for a set of token IDs.
@@ -431,22 +431,22 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
     /// @dev The initial owner is msg.sender; ownership is transferred to the governor after initialization.
     constructor(
-        IJBDirectory _directory,
-        IERC20 _defifaToken,
-        IERC20 _baseProtocolToken
+        IJBDirectory directory,
+        IERC20 defifaToken,
+        IERC20 baseProtocolToken
     )
-        JB721Hook(_directory)
+        JB721Hook(directory)
         Ownable(msg.sender)
     {
-        if (address(_defifaToken) == address(_baseProtocolToken)) {
+        if (address(defifaToken) == address(baseProtocolToken)) {
             revert DefifaHook_IdenticalTokens({
-                defifaToken: address(_defifaToken), baseProtocolToken: address(_baseProtocolToken)
+                defifaToken: address(defifaToken), baseProtocolToken: address(baseProtocolToken)
             });
         }
 
         CODE_ORIGIN = address(this);
-        DEFIFA_TOKEN = _defifaToken;
-        BASE_PROTOCOL_TOKEN = _baseProtocolToken;
+        DEFIFA_TOKEN = defifaToken;
+        BASE_PROTOCOL_TOKEN = baseProtocolToken;
     }
 
     //*********************************************************************//
@@ -1135,7 +1135,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             hookStore.tierOfTokenId({hook: address(this), tokenId: tokenId, includeResolvedUri: false});
 
         // Record the transfers and keep a reference to where the token is coming from.
-        from = super._update(to, tokenId, auth);
+        from = super._update({to: to, tokenId: tokenId, auth: auth});
 
         // Transfers must not be paused (when not minting or burning).
         if (from != address(0)) {

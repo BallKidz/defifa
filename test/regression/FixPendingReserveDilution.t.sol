@@ -272,7 +272,7 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         tp[0] = DefifaTierParams({
             reservedRate: 1, // 1 reserve per mint
             reservedTokenBeneficiary: reserveBeneficiary,
-            encodedIPFSUri: bytes32(0),
+            encodedIpfsUri: bytes32(0),
             shouldUseReservedTokenBeneficiaryAsDefault: false,
             name: "TEAM"
         });
@@ -281,7 +281,7 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
             tp[i] = DefifaTierParams({
                 reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
-                encodedIPFSUri: bytes32(0),
+                encodedIpfsUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
                 name: "TEAM"
             });
