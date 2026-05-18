@@ -546,7 +546,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 votingUnits: 0,
                 reserveFrequency: defifaTier.reservedRate,
                 reserveBeneficiary: defifaTier.reservedTokenBeneficiary,
-                encodedIPFSUri: defifaTier.encodedIpfsUri,
+                encodedIpfsUri: defifaTier.encodedIpfsUri,
                 category: 0,
                 discountPercent: 0,
                 flags: JB721TierConfigFlags({

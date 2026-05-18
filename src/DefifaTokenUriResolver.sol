@@ -60,7 +60,7 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
         IDefifaHook hook = IDefifaHook(nft);
 
         // Get the game ID.
-        uint256 gameId = hook.PROJECT_ID();
+        uint256 gameId = hook.projectId();
 
         // Keep a reference to the game phase text.
         string memory gamePhaseText;
@@ -95,8 +95,8 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
             teamSvg = _escapeSvg(rawTeam);
 
             // Check to see if the tier has a URI. Return it if it does.
-            if (tier.encodedIPFSUri != bytes32(0)) {
-                return JBIpfsDecoder.decode({baseUri: hook.baseURI(), hexString: tier.encodedIPFSUri});
+            if (tier.encodedIpfsUri != bytes32(0)) {
+                return JBIpfsDecoder.decode({baseUri: hook.baseURI(), hexString: tier.encodedIpfsUri});
             }
 
             parts[0] = string("data:application/json;base64,");
