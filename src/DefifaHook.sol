@@ -403,7 +403,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         returns (uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount)
     {
         // If the game isn't complete, we do not have any tokens to claim.
-        if (_currentGamePhaseOf(PROJECT_ID) != DefifaGamePhase.COMPLETE) return (0, 0);
+        if (_currentGamePhaseOf(projectId) != DefifaGamePhase.COMPLETE) return (0, 0);
 
         // Include unminted reserves in the denominator. Once reserves are pending, their future recipients are
         // entitled to fee-token claims as if the reserve NFTs had already been minted; otherwise paid holders could
@@ -462,12 +462,14 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         virtual
         override(IJBPayHook, JB721Hook)
     {
-        uint256 projectId = PROJECT_ID;
+        uint256 localProjectId = projectId;
 
         // Make sure the caller is a terminal of the project, and that the call is being made on behalf of an
         // interaction with the correct project.
-        if (msg.value != 0 || !_isProjectTerminal(projectId) || context.projectId != projectId) {
-            revert JB721Hook_InvalidPay({caller: msg.sender, contextProjectId: context.projectId, projectId: projectId});
+        if (msg.value != 0 || !_isProjectTerminal(localProjectId) || context.projectId != localProjectId) {
+            revert JB721Hook_InvalidPay({
+                caller: msg.sender, contextProjectId: context.projectId, projectId: localProjectId
+            });
         }
 
         // Process the payment.
@@ -519,7 +521,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         if (address(store) != address(0)) revert();
 
         // Initialize the superclass.
-        _initialize({projectId: _gameId, name: _name, symbol: _symbol});
+        _initialize({initialProjectId: _gameId, name: _name, symbol: _symbol});
 
         // Store stuff.
         rulesets = _rulesets;
@@ -566,14 +568,14 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     function mintReservesFor(uint256 tierId, uint256 count) public override {
         // Minting reserves must not be paused.
         if (JB721TiersRulesetMetadataResolver.mintPendingReservesPaused(_rulesetMetadata())) {
-            revert DefifaHook_ReservedTokenMintingPaused({projectId: PROJECT_ID, tierId: tierId});
+            revert DefifaHook_ReservedTokenMintingPaused({projectId: projectId, tierId: tierId});
         }
 
         // Block reserve minting while the game is in NO_CONTEST. Reserve mints inflate `totalMintCost` (so reserved
         // recipients can claim fee tokens), which would otherwise let a game that failed `minParticipation` revive
         // back to SCORING via free notional face value before `triggerNoContestFor` latches the failure.
-        if (_currentGamePhaseOf(PROJECT_ID) == DefifaGamePhase.NO_CONTEST) {
-            revert DefifaHook_ReservedTokenMintingBlockedInNoContest({projectId: PROJECT_ID, tierId: tierId});
+        if (_currentGamePhaseOf(projectId) == DefifaGamePhase.NO_CONTEST) {
+            revert DefifaHook_ReservedTokenMintingBlockedInNoContest({projectId: projectId, tierId: tierId});
         }
 
         // Cache the store reference in a local variable to avoid repeated SLOAD.
@@ -657,9 +659,11 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     {
         // Make sure the caller is a terminal of the project, and that the call is being made on behalf of an
         // interaction with the correct project.
-        if (msg.value != 0 || !_isProjectTerminal(PROJECT_ID) || context.projectId != PROJECT_ID) {
+        uint256 localProjectId = projectId;
+
+        if (msg.value != 0 || !_isProjectTerminal(localProjectId) || context.projectId != localProjectId) {
             revert JB721Hook_InvalidCashOut({
-                caller: msg.sender, contextProjectId: context.projectId, projectId: PROJECT_ID, msgValue: msg.value
+                caller: msg.sender, contextProjectId: context.projectId, projectId: localProjectId, msgValue: msg.value
             });
         }
 
@@ -683,7 +687,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         uint256 tokenId;
 
         // Keep track of whether the cashOut is happening during the complete phase.
-        bool isComplete = _currentGamePhaseOf(PROJECT_ID) == DefifaGamePhase.COMPLETE;
+        bool isComplete = _currentGamePhaseOf(localProjectId) == DefifaGamePhase.COMPLETE;
 
         // Cache the store reference in a local variable to avoid repeated SLOAD in the loop.
         IJB721TiersHookStore hookStore = store;
@@ -779,15 +783,16 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @param tierWeights The tier weights to set.
     function setTierCashOutWeightsTo(DefifaTierCashOutWeight[] memory tierWeights) external override onlyOwner {
         // Get a reference to the game phase.
-        DefifaGamePhase gamePhase = _currentGamePhaseOf(PROJECT_ID);
+        uint256 localProjectId = projectId;
+        DefifaGamePhase gamePhase = _currentGamePhaseOf(localProjectId);
 
         // Make sure the game has ended.
         if (gamePhase != DefifaGamePhase.SCORING) {
-            revert DefifaHook_GameIsntScoringYet({projectId: PROJECT_ID, phase: gamePhase});
+            revert DefifaHook_GameIsntScoringYet({projectId: localProjectId, phase: gamePhase});
         }
 
         // Make sure the cashOut weights haven't already been set.
-        if (cashOutWeightIsSet) revert DefifaHook_CashoutWeightsAlreadySet({projectId: PROJECT_ID});
+        if (cashOutWeightIsSet) revert DefifaHook_CashoutWeightsAlreadySet({projectId: localProjectId});
 
         // Validate weights and build the array. Reverts on invalid input.
         _tierCashOutWeights =
@@ -807,9 +812,10 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         if (delegatee == address(0)) revert DefifaHook_DelegateAddressZero({tierId: tierId});
 
         // Make sure the current game phase is the minting phase.
-        DefifaGamePhase gamePhase = _currentGamePhaseOf(PROJECT_ID);
+        uint256 localProjectId = projectId;
+        DefifaGamePhase gamePhase = _currentGamePhaseOf(localProjectId);
         if (gamePhase != DefifaGamePhase.MINT) {
-            revert DefifaHook_DelegateChangesUnavailableInThisPhase({projectId: PROJECT_ID, phase: gamePhase});
+            revert DefifaHook_DelegateChangesUnavailableInThisPhase({projectId: localProjectId, phase: gamePhase});
         }
 
         _delegateTier({account: msg.sender, delegatee: delegatee, tierId: tierId});
@@ -819,9 +825,10 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @param delegations An array of tiers to set delegates for.
     function setTierDelegatesTo(DefifaDelegation[] memory delegations) external virtual override {
         // Make sure the current game phase is the minting phase.
-        DefifaGamePhase gamePhase = _currentGamePhaseOf(PROJECT_ID);
+        uint256 localProjectId = projectId;
+        DefifaGamePhase gamePhase = _currentGamePhaseOf(localProjectId);
         if (gamePhase != DefifaGamePhase.MINT) {
-            revert DefifaHook_DelegateChangesUnavailableInThisPhase({projectId: PROJECT_ID, phase: gamePhase});
+            revert DefifaHook_DelegateChangesUnavailableInThisPhase({projectId: localProjectId, phase: gamePhase});
         }
 
         // Keep a reference to the number of tier delegates.
@@ -1143,7 +1150,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             if (tier.flags.transfersPausable) {
                 // If transfers are paused and the NFT isn't being transferred to the zero address, revert.
                 if (to != address(0) && JB721TiersRulesetMetadataResolver.transfersPaused(_rulesetMetadata())) {
-                    revert DefifaHook_TransfersPaused({projectId: PROJECT_ID, tokenId: tokenId, from: from, to: to});
+                    revert DefifaHook_TransfersPaused({projectId: projectId, tokenId: tokenId, from: from, to: to});
                 }
             }
 
@@ -1199,6 +1206,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice Returns the current ruleset metadata for this project.
     /// @return The packed ruleset metadata.
     function _rulesetMetadata() internal view returns (uint256) {
-        return JBRulesetMetadataResolver.metadata(rulesets.currentOf(PROJECT_ID));
+        return JBRulesetMetadataResolver.metadata(rulesets.currentOf(projectId));
     }
 }
