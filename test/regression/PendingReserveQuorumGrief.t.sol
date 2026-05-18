@@ -256,7 +256,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
             tiers[i] = DefifaTierParams({
                 reservedRate: 1,
                 reservedTokenBeneficiary: _reserveBeneficiary,
-                encodedIPFSUri: bytes32(0),
+                encodedIpfsUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
                 name: "TEAM"
             });
@@ -266,7 +266,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
             tiers[i] = DefifaTierParams({
                 reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
-                encodedIPFSUri: bytes32(0),
+                encodedIpfsUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
                 name: "TEAM"
             });

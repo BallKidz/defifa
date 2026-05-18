@@ -363,7 +363,7 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             tp[i] = DefifaTierParams({
                 reservedRate: 1, // 1 reserve per 1 paid mint
                 reservedTokenBeneficiary: _reserveAddr,
-                encodedIPFSUri: bytes32(0),
+                encodedIpfsUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
                 name: "DEFIFA"
             });
@@ -597,7 +597,7 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             tp[i] = DefifaTierParams({
                 reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
-                encodedIPFSUri: bytes32(0),
+                encodedIpfsUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
                 name: "DEFIFA"
             });

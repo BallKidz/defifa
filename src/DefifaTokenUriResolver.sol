@@ -2,10 +2,10 @@
 pragma solidity 0.8.28;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC721Metadata} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {mulDiv} from "@prb/math/src/Common.sol";
 
-import {ERC721} from "@bananapus/721-hook-v6/src/abstract/ERC721.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 import {JBIpfsDecoder} from "@bananapus/721-hook-v6/src/libraries/JBIpfsDecoder.sol";
@@ -65,15 +65,14 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
         // Keep a reference to the game phase text.
         string memory gamePhaseText;
 
-        // Keep a reference to the rarity text;
+        // Keep a reference to the rarity text.
         string memory rarityText;
 
-        // Keep a reference to the rarity text;
+        // Keep a reference to the value text.
         string memory valueText;
 
         // Keep a reference to the game's name (escaped for JSON/SVG safety).
-        // TODO: Somehow make the `IDefifaHook` have the `name` function.
-        string memory titleSvg = _escapeSvg(ERC721(address(hook)).name());
+        string memory titleSvg = _escapeSvg(IERC721Metadata(address(hook)).name());
 
         // Keep a reference to the tier's name.
         string memory teamJson;
@@ -293,7 +292,7 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
         try IERC20Metadata(token).symbol() returns (string memory s) {
             tokenSymbol = _escapeSvg(s);
         } catch {
-            tokenSymbol = Strings.toHexString(uint160(token), 20);
+            tokenSymbol = Strings.toHexString({value: uint160(token), length: 20});
         }
 
         return string(abi.encodePacked(integerPart, ".", decimalPartStr, " ", tokenSymbol));

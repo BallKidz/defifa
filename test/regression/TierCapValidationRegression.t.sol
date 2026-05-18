@@ -154,7 +154,7 @@ contract TierCapValidationRegressionTest is JBTest, TestBaseWorkflow {
                 name: "TEAM",
                 reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
-                encodedIPFSUri: bytes32(0),
+                encodedIpfsUri: bytes32(0),
                 shouldUseReservedTokenBeneficiaryAsDefault: false
             });
         }
