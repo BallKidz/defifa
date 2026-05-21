@@ -52,6 +52,8 @@ contract TimestampReader {
 contract DefifaForkTest is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
+    uint256 constant BLOCK_NUMBER = 21_700_000;
+
     TimestampReader private _tsReader;
 
     address _protocolFeeProjectTokenAccount;
@@ -72,7 +74,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
     address[] _users;
 
     function setUp() public virtual override {
-        vm.createSelectFork("ethereum");
+        vm.createSelectFork("ethereum", BLOCK_NUMBER);
 
         // Deploy JB core fresh on fork.
         super.setUp();
