@@ -162,7 +162,7 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
 
         vm.prank(holder);
         jbMultiTerminal()
-            .cashOutTokensOf(holder, projectId, 0, JBConstants.NATIVE_TOKEN, 0, payable(holder), cashOutMetadata);
+            .cashOutTokensOf(holder, projectId, 0, JBConstants.NATIVE_TOKEN, 0, payable(holder), cashOutMetadata, 0);
     }
 
     function _launchData() internal view returns (DefifaLaunchProjectData memory) {
