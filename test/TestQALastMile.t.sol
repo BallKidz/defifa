@@ -242,7 +242,8 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
                 tokenToReclaim: JBConstants.NATIVE_TOKEN,
                 minTokensReclaimed: 0,
                 beneficiary: payable(_users[0]),
-                metadata: cashOutMetadata
+                metadata: cashOutMetadata,
+                referralProjectId: 0
             });
         }
         uint256 reclaimed = _users[0].balance - user0BalBefore;

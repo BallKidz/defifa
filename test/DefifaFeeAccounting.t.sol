@@ -226,7 +226,8 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
                 tokenToReclaim: JBConstants.NATIVE_TOKEN,
                 minTokensReclaimed: 0,
                 beneficiary: payable(users[i]),
-                metadata: cashOutMetadata
+                metadata: cashOutMetadata,
+                referralProjectId: 0
             });
 
             totalCashedOut += users[i].balance - balBefore;
@@ -354,7 +355,8 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
                 tokenToReclaim: JBConstants.NATIVE_TOKEN,
                 minTokensReclaimed: 0,
                 beneficiary: payable(users[i]),
-                metadata: cashOutMetadata
+                metadata: cashOutMetadata,
+                referralProjectId: 0
             });
 
             totalCashedOut += users[i].balance - balBefore;

@@ -282,7 +282,8 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(user),
-            metadata: meta
+            metadata: meta,
+            referralProjectId: 0
         });
     }
 

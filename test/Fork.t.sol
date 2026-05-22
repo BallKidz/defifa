@@ -476,7 +476,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_users[0]),
-            metadata: meta
+            metadata: meta,
+            referralProjectId: 0
         });
 
         // NFT not burned (revert rolled it back).
@@ -508,7 +509,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(attacker),
-            metadata: meta
+            metadata: meta,
+            referralProjectId: 0
         });
     }
 
@@ -1041,7 +1043,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(reserveAddr),
-            metadata: meta1
+            metadata: meta1,
+            referralProjectId: 0
         });
 
         bytes memory meta2 = _cashOutMeta(2, 2);
@@ -1054,7 +1057,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(reserveAddr),
-            metadata: meta2
+            metadata: meta2,
+            referralProjectId: 0
         });
 
         uint256 reserveDefifa = IERC20(_defifaProjectTokenAccount).balanceOf(reserveAddr);
@@ -1189,7 +1193,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(recipient),
-            metadata: meta
+            metadata: meta,
+            referralProjectId: 0
         });
         assertGt(recipient.balance - bb, 0, "new owner received ETH");
     }
@@ -1298,7 +1303,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(user),
-            metadata: meta
+            metadata: meta,
+            referralProjectId: 0
         });
         assertGt(user.balance - bb, 0, "batch cash out returned ETH");
         assertEq(_nft.balanceOf(user), 0, "all 3 NFTs burned");
@@ -1338,7 +1344,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_users[0]),
-            metadata: meta
+            metadata: meta,
+            referralProjectId: 0
         });
         assertGt(_users[0].balance - bb, 0, "cross-tier batch cash out returned ETH");
     }
@@ -1449,7 +1456,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_users[0]),
-            metadata: meta
+            metadata: meta,
+            referralProjectId: 0
         });
     }
 
@@ -1816,7 +1824,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_users[0]),
-            metadata: meta
+            metadata: meta,
+            referralProjectId: 0
         });
     }
 
@@ -2346,7 +2355,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(user),
-            metadata: meta
+            metadata: meta,
+            referralProjectId: 0
         });
     }
 
@@ -2382,7 +2392,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(user),
-            metadata: meta
+            metadata: meta,
+            referralProjectId: 0
         });
     }
 

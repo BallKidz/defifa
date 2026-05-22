@@ -60,7 +60,8 @@ contract DefifaSingleTierVerifier is Test {
                 tokenToReclaim: JBConstants.NATIVE_TOKEN,
                 minTokensReclaimed: 0,
                 beneficiary: payable(user),
-                metadata: a.cashOutMetadatas[i]
+                metadata: a.cashOutMetadatas[i],
+                referralProjectId: 0
             });
 
         uint256 expected = (pot * tierWeight) / a.totalWeight;

@@ -339,7 +339,8 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(user),
-            metadata: metadata
+            metadata: metadata,
+            referralProjectId: 0
         });
     }
 
