@@ -348,13 +348,16 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Use the ruleset's baseCurrency — this matches the currency under which payout limits were stored
         // at launch time, regardless of whether the token is native ETH or an ERC-20.
         // Wrapped in try-catch so the final ruleset is always queued even if payout fails.
+        // Credit `DEFIFA_PROJECT_ID` as the referrer so the protocol fee volume from every game's commitment
+        // payout attributes back to the Defifa project itself — Defifa is the project that facilitated the
+        // fee-paying activity, regardless of which `gameId` triggered it.
         try terminal.sendPayoutsOf({
             projectId: gameId,
             token: token,
             amount: feeAmount,
             currency: metadata.baseCurrency,
             minTokensPaidOut: 0,
-            referralProjectId: 0
+            referralProjectId: DEFIFA_PROJECT_ID
         }) {}
         catch (bytes memory reason) {
             // Payout failed — fee stays in pot. Reset to 0 so currentGamePotOf
