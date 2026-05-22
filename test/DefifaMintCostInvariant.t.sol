@@ -134,7 +134,8 @@ contract MintCostHandler is Test {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(info.holder),
-            metadata: metaHelper.createMetadata(bids, data)
+            metadata: metaHelper.createMetadata(bids, data),
+            referralProjectId: 0
         });
 
         expectedMintCost -= tierPrice;

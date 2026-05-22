@@ -332,7 +332,8 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
             tokenToReclaim: address(token),
             minTokensReclaimed: 0,
             beneficiary: payable(user),
-            metadata: cashOutMetadata
+            metadata: cashOutMetadata,
+            referralProjectId: 0
         });
     }
 
@@ -742,7 +743,8 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(user),
-            metadata: meta
+            metadata: meta,
+            referralProjectId: 0
         });
     }
 

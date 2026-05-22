@@ -463,7 +463,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_reserveAddr),
-            metadata: meta1
+            metadata: meta1,
+            referralProjectId: 0
         });
 
         bytes memory meta2 = _cashOutMeta(2, 2);
@@ -476,7 +477,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_reserveAddr),
-            metadata: meta2
+            metadata: meta2,
+            referralProjectId: 0
         });
 
         // Reserved minter should have gotten fee tokens from tiers 1+2 cash-outs
@@ -511,7 +513,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_users[0]),
-            metadata: meta
+            metadata: meta,
+            referralProjectId: 0
         });
         // NFT should NOT have been burned (revert rolled it back)
         assertEq(_nft.balanceOf(_users[0]), 1, "NFT not burned on revert");
@@ -698,7 +701,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(user),
-            metadata: meta
+            metadata: meta,
+            referralProjectId: 0
         });
     }
 
@@ -735,7 +739,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(user),
-            metadata: meta
+            metadata: meta,
+            referralProjectId: 0
         });
     }
 }

@@ -349,7 +349,12 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // at launch time, regardless of whether the token is native ETH or an ERC-20.
         // Wrapped in try-catch so the final ruleset is always queued even if payout fails.
         try terminal.sendPayoutsOf({
-            projectId: gameId, token: token, amount: feeAmount, currency: metadata.baseCurrency, minTokensPaidOut: 0
+            projectId: gameId,
+            token: token,
+            amount: feeAmount,
+            currency: metadata.baseCurrency,
+            minTokensPaidOut: 0,
+            referralProjectId: 0
         }) {}
         catch (bytes memory reason) {
             // Payout failed — fee stays in pot. Reset to 0 so currentGamePotOf

@@ -337,7 +337,8 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: address(usdc),
             minTokensReclaimed: 0,
             beneficiary: payable(user),
-            metadata: cashOutMetadata
+            metadata: cashOutMetadata,
+            referralProjectId: 0
         });
     }
 
@@ -355,7 +356,8 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: address(usdc),
             minTokensReclaimed: 0,
             beneficiary: payable(user),
-            metadata: cashOutMetadata
+            metadata: cashOutMetadata,
+            referralProjectId: 0
         });
     }
 

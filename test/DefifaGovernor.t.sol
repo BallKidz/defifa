@@ -623,7 +623,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_user),
-            metadata: cashOutMetadata
+            metadata: cashOutMetadata,
+            referralProjectId: 0
         });
 
         assertEq(IERC20(_protocolFeeProjectTokenAccount).balanceOf(_user), _nanaBalance + _receiveNana);
@@ -694,7 +695,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_refundUser),
-            metadata: cashOutMetadata
+            metadata: cashOutMetadata,
+            referralProjectId: 0
         });
         vm.warp(block.timestamp + 1);
 
@@ -1301,7 +1303,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_refundUser),
-            metadata: cashOutMetadata
+            metadata: cashOutMetadata,
+            referralProjectId: 0
         });
         // User should have their original funds again
         assertEq(_refundUser.balance, _cost);
