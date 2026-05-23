@@ -21,6 +21,7 @@ import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAcces
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
+import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -46,7 +47,7 @@ import {DefifaTierParams} from "./structs/DefifaTierParams.sol";
 /// the event concludes, a scorecard assigns cash-out weights to each tier. The treasury is distributed proportionally
 /// to winning NFT holders. Games progress through phases: COUNTDOWN → MINT → REFUND → SCORING → COMPLETE (or
 /// NO_CONTEST if minimum participation isn't met or scorecard ratification times out).
-contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGamePotReporter, IERC721Receiver {
+contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGamePotReporter, IERC721Receiver, Ownable {
     using Strings for uint256;
     using SafeERC20 for IERC20;
 
@@ -61,6 +62,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     error DefifaDeployer_InvalidCurrency(address token, uint256 currency);
     error DefifaDeployer_NotNoContest(uint256 gameId, DefifaGamePhase phase);
     error DefifaDeployer_NoContestAlreadyTriggered(uint256 gameId);
+    error DefifaDeployer_ReferralChainIdTooLarge(uint256 referralChainId);
+    error DefifaDeployer_ReferralProjectIdTooLarge(uint256 referralProjectId);
     error DefifaDeployer_SplitsDontAddUp(uint256 totalPercent, uint256 maxPercent);
 
     //*********************************************************************//
@@ -132,6 +135,12 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @notice Whether the no-contest refund ruleset has been triggered for a game.
     /// @dev Once triggered, the game stays in NO_CONTEST and refunds are enabled.
     mapping(uint256 => bool) public noContestTriggeredFor;
+
+    /// @notice The packed `(referralChainId << 48) | referralProjectId` reference credited as the referrer on
+    /// every fee-payout `sendPayoutsOf` call this deployer makes during `fulfillCommitmentsOf`. Defaults to
+    /// `(1, DEFIFA_PROJECT_ID)` so fee-volume credit accrues to the Defifa project on Ethereum mainnet
+    /// regardless of which chain the game runs on. Settable by the owner via `setReferralProjectId`.
+    uint256 public override referralProjectId;
 
     //*********************************************************************//
     // ------------------------- external views -------------------------- //
@@ -281,6 +290,9 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @param defifaProjectId The ID of the project that should take the fee from the games.
     /// @param baseProtocolProjectId The ID of the protocol project that'll receive fees from fulfilling commitments.
     /// @param hookStore The store used by Defifa hooks.
+    /// @param initialOwner The address granted authority to call `setReferralProjectId`. The contract is otherwise
+    /// stateless from an admin perspective — the owner only controls the referrer reference used when crediting
+    /// fee-volume on `fulfillCommitmentsOf` payouts.
     constructor(
         address hookCodeOrigin,
         IJB721TokenUriResolver tokenUriResolver,
@@ -289,8 +301,11 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         IJBAddressRegistry registry,
         uint256 defifaProjectId,
         uint256 baseProtocolProjectId,
-        IJB721TiersHookStore hookStore
-    ) {
+        IJB721TiersHookStore hookStore,
+        address initialOwner
+    )
+        Ownable(initialOwner)
+    {
         HOOK_CODE_ORIGIN = hookCodeOrigin;
         TOKEN_URI_RESOLVER = tokenUriResolver;
         GOVERNOR = governor;
@@ -301,6 +316,10 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         HOOK_STORE = hookStore;
         /// @dev Uses the deployer address as group ID. Game scoring rulesets use uint160(token) as group ID.
         SPLIT_GROUP = uint256(uint160(address(this)));
+
+        // Default referrer reference: Defifa project on Ethereum mainnet. Encoded `(chainId << 48) | projectId`
+        // per `JBMultiTerminal.currentReferralProjectId`. Owner can retarget via `setReferralProjectId`.
+        referralProjectId = (uint256(1) << 48) | defifaProjectId;
     }
 
     //*********************************************************************//
@@ -346,24 +365,18 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
         // Send only the fee portion as payouts. The remaining balance stays as surplus for cash-outs.
         // Use the ruleset's baseCurrency — this matches the currency under which payout limits were stored
-        // at launch time, regardless of whether the token is native ETH or an ERC-20.
-        // Wrapped in try-catch so the final ruleset is always queued even if payout fails.
-        // Credit `DEFIFA_PROJECT_ID` as the referrer so the protocol fee volume from every game's commitment
-        // payout attributes back to the Defifa project itself — Defifa is the project that facilitated the
-        // fee-paying activity, regardless of which `gameId` triggered it.
-        //
-        // The referrer reference is encoded as `(referralChainId << 48) | referralProjectId` per `JBMultiTerminal`'s
-        // `currentReferralProjectId` packing. Defifa lives on Ethereum mainnet, so we hard-code `referralChainId = 1`
-        // here: this ensures the protocol fee volume credit accrues to Defifa on mainnet regardless of which chain
-        // the game runs on. (Auto-resolving to `block.chainid` would scatter credit across L2s where Defifa has no
-        // canonical project ID, so we pin mainnet explicitly.)
+        // at launch time, regardless of whether the token is native ETH or an ERC-20. Wrapped in try-catch so
+        // the final ruleset is always queued even if payout fails. The configured `referralProjectId` (default
+        // `(1, DEFIFA_PROJECT_ID)`, owner-settable via `setReferralProjectId`) credits Defifa with the protocol
+        // fee volume from every game's commitment payout. Pinning mainnet by default avoids scattering credit
+        // across L2s where Defifa has no canonical project ID.
         try terminal.sendPayoutsOf({
             projectId: gameId,
             token: token,
             amount: feeAmount,
             currency: metadata.baseCurrency,
             minTokensPaidOut: 0,
-            referralProjectId: (uint256(1) << 48) | DEFIFA_PROJECT_ID
+            referralProjectId: referralProjectId
         }) {}
         catch (bytes memory reason) {
             // Payout failed — fee stays in pot. Reset to 0 so currentGamePotOf
@@ -651,6 +664,36 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @notice Allows this contract to receive 721s.
     function onERC721Received(address, address, uint256, bytes calldata) external pure override returns (bytes4) {
         return IERC721Receiver.onERC721Received.selector;
+    }
+
+    /// @notice Update the referrer reference credited on every fee-payout `sendPayoutsOf` call this deployer
+    /// makes during `fulfillCommitmentsOf`.
+    /// @dev Stores the packed `(newReferralChainId << 48) | newReferralProjectId` value used by
+    /// `JBMultiTerminal.currentReferralProjectId`. Either field may be zero — passing `(0, 0)` disables the
+    /// referral credit entirely. Bounded so the pack is lossless: `newReferralProjectId` must fit in `uint48`,
+    /// `newReferralChainId` must fit in `uint208` (so the left-shift by 48 doesn't drop high bits).
+    /// @param newReferralProjectId The referring project's bare ID on `newReferralChainId`.
+    /// @param newReferralChainId The EIP-155 chain ID of the referrer's home chain.
+    function setReferralProjectId(
+        uint256 newReferralProjectId,
+        uint256 newReferralChainId
+    )
+        external
+        override
+        onlyOwner
+    {
+        // Bound the inputs to the on-chain encoding so the pack is lossless. The same shape JBMultiTerminal uses:
+        // projectId in bits [47:0], chainId in bits [255:48].
+        if (newReferralProjectId > type(uint48).max) {
+            revert DefifaDeployer_ReferralProjectIdTooLarge(newReferralProjectId);
+        }
+        if (newReferralChainId >> 208 != 0) revert DefifaDeployer_ReferralChainIdTooLarge(newReferralChainId);
+
+        referralProjectId = (newReferralChainId << 48) | newReferralProjectId;
+
+        emit SetReferralProjectId({
+            referralChainId: newReferralChainId, referralProjectId: newReferralProjectId, caller: msg.sender
+        });
     }
 
     /// @notice Triggers the no-contest refund mechanism for a game.

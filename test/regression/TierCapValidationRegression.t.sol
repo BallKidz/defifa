@@ -94,7 +94,8 @@ contract TierCapValidationRegressionTest is JBTest, TestBaseWorkflow {
             new JBAddressRegistry(),
             defifaProjectId,
             protocolFeeProjectId,
-            new JB721TiersHookStore()
+            new JB721TiersHookStore(),
+            address(this)
         );
 
         hookCodeOrigin.transferOwnership(address(deployer));

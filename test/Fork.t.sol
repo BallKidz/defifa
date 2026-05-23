@@ -137,7 +137,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             new JBAddressRegistry(),
             _defifaProjectId,
             _protocolFeeProjectId,
-            new JB721TiersHookStore()
+            new JB721TiersHookStore(),
+            address(this)
         );
 
         // Grant deployer SET_SPLIT_GROUPS permission on the defifa fee project.

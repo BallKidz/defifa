@@ -106,7 +106,8 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
             new JBAddressRegistry(),
             _defifaProjectId,
             _protocolFeeProjectId,
-            new JB721TiersHookStore()
+            new JB721TiersHookStore(),
+            address(this)
         );
 
         hook.transferOwnership(address(deployer));

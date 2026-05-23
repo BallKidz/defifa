@@ -129,7 +129,8 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
             _registry,
             _defifaProjectId,
             _protocolFeeProjectId,
-            new JB721TiersHookStore()
+            new JB721TiersHookStore(),
+            address(this)
         );
 
         hook.transferOwnership(address(deployer));

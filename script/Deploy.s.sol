@@ -119,7 +119,8 @@ contract DeployMainnet is Script, Sphinx {
             registry: registry.registry,
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _baseProtocolProjectId,
-            hookStore: hookStore
+            hookStore: hookStore,
+            initialOwner: safeAddress()
         });
 
         governor.transferOwnership(address(deployer));

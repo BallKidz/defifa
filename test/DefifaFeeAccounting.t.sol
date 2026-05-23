@@ -118,7 +118,8 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
             _registry,
             _defifaProjectId,
             _protocolFeeProjectId,
-            new JB721TiersHookStore()
+            new JB721TiersHookStore(),
+            address(this)
         );
 
         // Grant the deployer SET_SPLIT_GROUPS permission on the defifa fee project.
