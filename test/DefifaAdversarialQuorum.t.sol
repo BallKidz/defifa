@@ -129,7 +129,8 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
             new JBAddressRegistry(),
             _protocolFeeProjectId,
             _defifaProjectId,
-            new JB721TiersHookStore()
+            new JB721TiersHookStore(),
+            address(this)
         );
         hook.transferOwnership(address(deployer));
         governor.transferOwnership(address(deployer));

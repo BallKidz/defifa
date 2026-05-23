@@ -45,6 +45,12 @@ interface IDefifaDeployer {
     /// @param caller The address that queued the phase transition.
     event QueuedNoContest(uint256 indexed gameId, address caller);
 
+    /// @notice Emitted when the referrer reference for fee-volume credit is updated.
+    /// @param referralChainId The EIP-155 chain ID of the new referrer's home chain.
+    /// @param referralProjectId The new referring project's bare project ID on `referralChainId`.
+    /// @param caller The address that set the new referrer.
+    event SetReferralProjectId(uint256 indexed referralChainId, uint256 indexed referralProjectId, address caller);
+
     /// @notice The fee divisor for base protocol fees (100 / fee percent).
     /// @return The fee divisor.
     function BASE_PROTOCOL_FEE_DIVISOR() external view returns (uint256);
@@ -80,6 +86,12 @@ interface IDefifaDeployer {
     /// @notice The address registry used for content-addressable deployment lookups.
     /// @return The address registry contract.
     function REGISTRY() external view returns (IJBAddressRegistry);
+
+    /// @notice The packed `(referralChainId << 48) | referralProjectId` reference credited as the referrer on
+    /// every fee-payout `sendPayoutsOf` call this deployer makes. Defaults to `(1, DEFIFA_PROJECT_ID)` so
+    /// credit accrues to Defifa on Ethereum mainnet; owner-settable via `setReferralProjectId`.
+    /// @return The packed referrer reference.
+    function referralProjectId() external view returns (uint256);
 
     /// @notice The split group ID used for distributing game pot funds.
     /// @return The split group.
@@ -118,6 +130,16 @@ interface IDefifaDeployer {
     /// @param launchProjectData The configuration for launching the game.
     /// @return gameId The ID of the newly launched game.
     function launchGameWith(DefifaLaunchProjectData calldata launchProjectData) external returns (uint256 gameId);
+
+    /// @notice Update the referrer reference credited on every fee-payout `sendPayoutsOf` call this deployer
+    /// makes during `fulfillCommitmentsOf`.
+    /// @dev Stores the packed `(newReferralChainId << 48) | newReferralProjectId` value used by
+    /// `JBMultiTerminal.currentReferralProjectId`. Either field may be zero (passing `(0, 0)` disables the
+    /// referral credit). Bounded so the pack is lossless: `newReferralProjectId <= type(uint48).max`,
+    /// `newReferralChainId <= type(uint208).max`.
+    /// @param newReferralProjectId The referring project's bare ID on `newReferralChainId`.
+    /// @param newReferralChainId The EIP-155 chain ID of the referrer's home chain.
+    function setReferralProjectId(uint256 newReferralProjectId, uint256 newReferralChainId) external;
 
     /// @notice Trigger a no-contest outcome for a game.
     /// @param gameId The ID of the game.

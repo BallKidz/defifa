@@ -138,7 +138,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             _registry,
             _defifaProjectId,
             _protocolFeeProjectId,
-            new JB721TiersHookStore()
+            new JB721TiersHookStore(),
+            address(this)
         );
 
         // Transfer ownership of the hook to the deployer.

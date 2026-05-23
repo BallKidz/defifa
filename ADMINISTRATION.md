@@ -30,6 +30,7 @@
 | Ratification path caller | Any caller who meets the documented conditions | Per game | Finalizes a valid scorecard |
 | Fulfillment path caller | Any valid caller once ratified | Per game | Must run the completion commitment path |
 | `DefifaProjectOwner` holder | Project NFT sent into sink | Per fee project | Irreversible ownership lock |
+| `DefifaDeployer` owner | Constructor `initialOwner` (typically the Defifa multisig) | Global referral-attribution surface | Single privilege: call `setReferralProjectId` to repoint the fee-volume credit |
 
 ## Privileged Surfaces
 
@@ -37,6 +38,7 @@
 - `submitScorecardFor(...)`, `attestToScorecardFrom(...)`, `revokeAttestationFrom(...)`, and `ratifyScorecardFrom(...)` govern outcome selection
 - `fulfillCommitmentsOf(...)` turns a ratified scorecard into real settlement
 - `triggerNoContestFor(...)` moves failed games into the documented recovery path
+- `DefifaDeployer.setReferralProjectId(projectId, chainId)` — `onlyOwner`; retargets the fee-volume referrer credited on every `sendPayoutsOf` call this deployer makes from `fulfillCommitmentsOf`. Stores the packed `(chainId << 48) | projectId` value `JBMultiTerminal` expects on its `referralProjectId` argument. Defaults to `(1, DEFIFA_PROJECT_ID)` at construction so credit lands on the Defifa project on Ethereum mainnet regardless of which chain a game runs on. Passing `(0, 0)` disables the credit entirely. Bounded so the pack is lossless: `projectId <= type(uint48).max`, `chainId <= type(uint208).max`. Does not affect game economics — only where fee-volume attribution accrues.
 
 ## Immutable And One-Way
 
@@ -77,3 +79,4 @@
 - No one can set cash-out weights twice.
 - No one can fulfill commitments twice.
 - No one can recover the project NFT from `DefifaProjectOwner`.
+- The `DefifaDeployer` owner can repoint `referralProjectId` but cannot change anything else about an in-flight or past game — game economics, fees, and settlement remain bounded by the immutable launch configuration.
