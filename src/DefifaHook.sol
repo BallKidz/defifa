@@ -889,7 +889,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Store the new delegatee
         _tierDelegation[account][tierId] = delegatee;
 
-        emit DelegateChanged({delegator: account, fromDelegate: oldDelegate, toDelegate: delegatee});
+        emit DelegateChanged({delegator: account, fromDelegate: oldDelegate, toDelegate: delegatee, caller: msg.sender});
 
         // Move the attestations.
         _moveTierDelegateAttestations({
@@ -1119,7 +1119,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         if (toDelegate == address(0) && to != address(0)) {
             toDelegate = to;
             _tierDelegation[to][tierId] = to;
-            emit DelegateChanged({delegator: to, fromDelegate: address(0), toDelegate: to});
+            emit DelegateChanged({delegator: to, fromDelegate: address(0), toDelegate: to, caller: msg.sender});
         }
 
         // Move delegated attestations.

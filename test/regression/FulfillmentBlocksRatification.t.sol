@@ -197,7 +197,7 @@ contract FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
 
         // Ratification should succeed. CommitmentPayoutFailed is emitted from the deployer.
         vm.expectEmit(true, false, false, false);
-        emit IDefifaDeployer.CommitmentPayoutFailed(_gameId, 0, "");
+        emit IDefifaDeployer.CommitmentPayoutFailed(_gameId, 0, "", address(_governor));
 
         _governor.ratifyScorecardFrom(_gameId, scorecards);
 

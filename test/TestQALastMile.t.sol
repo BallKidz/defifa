@@ -214,7 +214,7 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
         // Ratify — sendPayoutsOf fails but fulfillCommitmentsOf handles it gracefully.
         // CommitmentPayoutFailed is emitted and the final ruleset is still queued.
         vm.expectEmit(true, false, false, false);
-        emit IDefifaDeployer.CommitmentPayoutFailed(_gameId, 0, "");
+        emit IDefifaDeployer.CommitmentPayoutFailed(_gameId, 0, "", address(_governor));
         _governor.ratifyScorecardFrom(_gameId, scorecards);
 
         // Clear mock so subsequent calls work.

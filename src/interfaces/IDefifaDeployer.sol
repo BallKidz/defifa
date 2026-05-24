@@ -18,7 +18,8 @@ interface IDefifaDeployer {
     /// @param gameId The ID of the game that was fulfilled.
     /// @param amount The amount that failed to pay out.
     /// @param reason The revert reason bytes from the failed payout.
-    event CommitmentPayoutFailed(uint256 indexed gameId, uint256 amount, bytes reason);
+    /// @param caller The address that triggered fulfillment.
+    event CommitmentPayoutFailed(uint256 indexed gameId, uint256 amount, bytes reason, address caller);
 
     /// @notice Emitted when a game's commitments have been fulfilled.
     /// @param gameId The ID of the fulfilled game.

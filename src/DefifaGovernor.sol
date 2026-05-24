@@ -264,7 +264,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             _quorumReachedAtOf[gameId][scorecardId] = 0;
         }
 
-        emit AttestationRevoked({gameId: gameId, scorecardId: scorecardId, account: msg.sender, weight: weight});
+        emit AttestationRevoked({
+            gameId: gameId, scorecardId: scorecardId, account: msg.sender, weight: weight, caller: msg.sender
+        });
     }
 
     /// @notice Submits a scorecard to be attested to.
