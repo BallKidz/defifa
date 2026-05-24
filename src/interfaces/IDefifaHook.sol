@@ -54,7 +54,10 @@ interface IDefifaHook is IJB721Hook {
     /// @param delegator The address changing its delegate.
     /// @param fromDelegate The previous delegate.
     /// @param toDelegate The new delegate.
-    event DelegateChanged(address indexed delegator, address indexed fromDelegate, address indexed toDelegate);
+    /// @param caller The address that triggered the delegate change.
+    event DelegateChanged(
+        address indexed delegator, address indexed fromDelegate, address indexed toDelegate, address caller
+    );
 
     /// @notice Emitted when claimable game tokens are claimed.
     /// @param beneficiary The address receiving the claimed tokens.

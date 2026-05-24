@@ -54,7 +54,10 @@ interface IDefifaGovernor {
     /// @param scorecardId The ID of the scorecard.
     /// @param account The address whose attestation was revoked.
     /// @param weight The revoked attestation weight.
-    event AttestationRevoked(uint256 indexed gameId, uint256 indexed scorecardId, address account, uint256 weight);
+    /// @param caller The address that revoked the attestation.
+    event AttestationRevoked(
+        uint256 indexed gameId, uint256 indexed scorecardId, address account, uint256 weight, address caller
+    );
 
     /// @notice The number of attestations for a scorecard.
     /// @param gameId The ID of the game.

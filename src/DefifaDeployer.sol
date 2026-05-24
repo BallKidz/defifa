@@ -382,7 +382,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             // Payout failed — fee stays in pot. Reset to 0 so currentGamePotOf
             // doesn't double-count the fee.
             fulfilledCommitmentsOf[gameId] = 0;
-            emit CommitmentPayoutFailed({gameId: gameId, amount: feeAmount, reason: reason});
+            emit CommitmentPayoutFailed({gameId: gameId, amount: feeAmount, reason: reason, caller: msg.sender});
         }
 
         // Queue the final ruleset and emit.
