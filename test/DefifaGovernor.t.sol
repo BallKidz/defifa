@@ -966,7 +966,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 100_382,
+            scorecardTimeout: type(uint32).max,
             timelockDuration: 0
         });
         (uint256 _projectId, DefifaHook _nft,) = createDefifaProject(_launchData);
@@ -1248,7 +1248,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: nTiers == 1 ? 100_382 : 0,
+            scorecardTimeout: type(uint32).max,
             timelockDuration: 0
         });
     }

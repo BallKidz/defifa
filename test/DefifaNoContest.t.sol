@@ -129,7 +129,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
     /// @notice Game with mint cost below minParticipation returns NO_CONTEST.
     function testMinParticipation_belowThreshold_noContest() external {
         // Set threshold to 5 ETH, but only mint 1 NFT at 1 ETH → totalMintCost = 1 ETH < 5 ETH
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 5 ether, 0);
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 5 ether, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
@@ -152,7 +152,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
     /// @notice Game with mint cost at or above minParticipation proceeds to SCORING.
     function testMinParticipation_atThreshold_scoring() external {
         // Set threshold to 4 ETH, mint exactly 4 NFTs at 1 ETH each → totalMintCost = 4 ETH
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 4 ether, 0);
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 4 ether, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
@@ -174,7 +174,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
 
     /// @notice Cash-out during NO_CONTEST (from threshold) returns mint price after triggering.
     function testMinParticipation_cashOutReturnsMintPrice() external {
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 10 ether, 0);
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 10 ether, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
@@ -206,7 +206,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
     /// @notice Refunds during REFUND phase can push balance below threshold, triggering NO_CONTEST when SCORING starts.
     function testMinParticipation_refundPushesBelow() external {
         // 4 tiers at 1 ETH, threshold 3 ETH
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 3 ether, 0);
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 3 ether, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
@@ -235,7 +235,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
 
     /// @notice minParticipation = 0 means the check is disabled.
     function testMinParticipation_zeroDisabled() external {
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 0, 0);
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 0, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
@@ -361,29 +361,19 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         }
     }
 
-    /// @notice scorecardTimeout = 0 means the check is disabled.
-    function testScorecardTimeout_zeroDisabled() external {
+    /// @notice scorecardTimeout = 0 is rejected at launch.
+    function testScorecardTimeout_zeroRejected() external {
         DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 0, 0);
-        (_pid, _nft, _gov) = _launch(d);
-        vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
-
-        _users = new address[](4);
-        for (uint256 i; i < 4; i++) {
-            _users[i] = _addr(i);
-            _mint(_users[i], i + 1, 1 ether);
-            _delegateSelf(_users[i], i + 1);
-            vm.warp(block.timestamp + 1);
-        }
-
-        _toScoring();
-
-        // Warp very far forward (1 year) — should still be SCORING
-        vm.warp(block.timestamp + 365 days);
-        assertEq(
-            uint256(deployer.currentGamePhaseOf(_pid)),
-            uint256(DefifaGamePhase.SCORING),
-            "should be SCORING forever when timeout disabled"
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector,
+                d.start,
+                d.mintPeriodDuration,
+                d.refundPeriodDuration,
+                d.tiers.length
+            )
         );
+        deployer.launchGameWith(d);
     }
 
     // =========================================================================
@@ -519,9 +509,9 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
     // BACKWARD COMPATIBILITY
     // =========================================================================
 
-    /// @notice Both mechanisms disabled (0) — game functions exactly as before.
-    function testBackwardCompat_noSafetyMechanisms() external {
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 0, 0);
+    /// @notice A large timeout leaves the normal game flow unaffected.
+    function testLargeScorecardTimeout_fullLifecycle() external {
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 0, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
@@ -569,14 +559,14 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         assertEq(timeout, uint32(90 days), "scorecardTimeout should match");
     }
 
-    /// @notice safetyParamsOf returns 0s when not set.
-    function testSafetyParamsOf_defaults() external {
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 0, 0);
+    /// @notice safetyParamsOf returns the stored timeout when minParticipation is unset.
+    function testSafetyParamsOf_minParticipationUnset() external {
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 0, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
 
         (uint256 minP, uint32 timeout) = deployer.safetyParamsOf(_pid);
         assertEq(minP, 0, "default minParticipation should be 0");
-        assertEq(timeout, 0, "default scorecardTimeout should be 0");
+        assertEq(timeout, type(uint32).max, "scorecardTimeout should match");
     }
 
     // =========================================================================
@@ -622,7 +612,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
     /// @notice During COUNTDOWN, MINT, and REFUND phases, NO_CONTEST is not returned even if threshold/timeout would
     /// trigger.
     function testNoContest_onlyDuringScoringWindow() external {
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 100 ether, uint32(100_382));
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 100 ether, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
 
         // COUNTDOWN
@@ -643,7 +633,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
 
     /// @notice triggerNoContestFor reverts when the game is not in NO_CONTEST phase.
     function testTriggerNoContest_revertsWhenNotNoContest() external {
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 0, 0);
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 0, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
@@ -686,7 +676,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
 
     /// @notice Cash-out before triggerNoContestFor reverts with NOTHING_TO_CLAIM (surplus = 0).
     function testNoContest_cashOutBeforeTrigger_reverts() external {
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 10 ether, 0);
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 10 ether, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
