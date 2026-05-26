@@ -115,10 +115,9 @@ contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
         _governorImpl.transferOwnership(address(_deployer));
     }
 
-    /// @notice One-tier games with `scorecardTimeout == 0` are rejected at launch (quorum unreachable -> permanent
-    /// lock).
+    /// @notice Games with `scorecardTimeout == 0` are rejected at launch.
     function test_singleTierGameWithZeroTimeoutIsRejectedAtLaunch() external {
-        DefifaLaunchProjectData memory data = _launchData();
+        DefifaLaunchProjectData memory data = _launchData({tierCount: 1});
         vm.expectRevert(
             abi.encodeWithSelector(
                 DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector,
@@ -131,15 +130,31 @@ contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
         _deployer.launchGameWith(data);
     }
 
-    function _launchData() internal view returns (DefifaLaunchProjectData memory) {
-        DefifaTierParams[] memory tierParams = new DefifaTierParams[](1);
-        tierParams[0] = DefifaTierParams({
-            reservedRate: 0,
-            reservedTokenBeneficiary: address(0),
-            encodedIpfsUri: bytes32(0),
-            shouldUseReservedTokenBeneficiaryAsDefault: false,
-            name: "SOLE"
-        });
+    function test_multiTierGameWithZeroTimeoutIsRejectedAtLaunch() external {
+        DefifaLaunchProjectData memory data = _launchData({tierCount: 4});
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector,
+                data.start,
+                data.mintPeriodDuration,
+                data.refundPeriodDuration,
+                data.tiers.length
+            )
+        );
+        _deployer.launchGameWith(data);
+    }
+
+    function _launchData(uint256 tierCount) internal view returns (DefifaLaunchProjectData memory) {
+        DefifaTierParams[] memory tierParams = new DefifaTierParams[](tierCount);
+        for (uint256 i; i < tierCount; i++) {
+            tierParams[i] = DefifaTierParams({
+                reservedRate: 0,
+                reservedTokenBeneficiary: address(0),
+                encodedIpfsUri: bytes32(0),
+                shouldUseReservedTokenBeneficiaryAsDefault: false,
+                name: "TEAM"
+            });
+        }
 
         return DefifaLaunchProjectData({
             name: "DEFIFA",

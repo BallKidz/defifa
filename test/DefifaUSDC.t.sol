@@ -171,7 +171,7 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
     // =========================================================================
 
     function _launchDataUsdc(uint8 n, uint104 tierPrice) internal view returns (DefifaLaunchProjectData memory) {
-        return _launchDataUsdcWith(n, tierPrice, 0, 0);
+        return _launchDataUsdcWith(n, tierPrice, 0, type(uint32).max);
     }
 
     function _launchDataUsdcWith(
@@ -446,7 +446,7 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
     /// @notice Test 4: No-contest with USDC (minParticipation threshold).
     function test_defifa_usdc_noContest() external {
         uint104 tierPrice = 100e6;
-        DefifaLaunchProjectData memory d = _launchDataUsdcWith(4, tierPrice, 500e6, 0); // 500 USDC min
+        DefifaLaunchProjectData memory d = _launchDataUsdcWith(4, tierPrice, 500e6, type(uint32).max); // 500 USDC min
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 

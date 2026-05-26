@@ -733,7 +733,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
     // =========================================================================
 
     function test_fork_noContest_minParticipation() external {
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 5 ether, 0);
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 5 ether, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
@@ -978,7 +978,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0,
+            scorecardTimeout: type(uint32).max,
             timelockDuration: 0
         });
         (_pid, _nft, _gov) = _launch(d);
@@ -1399,7 +1399,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
     function test_fork_minParticipation_exactBoundary_meets() external {
         // tokenSupply == minParticipation: check uses `<`, so 4e18 < 4e18 = false → SCORING.
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 4 ether, 0);
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 4 ether, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
@@ -1421,7 +1421,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
     function test_fork_minParticipation_belowThreshold() external {
         // balance < minParticipation → NO_CONTEST.
-        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 4 ether + 1, 0);
+        DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 4 ether + 1, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
@@ -2079,7 +2079,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0,
+            scorecardTimeout: type(uint32).max,
             timelockDuration: 0
         });
 
@@ -2180,7 +2180,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
     // =========================================================================
 
     function _launchData(uint8 n, uint256 tierPrice) internal view returns (DefifaLaunchProjectData memory) {
-        return _launchDataWith(n, tierPrice, 0, 0);
+        return _launchDataWith(n, tierPrice, 0, type(uint32).max);
     }
 
     function _launchDataWith(
@@ -2245,7 +2245,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0,
+            scorecardTimeout: type(uint32).max,
             timelockDuration: 0
         });
     }

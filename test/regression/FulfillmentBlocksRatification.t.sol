@@ -253,7 +253,7 @@ contract FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
-            scorecardTimeout: 0,
+            scorecardTimeout: type(uint32).max,
             timelockDuration: 0
         });
     }
