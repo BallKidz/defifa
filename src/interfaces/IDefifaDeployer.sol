@@ -118,7 +118,7 @@ interface IDefifaDeployer {
     /// @return The mint duration, start time, and refund period.
     function timesFor(uint256 gameId) external view returns (uint48, uint24, uint24);
 
-    /// @notice The token address used for payments and cash outs in a specific game.
+    /// @notice The token address used for payments and cash-outs in a specific game.
     /// @param gameId The ID of the game.
     /// @return The token address.
     function tokenOf(uint256 gameId) external view returns (address);

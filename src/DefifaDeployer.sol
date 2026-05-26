@@ -73,8 +73,8 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @notice The game's ops.
     mapping(uint256 => DefifaOpsData) internal _opsOf;
 
-    /// @notice This contract current nonce, used for the registry initialized at 1 since the first contract deployed is
-    /// the hook
+    /// @notice This contract's nonce for deterministic hook deployment and registry entries.
+    /// @dev Initialized at 1 because the hook implementation is deployed before the first game clone.
     uint256 internal _nonce;
 
     //*********************************************************************//
@@ -85,11 +85,11 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @dev This could be any fixed number.
     uint256 public immutable override SPLIT_GROUP;
 
-    /// @notice The project ID that'll receive game fees, and relative to which splits are stored.
+    /// @notice The project ID that will receive game fees, and relative to which splits are stored.
     /// @dev The owner of this project ID must give this contract operator permissions over the SET_SPLITS operation.
     uint256 public immutable override DEFIFA_PROJECT_ID;
 
-    /// @notice The project ID that'll receive protocol fees as commitments are fulfilled.
+    /// @notice The project ID that will receive protocol fees as commitments are fulfilled.
     uint256 public immutable override BASE_PROTOCOL_PROJECT_ID;
 
     /// @notice The original code for the Defifa hook to base subsequent instances on.
@@ -288,7 +288,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @param controller The controller to use to launch the game from.
     /// @param registry The contract storing references to the deployer of each hook.
     /// @param defifaProjectId The ID of the project that should take the fee from the games.
-    /// @param baseProtocolProjectId The ID of the protocol project that'll receive fees from fulfilling commitments.
+    /// @param baseProtocolProjectId The ID of the protocol project that will receive fees from fulfilling commitments.
     /// @param hookStore The store used by Defifa hooks.
     /// @param initialOwner The address granted authority to call `setReferralProjectId`. The contract is otherwise
     /// stateless from an admin perspective — the owner only controls the referrer reference used when crediting
@@ -496,7 +496,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         gameId = CONTROLLER.PROJECTS().createFor(address(this));
 
         {
-            // Store the timestamps that'll define the game phases.
+            // Store the timestamps that define the game phases.
             _opsOf[gameId] = DefifaOpsData({
                 token: launchProjectData.token.token,
                 mintPeriodDuration: launchProjectData.mintPeriodDuration,

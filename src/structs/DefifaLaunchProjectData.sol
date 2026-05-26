@@ -27,7 +27,7 @@ import {DefifaTierParams} from "./DefifaTierParams.sol";
 /// seconds. If in the past, scorecards will start accepting attestations right away. @custom:member
 /// attestationGracePeriod The time period the attestations must be active for once it has started even if it has
 /// already reached quorum, measured in seconds.
-/// @custom:member defaultAttestationDelegate The address that'll be set as the attestation delegate by default.
+/// @custom:member defaultAttestationDelegate The address that will be set as the attestation delegate by default.
 /// @custom:member defaultTokenUriResolver The contract used to resolve token URIs if not provided by a tier
 /// specifically. @custom:member terminal The payment terminal where the project will accept funds through.
 /// @custom:member minParticipation The minimum cumulative NFT mint cost required for the game to proceed to scoring.

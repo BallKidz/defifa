@@ -302,7 +302,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // If there's a weight assigned to the tier, make sure there is a token backed by it.
         for (uint256 i; i < numberOfTierWeights;) {
-            // A nonzero cashout weight is only valid once that tier has live ownership.
+            // A nonzero cash-out weight is only valid once that tier has live ownership.
             uint256 currentTierSupply = IDefifaHook(metadata.dataHook).currentSupplyOfTier(tierWeights[i].id);
             if (tierWeights[i].cashOutWeight > 0 && currentTierSupply == 0) {
                 revert DefifaGovernor_UnownedProposedCashoutValue({
@@ -664,7 +664,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Get a reference to the number of tiers.
         uint256 numberOfTiers = store.maxTierIdOf(metadata.dataHook);
 
-        // Cache the total cashout weight denominator from the hook.
+        // Cache the total cash-out weight denominator from the hook.
         uint256 totalCashOutWeight = hook.TOTAL_CASHOUT_WEIGHT();
 
         for (uint256 i; i < numberOfTiers;) {

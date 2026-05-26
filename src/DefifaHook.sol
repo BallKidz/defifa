@@ -38,7 +38,7 @@ import {DefifaHookLib} from "./libraries/DefifaHookLib.sol";
 
 /// @notice The 721 hook that powers Defifa games. Extends JB721Hook to enforce game phase rules on minting and
 /// cashing out, track per-tier voting power via checkpoints, and apply scorecard-determined cash-out weights after
-/// ratification. Mints are only allowed during the MINT phase, refunds during the REFUND phase, and cash outs
+/// ratification. Mints are only allowed during the MINT phase, refunds during the REFUND phase, and cash-outs
 /// with scoring weights only after a scorecard is ratified in the COMPLETE phase.
 contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     using Checkpoints for Checkpoints.Trace208;
@@ -65,37 +65,37 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     // --------------------- public constant properties ------------------ //
     //*********************************************************************//
 
-    /// @notice The total cashOut weight that can be divided among tiers.
+    /// @notice The total cash-out weight that can be divided among tiers.
     uint256 public constant override TOTAL_CASHOUT_WEIGHT = 1_000_000_000_000_000_000;
 
     //*********************************************************************//
     // -------------------- internal stored properties ------------------- //
     //*********************************************************************//
 
-    /// @notice The cashOut weight for each tier.
+    /// @notice The cash-out weight for each tier.
     /// @dev Tiers are limited to ID 128
     uint256[128] internal _tierCashOutWeights;
 
     /// @notice The delegation status for each address and for each tier.
-    /// _delegator The delegator.
-    /// _tierId The ID of the tier to delegate.
+    /// @custom:param account The delegator.
+    /// @custom:param tierId The ID of the tier to delegate.
     mapping(address => mapping(uint256 => address)) internal _tierDelegation;
 
     /// @notice The delegation checkpoints for each address and for each tier.
-    /// _delegator The delegator.
-    /// _tierId The ID of the tier to check.
+    /// @custom:param account The delegator.
+    /// @custom:param tierId The ID of the tier to check.
     mapping(address => mapping(uint256 => Checkpoints.Trace208)) internal _delegateTierCheckpoints;
 
     /// @notice The total delegation status for each tier.
-    /// _tierId The ID of the tier to check.
+    /// @custom:param tierId The ID of the tier to check.
     mapping(uint256 => Checkpoints.Trace208) internal _totalTierCheckpoints;
 
     /// @notice The first owner of each token ID, stored on first transfer out.
-    /// _tokenId The ID of the token to get the stored first owner of.
+    /// @custom:param tokenId The ID of the token to get the stored first owner of.
     mapping(uint256 => address) internal _firstOwnerOf;
 
     /// @notice The names of each tier.
-    /// @dev _tierId The ID of the tier to get a name for.
+    /// @custom:param tierId The ID of the tier to get a name for.
     mapping(uint256 => string) internal _tierNameOf;
 
     //*********************************************************************//
@@ -116,22 +116,22 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// participation metric — immune to `addToBalanceOf` inflation because only actual mints increment it.
     uint256 public override totalMintCost;
 
-    /// @notice The amount that has been redeemed from this game, refunds are not counted.
+    /// @notice The amount redeemed from this game, excluding refunds.
     uint256 public override amountRedeemed;
 
-    /// @notice The common base for the tokenUri's
+    /// @notice The common base for token URIs.
     string public override baseURI;
 
-    /// @notice A flag indicating if the cashout weights has been set.
+    /// @notice Whether the cash-out weights have been set.
     bool public override cashOutWeightIsSet;
 
-    /// @notice The address of the origin 'DefifaHook', used to check in the init if the contract is the original or not
+    /// @notice The original DefifaHook implementation address used to distinguish clones during initialization.
     address public immutable override CODE_ORIGIN;
 
     /// @notice The contract-level metadata URI used by marketplaces to display collection information.
     string public override contractURI;
 
-    /// @notice The address that'll be set as the attestation delegate by default.
+    /// @notice The address that will be set as the attestation delegate by default.
     address public override defaultAttestationDelegate;
 
     /// @notice The contract reporting game phases.
@@ -158,8 +158,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice The contract that stores and manages the NFT's data.
     IJB721TiersHookStore public override store;
 
-    /// @notice The amount of tokens that have been redeemed from a tier, refunds are not counted.
-    /// @custom:param The tier from which tokens have been redeemed.
+    /// @notice The amount of tokens redeemed from each tier, excluding refunds.
+    /// @custom:param tierId The tier from which tokens have been redeemed.
     mapping(uint256 => uint256) public override tokensRedeemedFrom;
 
     //*********************************************************************//
@@ -260,18 +260,18 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     // -------------------------- public views --------------------------- //
     //*********************************************************************//
 
-    /// @notice The data calculated before a cash out is recorded in the terminal store. This data is provided to the
+    /// @notice The data calculated before a cash-out is recorded in the terminal store. This data is provided to the
     /// terminal's `cashOutTokensOf(...)` transaction.
-    /// @dev Sets this contract as the cash out hook. Part of `IJBRulesetDataHook`.
-    /// @dev This function is used for NFT cash outs, and will only be called if the project's ruleset has
+    /// @dev Sets this contract as the cash-out hook. Part of `IJBRulesetDataHook`.
+    /// @dev This function is used for NFT cash-outs, and will only be called if the project's ruleset has
     /// `useDataHookForCashOut` set to `true`.
-    /// @param context The cash out context passed to this contract by the `cashOutTokensOf(...)` function.
-    /// @return cashOutTaxRate The cash out tax rate influencing the reclaim amount.
+    /// @param context The cash-out context passed to this contract by the `cashOutTokensOf(...)` function.
+    /// @return cashOutTaxRate The cash-out tax rate influencing the reclaim amount.
     /// @return cashOutCount The amount of tokens that should be considered cashed out.
     /// @return totalSupply The total amount of tokens that are considered to be existing.
-    /// @return effectiveSurplusValue The effective surplus value to use for the cash out.
-    /// @return hookSpecifications The amount and data to send to cash out hooks (this contract) instead of returning to
-    /// the beneficiary.
+    /// @return effectiveSurplusValue The effective surplus value to use for the cash-out.
+    /// @return hookSpecifications The amount and data to send to cash-out hooks (this contract) instead of returning
+    /// to the beneficiary.
     function beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext calldata context)
         public
         view
@@ -288,7 +288,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Make sure (fungible) project tokens aren't also being cashed out.
         if (context.cashOutCount > 0) revert JB721Hook_UnexpectedTokenCashedOut({cashOutCount: context.cashOutCount});
 
-        // Fetch the cash out hook metadata using the corresponding metadata ID.
+        // Fetch the cash-out hook metadata using the corresponding metadata ID.
         (bool metadataExists, bytes memory metadata) = JBMetadataResolver.getDataFor({
             id: JBMetadataResolver.getId({purpose: "cashOut", target: CODE_ORIGIN}), metadata: context.metadata
         });
@@ -313,12 +313,12 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
                 || gamePhase == DefifaGamePhase.NO_CONTEST
         });
 
-        // Use this contract as the only cash out hook.
+        // Use this contract as the only cash-out hook.
         hookSpecifications = new JBCashOutHookSpecification[](1);
         hookSpecifications[0] =
             JBCashOutHookSpecification({hook: this, noop: false, amount: 0, metadata: abi.encode(cumulativeMintPrice)});
 
-        // Compute the cash out count based on the game phase.
+        // Compute the cash-out count based on the game phase.
         cashOutCount = DefifaHookLib.computeCashOutCount({
             gamePhase: gamePhase,
             cumulativeMintPrice: cumulativeMintPrice,
@@ -333,11 +333,11 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Use the surplus as the effective surplus value.
         effectiveSurplusValue = context.surplus.value;
 
-        // Use the cash out tax rate from the context.
+        // Use the cash-out tax rate from the context.
         cashOutTaxRate = context.cashOutTaxRate;
     }
 
-    /// @notice The cumulative weight the given token IDs have in cashOuts compared to the `totalCashOutWeight`.
+    /// @notice The cumulative weight the given token IDs have in cash-outs compared to the `totalCashOutWeight`.
     /// @param tokenIds The IDs of the tokens to get the cumulative cashOut weight of.
     /// @return cumulativeWeight The weight.
     function cashOutWeightOf(uint256[] memory tokenIds)
@@ -385,7 +385,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     }
 
     /// @notice The metadata URI of the provided token ID.
-    /// @dev Defer to the tokenUriResolver if set, otherwise, use the tokenUri set with the token's tier.
+    /// @dev Defer to the token URI resolver if set; otherwise, use the token URI set with the token's tier.
     /// @param tokenId The ID of the token to get the tier URI for.
     /// @return The token URI corresponding with the tier or the tokenUriResolver URI.
     function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
@@ -418,9 +418,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         });
     }
 
-    /// @notice The combined cash out weight of all outstanding NFTs.
-    /// @dev An NFT's cash out weight is its price.
-    /// @return The total cash out weight.
+    /// @notice The combined cash-out weight of all outstanding NFTs.
+    /// @dev An NFT's cash-out weight is its price.
+    /// @return The total cash-out weight.
     function totalCashOutWeight() public view virtual override returns (uint256) {
         return TOTAL_CASHOUT_WEIGHT;
     }
@@ -493,7 +493,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @param _store A contract that stores the NFT's data.
     /// @param _gamePhaseReporter The contract that reports the game phase.
     /// @param _gamePotReporter The contract that reports the game's pot.
-    /// @param _defaultAttestationDelegate The address that'll be set as the attestation delegate by default.
+    /// @param _defaultAttestationDelegate The address that will be set as the attestation delegate by default.
     /// @param _tierNames The names of each tier.
     function initialize(
         uint256 _gameId,
@@ -647,10 +647,10 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     // ---------------------- external transactions ---------------------- //
     //*********************************************************************//
 
-    /// @notice Burns the specified NFTs upon token holder cash out, reclaiming funds from the project's balance for
+    /// @notice Burns the specified NFTs upon token holder cash-out, reclaiming funds from the project's balance for
     /// `context.beneficiary`. Part of `IJBCashOutHook`.
     /// @dev Reverts if the calling contract is not one of the project's terminals.
-    /// @param context The cash out context passed in by the terminal.
+    /// @param context The cash-out context passed in by the terminal.
     function afterCashOutRecordedWith(JBAfterCashOutRecordedContext calldata context)
         external
         payable
@@ -667,7 +667,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             });
         }
 
-        // Fetch the cash out hook metadata using the corresponding metadata ID.
+        // Fetch the cash-out hook metadata using the corresponding metadata ID.
         (bool metadataExists, bytes memory metadata) = JBMetadataResolver.getDataFor({
             id: JBMetadataResolver.getId({purpose: "cashOut", target: METADATA_ID_TARGET}),
             metadata: context.cashOutMetadata

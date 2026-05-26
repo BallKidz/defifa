@@ -37,7 +37,7 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 1. Prepare launch data with timing, tiers, splits, fee-project settings, terminal, and governance params.
 2. Call `DefifaDeployer.launchGameWith(...)`.
 3. The deployer launches the JB project, clones and initializes `DefifaHook`, initializes the governor state, and stores the game's immutable ops data.
-4. The game now advances through its documented phase sequence.
+4. The game advances through its documented phase sequence.
 
 **Failure Modes**
 

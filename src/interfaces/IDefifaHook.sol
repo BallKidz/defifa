@@ -15,7 +15,7 @@ import {IDefifaGamePhaseReporter} from "./IDefifaGamePhaseReporter.sol";
 import {IDefifaGamePotReporter} from "./IDefifaGamePotReporter.sol";
 
 /// @notice The hook interface for Defifa games, extending the 721 hook with game-specific attestation delegation,
-/// scorecard-based cash out weights, and token claiming.
+/// scorecard-based cash-out weights, and token claiming.
 interface IDefifaHook is IJB721Hook {
     /// @notice Emitted when an NFT is minted from a contribution.
     /// @param tokenId The token ID of the minted NFT.
@@ -68,8 +68,8 @@ interface IDefifaHook is IJB721Hook {
         address indexed beneficiary, uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount, address caller
     );
 
-    /// @notice Emitted when tier cash out weights are set.
-    /// @param tierWeights The cash out weights that were set for each tier.
+    /// @notice Emitted when tier cash-out weights are set.
+    /// @param tierWeights The cash-out weights that were set for each tier.
     /// @param caller The address that set the tier weights.
     event TierCashOutWeightsSet(DefifaTierCashOutWeight[] tierWeights, address caller);
 
@@ -90,13 +90,13 @@ interface IDefifaHook is IJB721Hook {
     /// @return The base URI string.
     function baseURI() external view returns (string memory);
 
-    /// @notice Whether the cash out weights have been set by the game's governor.
-    /// @return True if cash out weights are set.
+    /// @notice Whether the cash-out weights have been set by the game's governor.
+    /// @return True if cash-out weights are set.
     function cashOutWeightIsSet() external view returns (bool);
 
-    /// @notice The cash out weight of a specific token based on its tier's scorecard weight.
+    /// @notice The cash-out weight of a specific token based on its tier's scorecard weight.
     /// @param tokenId The token ID to look up.
-    /// @return The cash out weight.
+    /// @return The cash-out weight.
     function cashOutWeightOf(uint256 tokenId) external view returns (uint256);
 
     /// @notice The address of the code origin contract used as an implementation for clones.
@@ -192,8 +192,8 @@ interface IDefifaHook is IJB721Hook {
     /// @return The store contract.
     function store() external view returns (IJB721TiersHookStore);
 
-    /// @notice The cash out weights for all tiers (up to 128).
-    /// @return The array of tier cash out weights.
+    /// @notice The cash-out weights for all tiers (up to 128).
+    /// @return The array of tier cash-out weights.
     function tierCashOutWeights() external view returns (uint256[128] memory);
 
     /// @notice The name of a specific tier.
@@ -211,8 +211,8 @@ interface IDefifaHook is IJB721Hook {
     /// @return The number of tokens redeemed.
     function tokensRedeemedFrom(uint256 tierId) external view returns (uint256);
 
-    /// @notice The total cash out weight used to normalize tier cash out weights.
-    /// @return The total cash out weight.
+    /// @notice The total cash-out weight used to normalize tier cash-out weights.
+    /// @return The total cash-out weight.
     function TOTAL_CASHOUT_WEIGHT() external view returns (uint256);
 
     /// @notice Initialize the hook with game-specific configuration.
@@ -257,8 +257,8 @@ interface IDefifaHook is IJB721Hook {
     /// @param count The number of reserved tokens to mint.
     function mintReservesFor(uint256 tierId, uint256 count) external;
 
-    /// @notice Set the cash out weights for tiers. Only callable by the game's governor (owner).
-    /// @param tierWeights The tier cash out weights to set.
+    /// @notice Set the cash-out weights for tiers. Only callable by the game's governor (owner).
+    /// @param tierWeights The tier cash-out weights to set.
     function setTierCashOutWeightsTo(DefifaTierCashOutWeight[] memory tierWeights) external;
 
     /// @notice Delegate your attestation voting power for a specific tier to another address.

@@ -97,7 +97,7 @@ The hook's completion math is intentionally phase-sensitive:
 
 - The primary risk is semantic drift across hook, governor, and deployer.
 - Ratification and fulfillment are separate steps; a ratified scorecard without correct fulfillment still leaves the game economically unfinished.
-- Attestation weighting is part of game fairness, not just governance plumbing.
+- Attestation weighting is part of game fairness, not only governance plumbing.
 - Pending reserves and reserved-mint behavior affect both quorum fairness and completion-time claim dilution.
 - Phase transitions are safety-critical. A timing bug can enable refunds, scoring, or completion in the wrong order.
 

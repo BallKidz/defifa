@@ -319,7 +319,7 @@ With default parameters ($\phi_{\text{defifa}} = 20$, $\phi_{\text{base}} = 40$,
 
 $$B_{\text{prize}} = B_{\text{pot}} \cdot \left(1 - \frac{1}{20} - \frac{1}{40}\right) = B_{\text{pot}} \cdot \left(1 - 0.05 - 0.025\right) = 0.925 \cdot B_{\text{pot}} \tag{20}$$
 
-**Resilient fee handling.** The `sendPayoutsOf` call is wrapped in a try-catch. If the payout fails for any reason (e.g., a split target is a reverting contract), the `CommitmentPayoutFailed` event is emitted, the fulfilled commitments value is set to a sentinel (1), and the final ruleset is still queued. Players can cash out immediately — the fee amount stays in the pot, slightly benefiting cash-out recipients. This ensures the game always reaches completion regardless of fee-collection failures.
+**Resilient fee handling.** The deployer stores the computed fee amount, then calls `sendPayoutsOf` inside a try-catch. Core processes individual splits defensively: when a split recipient reverts, that unpaid amount is re-credited to the game's terminal balance while the outer payout can still succeed. If the outer `sendPayoutsOf` call itself reverts, the deployer emits `CommitmentPayoutFailed`, resets `fulfilledCommitmentsOf[gameId]` to 0, and still queues the final ruleset. Players can cash out immediately either way; unpaid fee amounts stay in the pot and remain available to cash-out recipients.
 
 **Fee recycling.** The fees paid to the Defifa and base protocol projects are processed as standard Juicebox payments, which mint project tokens (e.g., $\text{DEFIFA}$, $\text{NANA}$) to the beneficiary — in this case, the game's hook contract. These tokens are later distributed to players upon claim (Section 2.6).
 
@@ -1129,7 +1129,7 @@ The following table summarizes all governance deadlock scenarios and their resol
 | All minters refund | Treasury balance = 0 → nothing to recover |
 | Insufficient participation | `minParticipation` threshold → NO_CONTEST → full refunds |
 
-Every deadlock scenario that could previously lock funds permanently is now resolved by either `scorecardTimeout` (time-bounded) or `minParticipation` (condition-based), provided these optional parameters are set.
+The current design resolves the identified permanent-lock scenarios through either `scorecardTimeout` (time-bounded) or `minParticipation` (condition-based), provided these optional parameters are set.
 
 A game with both safety parameters set to 0 functions exactly as a minimal governance game — relying on the delegate and community coordination. The safety mechanisms add optionality for risk-averse game designers without adding mandatory complexity.
 

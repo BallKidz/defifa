@@ -123,7 +123,7 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         governor.transferOwnership(address(deployer));
     }
 
-    /// @notice After the fix, pending reserves dilute the paid holder's cash-out share.
+    /// @notice Pending reserves dilute the paid holder's cash-out share.
     /// The paid holder can no longer drain the full surplus; reserve holders retain their share.
     ///
     /// With BWA + HHI, a single-tier winner-take-all scorecard gives the beneficiary 0 attestation
@@ -177,7 +177,7 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         _cashOut(player, 1, 1);
         uint256 playerReclaim = player.balance - beforePlayerBalance;
 
-        // After the fix: paid holder gets only HALF because pending reserve dilutes the denominator.
+        // Paid holder gets only HALF because pending reserve dilutes the denominator.
         assertApproxEqAbs(
             playerReclaim,
             expectedPlayerReclaim,
@@ -196,7 +196,7 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         uint256 beforeReserveBalance = reserveBeneficiary.balance;
         _cashOut(reserveBeneficiary, 1, 2);
         uint256 reserveReclaim = reserveBeneficiary.balance - beforeReserveBalance;
-        assertGt(reserveReclaim, 0, "reserve holder can reclaim their share after fix");
+        assertGt(reserveReclaim, 0, "reserve holder can reclaim their share");
     }
 
     function _launchData() internal view returns (DefifaLaunchProjectData memory) {

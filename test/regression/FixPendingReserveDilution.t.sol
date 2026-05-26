@@ -33,9 +33,8 @@ import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 
-/// @notice Verifies the fix for Pending reserve NFTs are now included in the cash-out weight
-/// denominator. Before the fix, paid holders could cash out before reserves were minted and extract
-/// more than their fair share.
+/// @notice Pending reserve NFTs are included in the cash-out weight denominator so paid holders cannot extract more
+/// than their fair share before reserves are minted.
 ///
 /// With BWA + HHI-adjusted quorum, a single-tier winner-take-all scorecard gives the sole beneficiary
 /// 0 attestation power (BWA multiplier = 1 - 1 = 0). To allow ratification, we add 3 disinterested
@@ -130,7 +129,7 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         governor.transferOwnership(address(deployer));
     }
 
-    /// @notice With the fix, a paid holder's cash-out share is diluted by pending reserves.
+    /// @notice A paid holder's cash-out share is diluted by pending reserves.
     /// The paid holder should NOT be able to reclaim the full post-fee surplus when pending
     /// reserves exist -- the reserve holder's share must be protected.
     function test_paidHolderCashOutDilutedByPendingReserves() external {

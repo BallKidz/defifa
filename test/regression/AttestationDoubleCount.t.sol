@@ -151,7 +151,7 @@ contract AttestationDoubleCountTest is JBTest, TestBaseWorkflow {
         uint256 recipientUnitsAfter = nft.getTierAttestationUnitsOf(recipient, 1);
         uint256 totalUnitsAfter = nft.getTierTotalAttestationUnitsOf(1);
 
-        // After the fix: attestation units go to beneficiary on mint, then move to recipient on transfer.
+        // Attestation units go to beneficiary on mint, then move to recipient on transfer.
         // Total units stay constant, beneficiary loses units, recipient gains them.
         assertEq(totalUnitsAfter, totalUnitsBefore, "total tier units stay constant");
         assertEq(beneficiaryUnitsAfter, 0, "beneficiary loses attestation units after transferring NFT");

@@ -143,7 +143,7 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
             metadata: metadata
         });
 
-        // fix: delegation should be on the beneficiary's account, not the payer's.
+        // Delegation should be on the beneficiary's account, not the payer's.
         // The beneficiary's delegate is themselves (default when no explicit delegate is set).
         address beneficiaryDelegate = _nft.getTierDelegateOf(beneficiary, 1);
         assertEq(beneficiaryDelegate, beneficiary, "default delegate should be beneficiary, not payer");

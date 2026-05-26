@@ -34,7 +34,7 @@ import {JBPermissionsData} from "@bananapus/core-v6/src/interfaces/IJBPermission
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
-/// @notice Tests for PR #22 (M-D8): fee accounting after removing duplicate nana fee.
+/// @notice Tests fee accounting after removing duplicate NANA fee extraction.
 /// Verifies that only the fee portion of the pot is sent as payouts during fulfillment,
 /// and the remaining balance stays as surplus for cash-outs.
 contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {

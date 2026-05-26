@@ -109,7 +109,7 @@ contract TierCapMismatchTest is JBTest, TestBaseWorkflow {
     function test_launchRevertsFor129Tiers() external {
         DefifaLaunchProjectData memory data = _launchData(129);
 
-        // fix: the deployer now caps tiers at 128, so launching with 129 reverts.
+        // The deployer caps tiers at 128, so launching with 129 reverts.
         vm.expectPartialRevert(DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector);
         deployer.launchGameWith(data);
     }

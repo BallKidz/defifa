@@ -1036,7 +1036,7 @@ contract BWAFunctionComparisonTest is Test {
     ///         They cost the attacker money but return $0.
     ///
     ///         Defifa fees: 2.5% base protocol + 5% defifa = 7.5% total.
-    ///         Pot for cashout = 92.5% of total mint cost.
+    ///         Pot for cash-out = 92.5% of total mint cost.
     ///
     ///         UNIFORM buyer (alpha% of ALL tiers):
     ///         - Paid: alpha x N x T x p
@@ -1061,7 +1061,7 @@ contract BWAFunctionComparisonTest is Test {
         uint256 attackerCost = alpha * N * p; // alpha% x N tiers x T tokens x p
 
         // Under ANY scorecard [100%, 0, 0, 0]:
-        // Tier 1 cashout per token: pot x 100% / T = pot / T
+        // Tier 1 cash-out per token: pot x 100% / T = pot / T
         // Attacker has alpha tokens in tier 1: alpha x pot / T
         uint256 attackerRecovery = alpha * pot / T;
 
@@ -1250,7 +1250,7 @@ contract BWAFunctionComparisonTest is Test {
 
         // Pot = 32 x 1000 x $10 x 0.925 = $296,000
         // Attacker recovery from winning tier: alpha_w x pot / (N x T) x T
-        //   Wait: per-token cashout = pot x 100% / T = $296,000 / 1000 = $296
+        //   Wait: per-token cash-out = pot x 100% / T = $296,000 / 1000 = $296
         //   Attacker tokens in winning tier: 55% x 1000 = 550
         //   Recovery: 550 x $296 = $162,800
         //   But wait, the "pot" is actually distributed to the scoring tier

@@ -232,10 +232,10 @@ contract DefifaRegressionFixesTest is JBTest, TestBaseWorkflow {
         tokenIds[0] = 1_000_000_002;
         (uint256 defifaClaim, uint256 baseClaim) = _nft.tokensClaimableFor(tokenIds);
 
-        // The fix ensures the preview uses (totalMintCost + pendingReserveMintCost) as denominator.
+        // The preview uses (totalMintCost + pendingReserveMintCost) as denominator.
         // With 6 paid mints at 1 ETH each, tier 1 has 3 pending reserves at 1 ETH each.
         // Denominator = 6 ETH (totalMintCost) + 3 ETH (pendingReserveMintCost) = 9 ETH.
-        // Without the fix, denominator would be 6 ETH, yielding a higher (overquoted) claim.
+        // A 6 ETH denominator would yield a higher overquoted claim.
 
         // We can't easily compute exact expected values without replicating the full library logic,
         // but we CAN verify the preview doesn't overquote by checking it's <= the balance.

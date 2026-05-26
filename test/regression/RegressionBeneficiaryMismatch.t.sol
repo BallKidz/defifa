@@ -26,7 +26,7 @@ contract RegressionBeneficiaryMismatchTest is DefifaFeeAccountingTest {
         _ratifyEvenScorecard(users, nft, gov, projectId, 4);
 
         address holder = users[0];
-        address payable beneficiary = payable(address(bytes20(keccak256("cashout beneficiary"))));
+        address payable beneficiary = payable(address(bytes20(keccak256("cash-out beneficiary"))));
 
         uint256[] memory tokenIds = new uint256[](1);
         tokenIds[0] = _generateTokenId(1, 1);
