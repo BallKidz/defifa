@@ -49,7 +49,7 @@ contract DefifaProjectOwner is IERC721Receiver {
     // ---------------------- external transactions ---------------------- //
     //*********************************************************************//
 
-    /// @notice Give the defifa deployer permission to set splits on this contract's behalf.
+    /// @notice Give the Defifa deployer permission to set splits on this contract's behalf.
     function onERC721Received(
         address operator,
         address from,
@@ -68,11 +68,11 @@ contract DefifaProjectOwner is IERC721Receiver {
             revert DefifaProjectOwner_InvalidSender({caller: msg.sender, expectedSender: address(PROJECTS)});
         }
 
-        // Set the correct permission.
+        // Grant SET_SPLIT_GROUPS for the received project ID.
         uint8[] memory permissionIds = new uint8[](1);
         permissionIds[0] = JBPermissionIds.SET_SPLIT_GROUPS;
 
-        // Give the defifa deployer contract permission to set splits on this contract's behalf.
+        // Give the Defifa deployer contract permission to set splits on this contract's behalf.
         PERMISSIONS.setPermissionsFor({
             account: address(this),
             permissionsData: JBPermissionsData({

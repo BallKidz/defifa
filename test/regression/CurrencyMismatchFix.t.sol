@@ -13,9 +13,8 @@ import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol"
 import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 
 /// @title CurrencyMismatchFixTest
-/// @notice Adversarial tests for the currency mismatch fix: verifies that fulfillCommitmentsOf correctly resolves
-/// payout limits for both ETH and ERC-20 games, and that launch-time validation rejects zero-currency ERC-20
-/// configurations. Inherits DefifaUSDCTest for USDC helpers and fee project setup.
+/// @notice Adversarial tests for ERC-20 games with non-canonical currencies and zero-currency launch validation.
+/// @dev Inherits DefifaUSDCTest for USDC helpers and fee project setup.
 contract CurrencyMismatchFixTest is DefifaUSDCTest {
     // =========================================================================
     // HELPERS
@@ -78,7 +77,7 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
     // TEST 1: ERC-20 game with non-canonical currency correctly resolves payout limit
     // =========================================================================
 
-    /// @notice An ERC-20 game launched with currency=1 (non-canonical) now correctly sends commitment payouts
+    /// @notice An ERC-20 game launched with currency=1 (non-canonical) sends commitment payouts
     /// because fulfillCommitmentsOf uses metadata.baseCurrency instead of uint32(uint160(token)).
     function test_currencyMismatchFix_erc20NonCanonicalCurrencyFulfillsCorrectly() external {
         uint104 tierPrice = 100e6;
@@ -94,7 +93,7 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
 
         _attestAndRatify(_evenScorecard(4));
 
-        // Verify: payout succeeded. fulfilledCommitmentsOf stores the actual fee amount, not sentinel (1).
+        // Verify: payout succeeded and fulfilledCommitmentsOf stores the actual fee amount.
         uint256 fulfilled = deployer.fulfilledCommitmentsOf(_pid);
         assertEq(fulfilled, expectedFee, "fulfilled = expected fee (payout succeeded)");
 
@@ -106,7 +105,7 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
     // TEST 2: ETH game fulfillment still works correctly (no regression)
     // =========================================================================
 
-    /// @notice ETH game (canonical currency) continues to work after the fix.
+    /// @notice ETH game fulfillment remains unchanged.
     /// Covered by DefifaFeeAccountingTest; this verifies no regression from the baseCurrency change.
     function test_currencyMismatchFix_ethGameFeeAccountingUnchanged() external {
         // The DefifaFeeAccountingTest suite tests ETH fulfillment comprehensively.
@@ -122,7 +121,7 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
         _attestAndRatify(_evenScorecard(4));
 
         uint256 fulfilled = deployer.fulfilledCommitmentsOf(_pid);
-        assertEq(fulfilled, expectedFee, "canonical USDC fee unchanged by fix");
+        assertEq(fulfilled, expectedFee, "canonical USDC fee unchanged");
         assertEq(fulfilled + _balance(), potBefore, "fee + surplus = original pot");
     }
 
@@ -130,7 +129,7 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
     // TEST 3: Non-canonical ERC-20 winner cash-out is correct after fulfillment
     // =========================================================================
 
-    /// @notice After the fix, the winner of a non-canonical-currency ERC-20 game receives the post-fee surplus
+    /// @notice The winner of a non-canonical-currency ERC-20 game receives the post-fee surplus
     /// (not the full pot). This confirms the fee was actually deducted.
     function test_currencyMismatchFix_winnerReceivesPostFeeSurplusNotFullPot() external {
         uint104 tierPrice = 100e6;
@@ -141,7 +140,7 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
         uint256 potBefore = _balance();
         uint256 expectedFee = (potBefore * 75_000_000) / JBConstants.SPLITS_TOTAL_PERCENT;
 
-        // Tier 1 gets 100% of the cashout weight.
+        // Tier 1 gets 100% of the cash-out weight.
         DefifaTierCashOutWeight[] memory sc = new DefifaTierCashOutWeight[](2);
         sc[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT()});
         sc[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: 0});
@@ -155,8 +154,7 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
         _cashOutUsdc(_users[0], 1, 1);
         uint256 winnerReceived = usdc.balanceOf(_users[0]) - winnerBalBefore;
 
-        // Before the fix, winner would have received the full pot (fee was skipped).
-        // After the fix, winner receives pot minus fee.
+        // The winner receives pot minus fee.
         assertEq(winnerReceived, potBefore - expectedFee, "winner receives post-fee surplus, not the full pot");
         assertLt(winnerReceived, potBefore, "winner does NOT receive the full pot");
     }

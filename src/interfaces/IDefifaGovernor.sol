@@ -38,7 +38,7 @@ interface IDefifaGovernor {
     /// @notice Emitted when a scorecard is submitted for attestation.
     /// @param gameId The ID of the game.
     /// @param scorecardId The ID of the submitted scorecard.
-    /// @param tierWeights The proposed tier cash out weights.
+    /// @param tierWeights The proposed tier cash-out weights.
     /// @param isDefaultAttestationDelegate Whether the submitter is the default attestation delegate.
     /// @param caller The address that submitted the scorecard.
     event ScorecardSubmitted(
@@ -142,7 +142,7 @@ interface IDefifaGovernor {
 
     /// @notice Compute the scorecard ID for a given hook and tier weights.
     /// @param gameHook The game hook address.
-    /// @param tierWeights The tier cash out weights.
+    /// @param tierWeights The tier cash-out weights.
     /// @return The scorecard ID.
     function scorecardIdOf(address gameHook, DefifaTierCashOutWeight[] calldata tierWeights) external returns (uint256);
 
@@ -180,7 +180,7 @@ interface IDefifaGovernor {
 
     /// @notice Ratify a scorecard that has reached quorum.
     /// @param gameId The ID of the game.
-    /// @param tierWeights The tier cash out weights (must match the scorecard).
+    /// @param tierWeights The tier cash-out weights (must match the scorecard).
     /// @return The scorecard ID that was ratified.
     function ratifyScorecardFrom(
         uint256 gameId,
@@ -196,7 +196,7 @@ interface IDefifaGovernor {
 
     /// @notice Submit a scorecard for attestation.
     /// @param gameId The ID of the game.
-    /// @param tierWeights The tier cash out weights.
+    /// @param tierWeights The tier cash-out weights.
     /// @return The scorecard ID.
     function submitScorecardFor(
         uint256 gameId,

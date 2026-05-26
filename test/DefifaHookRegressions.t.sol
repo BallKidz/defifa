@@ -132,9 +132,7 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
     }
 
     /// @notice Attestation units must be preserved when transferring an NFT to an undelegated recipient.
-    /// @dev Before the fix, transferring to a recipient with no delegate set would cause attestation units to vanish:
-    ///      the sender's delegate lost units but no delegate gained them (because address(0) was skipped).
-    ///      After the fix, the recipient auto-delegates to themselves, preserving total attestation power.
+    /// @dev A recipient with no delegate set auto-delegates to themselves, preserving total attestation power.
     function test_M5_attestationUnitsPreservedOnTransferToUndelegatedRecipient() public {
         uint8 nTiers = 4;
         address playerA = address(bytes20(keccak256("playerA")));
@@ -217,7 +215,7 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
         // Advance 1 second so checkpoints are recorded.
         vm.warp(_tsReader.timestamp() + 1);
 
-        // After fix: playerC should be auto-delegated to themselves.
+        // playerC should be auto-delegated to themselves.
         address playerCDelegate = _nft.getTierDelegateOf(playerC, 1);
         assertEq(playerCDelegate, playerC, "Player C should be auto-delegated to self after receiving NFT");
 

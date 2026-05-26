@@ -33,8 +33,8 @@ import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol"
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 
-/// @notice Verifies that the pending-reserve snapshot fix prevents reserve minting from inflating
-/// attestation power after scorecard submission.
+/// @notice Verifies that the pending-reserve snapshot prevents reserve minting from inflating attestation power after
+/// scorecard submission.
 contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
@@ -127,7 +127,7 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         _governorImpl.transferOwnership(address(_deployer));
     }
 
-    /// @notice Confirms the snapshot fix: minting pending reserves after scorecard submission does NOT
+    /// @notice Confirms that minting pending reserves after scorecard submission does NOT
     /// inflate the submitter's BWA attestation weight. The snapshot locks pending-reserve counts at
     /// submission time so that post-submission reserve minting cannot remove the dilution.
     function test_mintingPendingReserveAfterSnapshotInflatesVotingPowerAndFlipsOutcome() external {
@@ -167,10 +167,10 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         uint256 postRaw0 = _gov.getAttestationWeight(_gameId, _player0, snapshotTime);
         uint256 postBwa0 = _gov.getBWAAttestationWeight(_gameId, scorecardId, _player0, snapshotTime);
 
-        // After fix: getAttestationWeight reads live state (reserves are now minted), so raw weight goes up.
+        // getAttestationWeight reads live state after reserve minting, so raw weight goes up.
         assertEq(postRaw0, 1_000_000_000, "minting reserves removes pending-reserve dilution in live view");
 
-        // After fix: getBWAAttestationWeight uses the snapshot, so pending-reserve dilution is preserved.
+        // getBWAAttestationWeight uses the snapshot, so pending-reserve dilution is preserved.
         // The BWA weight does NOT double -- the snapshot prevents inflation.
         assertEq(postBwa0, 375_000_000, "snapshot prevents reserve minting from inflating BWA power");
 
@@ -186,7 +186,7 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
 
         vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
 
-        // After fix: three attestors cannot reach quorum because the snapshot preserves the dilution.
+        // Three attestors cannot reach quorum because the snapshot preserves the dilution.
         // Their combined weight: 375M + 750M + 750M = 1,875M < quorum (2,000M base).
         assertEq(
             uint256(_gov.stateOf(_gameId, scorecardId)),

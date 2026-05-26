@@ -26,7 +26,7 @@ import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
-/// @notice Tests for regression fix: tier cap of 128 enforced in launchGameWith().
+/// @notice Tests that launchGameWith enforces the 128-tier cap.
 contract TierCapValidationRegressionTest is JBTest, TestBaseWorkflow {
     DefifaDeployer internal deployer;
     DefifaGovernor internal governor;

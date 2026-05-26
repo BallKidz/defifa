@@ -110,7 +110,7 @@ contract MintCostHandler is Test {
         mintCount++;
     }
 
-    /// @notice Refund (cashout during mint phase) — burns the NFT and returns exact price.
+    /// @notice Refund (cash-out during mint phase) — burns the NFT and returns exact price.
     function refund(uint256 indexSeed) external {
         if (liveTokens.length == 0) return;
         uint256 idx = bound(indexSeed, 0, liveTokens.length - 1);

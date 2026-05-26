@@ -138,8 +138,8 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
     }
 
     /// @notice Test that grace period extends from attestation start, not submission time.
-    /// @dev With the fix, a scorecard submitted early should have its grace period start after
-    ///      attestationsBegin, ensuring the grace period doesn't expire before attestations start.
+    /// @dev A scorecard submitted early starts its grace period after attestationsBegin, ensuring the grace period
+    /// does not expire before attestations start.
     function test_gracePeriodExtendsFromAttestationStart() public {
         uint8 nTiers = 4;
         address[] memory _users = new address[](nTiers);
@@ -207,7 +207,7 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
         // but BEFORE attestations begin. The scorecard should still be PENDING, NOT in a post-grace state.
         vm.warp(submissionTime + gracePeriod + 1);
 
-        // With the fix, the scorecard should still be PENDING because attestationsBegin hasn't arrived yet.
+        // The scorecard should still be PENDING because attestationsBegin hasn't arrived yet.
         assertEq(
             uint256(_governor.stateOf(_gameId, _proposalId)),
             uint256(DefifaScorecardState.PENDING),

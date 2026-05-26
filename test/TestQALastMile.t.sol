@@ -44,17 +44,13 @@ contract QATimestampReader {
 }
 
 // =============================================================================
-// QA LAST-MILE TEST 1: CASHOUT DoS WHEN FULFILLMENT FAILS DURING RATIFICATION
+// QA LAST-MILE TEST 1: CASH-OUT RESILIENCE WHEN COMMITMENT PAYOUT FAILS
 // =============================================================================
 
 /// @title TestQACashOutDoSDuringFulfillmentWindow
-/// @notice Documents the cashout denial-of-service window when fulfillCommitmentsOf reverts during ratification.
-/// @dev When fulfillCommitmentsOf reverts during ratification (try-catch), the game enters COMPLETE phase
-///      (scorecard is set) but the final ruleset — which has empty fundAccessLimitGroups (surplus = balance) —
-///      is never queued. The SCORING ruleset remains active with payoutLimits = type(uint224).max, making
-///      surplus = 0, which causes cashOutCount = 0 in the hook's computeCashOutCount.
-///      Players cannot cash out until fulfillCommitmentsOf is successfully retried.
-///      This is a known, accepted behavior: the DoS is temporary and funds are safe.
+/// @notice Documents that a failed commitment payout does not block final ruleset queuing or cash-outs.
+/// @dev If sendPayoutsOf reverts during ratification, fulfillCommitmentsOf catches it, emits
+///      CommitmentPayoutFailed, resets the fulfilled commitment amount, and still queues the final ruleset.
 contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
@@ -147,9 +143,8 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
         governor.transferOwnership(address(deployer));
     }
 
-    /// @notice Proves the fix: when sendPayoutsOf reverts during fulfillCommitmentsOf,
-    ///         the internal try-catch handles it gracefully. The final ruleset is still queued,
-    ///         and players can cash out immediately (no DoS).
+    /// @notice When sendPayoutsOf reverts during fulfillCommitmentsOf, the internal try-catch still queues the final
+    ///         ruleset and lets players cash out immediately.
     function test_cashOutDoSDuringFulfillmentWindow() public {
         uint8 nTiers = 4;
         address[] memory _users = new address[](nTiers);
@@ -227,7 +222,7 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
         assertTrue(deployer.commitmentsFulfilledFor(_projectId), "commitments should be fulfilled");
         assertEq(deployer.fulfilledCommitmentsOf(_projectId), 0, "no fee amount when pot is empty");
 
-        // --- Players CAN cash out immediately (no DoS) ---
+        // --- Players can cash out immediately ---
         uint256 user0BalBefore = _users[0].balance;
         {
             uint256[] memory cashOutIds = new uint256[](1);

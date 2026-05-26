@@ -10,12 +10,10 @@ import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingCo
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 
-/// @notice Regression test for the currency mismatch fix: ERC-20 games now correctly resolve payout limits via
-/// baseCurrency. Before the fix, using a non-canonical currency (e.g. currency=1 for USDC) caused sendPayoutsOf to use
-/// uint32(uint160(token)) which didn't match the stored payout limit currency, silently skipping payouts.
-/// After the fix, fulfillCommitmentsOf uses metadata.baseCurrency which always matches the stored limit.
+/// @notice ERC-20 games resolve payout limits via baseCurrency, so non-canonical currency IDs still pay commitments.
+/// @dev fulfillCommitmentsOf uses metadata.baseCurrency, which matches the stored payout limit.
 contract CurrencyMismatchBypassTest is DefifaUSDCTest {
-    /// @notice Verify that an ERC-20 game with non-canonical currency (1) correctly pays out commitment fees.
+    /// @notice Verify that an ERC-20 game with non-canonical currency (1) pays out commitment fees.
     function test_nonCanonicalCurrencyPayoutsNowSucceed() external {
         uint104 tierPrice = 100e6;
 
@@ -51,7 +49,7 @@ contract CurrencyMismatchBypassTest is DefifaUSDCTest {
         vm.prank(_users[1]);
         _gov.ratifyScorecardFrom(_pid, scorecard);
 
-        // After the fix: payout succeeds, fulfilledCommitmentsOf stores the actual fee (not the sentinel).
+        // Payout succeeds and fulfilledCommitmentsOf stores the actual fee.
         assertEq(
             deployer.fulfilledCommitmentsOf(_pid), expectedFee, "fulfilled commitments equals the expected fee amount"
         );
@@ -84,7 +82,7 @@ contract CurrencyMismatchBypassTest is DefifaUSDCTest {
         }
 
         // Non-canonical currency (1 = ETH currency ID) for a USDC token.
-        // Before the fix, this caused fulfillCommitmentsOf to silently skip payouts.
+        // The deployer must use metadata.baseCurrency instead of deriving currency from the token address.
         return DefifaLaunchProjectData({
             name: "DEFIFA_USDC_NONCANONICAL",
             projectUri: "",

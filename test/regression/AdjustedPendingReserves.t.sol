@@ -339,7 +339,7 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
         uint256 weight = _nft.cashOutWeightOf(tokenIds);
 
         uint256 expectedWeight = _nft.TOTAL_CASHOUT_WEIGHT() / 4;
-        assertEq(weight, expectedWeight, "cashout weight denominator includes adjusted reserves");
+        assertEq(weight, expectedWeight, "cash-out weight denominator includes adjusted reserves");
     }
 
     // ================================================================
@@ -387,12 +387,12 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
         vm.warp(data.start);
 
         // Attempt to mint reserves — should be capped to 0 by adjustedPendingReservesFor.
-        // Without the fix, this would add 2 * 1 ETH = 2 ETH back to totalMintCost.
+        // The adjusted pending-reserve cap prevents refund-cleared reserves from adding 2 ETH back to totalMintCost.
         JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
         reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 2});
         _nft.mintReservesFor(reserveConfigs);
 
-        // With the fix: totalMintCost should still be 0 (no ghost reserves minted).
+        // totalMintCost should still be 0 because no ghost reserves are minted.
         assertEq(_nft.totalMintCost(), 0, "totalMintCost must remain 0 - reserve mints capped by adjusted count");
     }
 

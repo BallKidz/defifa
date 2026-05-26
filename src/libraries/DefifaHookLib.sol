@@ -37,7 +37,7 @@ library DefifaHookLib {
     // ----------------------- internal constants ------------------------ //
     //*********************************************************************//
 
-    /// @notice The total cashOut weight that can be divided among tiers.
+    /// @notice The total cash-out weight that can be divided among tiers.
     uint256 internal constant TOTAL_CASHOUT_WEIGHT = 1_000_000_000_000_000_000;
 
     //*********************************************************************//
@@ -66,7 +66,7 @@ library DefifaHookLib {
         // Get the tier to access reserveFrequency and supply data.
         JB721Tier memory tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
 
-        // No reserves if no reserve frequency.
+        // A zero reserve frequency means the tier has no reserve mints.
         if (tier.reserveFrequency == 0) return 0;
 
         // Calculate the number of reserves already minted.
@@ -143,13 +143,13 @@ library DefifaHookLib {
         }
     }
 
-    /// @notice Compute the cash out count for the beforeCashOutRecorded hook.
+    /// @notice Compute the cash-out count for the beforeCashOutRecorded hook.
     /// @param gamePhase The current game phase.
     /// @param cumulativeMintPrice The cumulative mint price of the tokens to cash out.
     /// @param surplusValue The surplus value from the context.
     /// @param totalAmountRedeemed The amount already redeemed.
-    /// @param cumulativeCashOutWeight The cumulative cash out weight of the tokens.
-    /// @return cashOutCount The computed cash out count.
+    /// @param cumulativeCashOutWeight The cumulative cash-out weight of the tokens.
+    /// @return cashOutCount The computed cash-out count.
     function computeCashOutCount(
         DefifaGamePhase gamePhase,
         uint256 cumulativeMintPrice,
@@ -175,13 +175,13 @@ library DefifaHookLib {
         }
     }
 
-    /// @notice Compute the cash out weight for a single token.
+    /// @notice Compute the cash-out weight for a single token.
     /// @param tokenId The token ID.
     /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
-    /// @param tierCashOutWeights The tier cash out weights array.
+    /// @param tierCashOutWeights The tier cash-out weights array.
     /// @param tokensRedeemedFrom The mapping of tokens redeemed per tier (passed as a function that returns the value).
-    /// @return The cash out weight.
+    /// @return The cash-out weight.
     function computeCashOutWeight(
         uint256 tokenId,
         IJB721TiersHookStore hookStore,
@@ -218,18 +218,18 @@ library DefifaHookLib {
         // Include pending (unminted) reserve NFTs in the denominator, adjusted for refund-phase burns.
         totalTokensForCashoutInTier += IDefifaHook(hook).adjustedPendingReservesFor(tierId);
 
-        // Calculate the percentage of the tier cashOut amount a single token counts for.
+        // Calculate the percentage of the tier's cash-out amount that a single token counts for.
         // Integer division rounding in cashOutWeight is unavoidable in Solidity. Rounding direction
         // (down) is consistent and conservative — it slightly favors the project over individual cash-out recipients.
         // The maximum error per operation is 1 wei per division.
         return weight / totalTokensForCashoutInTier;
     }
 
-    /// @notice Compute the cumulative cash out weight for multiple tokens.
+    /// @notice Compute the cumulative cash-out weight for multiple tokens.
     /// @param tokenIds The token IDs.
     /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
-    /// @param tierCashOutWeights The tier cash out weights array.
+    /// @param tierCashOutWeights The tier cash-out weights array.
     /// @param tokensRedeemedFrom The mapping of tokens redeemed per tier.
     /// @return cumulativeWeight The cumulative weight.
     function computeCashOutWeightBatch(
@@ -369,7 +369,7 @@ library DefifaHookLib {
         }
     }
 
-    /// @notice Validates tier cash out weights and returns the weight array to store.
+    /// @notice Validates tier cash-out weights and returns the weight array to store.
     /// @param tierWeights The tier weights to validate and set.
     /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
