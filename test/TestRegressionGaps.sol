@@ -168,7 +168,7 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
     // =========================================================================
 
     function _launchData(uint8 n, uint104 tierPrice) internal view returns (DefifaLaunchProjectData memory) {
-        return _launchDataWith(n, tierPrice, 0, 0);
+        return _launchDataWith(n, tierPrice, 0, type(uint32).max);
     }
 
     function _launchDataWith(
@@ -459,7 +459,7 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
     function test_erc20_noContestMinParticipation() external {
         uint104 tierPrice = 1 ether;
         // 10 ether threshold, but only mint 1 ether total.
-        DefifaLaunchProjectData memory d = _launchDataWith(4, tierPrice, 10 ether, 0);
+        DefifaLaunchProjectData memory d = _launchDataWith(4, tierPrice, 10 ether, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
@@ -477,7 +477,7 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
     /// @notice ERC-20: No-contest with trigger and refund returns exact mint price in ERC-20.
     function test_erc20_noContestRefund() external {
         uint104 tierPrice = 1 ether;
-        DefifaLaunchProjectData memory d = _launchDataWith(4, tierPrice, 10 ether, 0);
+        DefifaLaunchProjectData memory d = _launchDataWith(4, tierPrice, 10 ether, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
