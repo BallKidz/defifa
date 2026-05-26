@@ -149,14 +149,14 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
         governor = new DefifaGovernor(jbController(), address(this));
         deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
         deployer.setChainSpecificConstants({
-            hookCodeOrigin: address(hook),
-            tokenUriResolver: new DefifaTokenUriResolver(address(this)),
-            governor: governor,
-            controller: jbController(),
-            registry: new JBAddressRegistry(),
-            defifaProjectId: _defifaProjectId,
-            baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore()
+            newHookCodeOrigin: address(hook),
+            newTokenUriResolver: new DefifaTokenUriResolver(address(this)),
+            newGovernor: governor,
+            newController: jbController(),
+            newRegistry: new JBAddressRegistry(),
+            newDefifaProjectId: _defifaProjectId,
+            newBaseProtocolProjectId: _protocolFeeProjectId,
+            newHookStore: new JB721TiersHookStore()
         });
 
         hook.transferOwnership(address(deployer));
@@ -526,7 +526,7 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
 }
 
 // =============================================================================
-// GAP 2: MULTI-GAME GOVERNOR ISOLATION
+// GAP 2: MULTI-GAME governor ISOLATION
 // =============================================================================
 
 /// @title TestRegressionGapsMultiGameIsolation
@@ -615,14 +615,14 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
         governor = new DefifaGovernor(jbController(), address(this));
         deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
         deployer.setChainSpecificConstants({
-            hookCodeOrigin: address(hook),
-            tokenUriResolver: new DefifaTokenUriResolver(address(this)),
-            governor: governor,
-            controller: jbController(),
-            registry: new JBAddressRegistry(),
-            defifaProjectId: _defifaProjectId,
-            baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore()
+            newHookCodeOrigin: address(hook),
+            newTokenUriResolver: new DefifaTokenUriResolver(address(this)),
+            newGovernor: governor,
+            newController: jbController(),
+            newRegistry: new JBAddressRegistry(),
+            newDefifaProjectId: _defifaProjectId,
+            newBaseProtocolProjectId: _protocolFeeProjectId,
+            newHookStore: new JB721TiersHookStore()
         });
         hook.transferOwnership(address(deployer));
         governor.transferOwnership(address(deployer));

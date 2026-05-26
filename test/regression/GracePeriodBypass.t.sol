@@ -123,14 +123,14 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
         DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
         deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
         deployer.setChainSpecificConstants({
-            hookCodeOrigin: address(hook),
-            tokenUriResolver: _tokenUriResolver,
-            governor: governor,
-            controller: jbController(),
-            registry: _registry,
-            defifaProjectId: _defifaProjectId,
-            baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore()
+            newHookCodeOrigin: address(hook),
+            newTokenUriResolver: _tokenUriResolver,
+            newGovernor: governor,
+            newController: jbController(),
+            newRegistry: _registry,
+            newDefifaProjectId: _defifaProjectId,
+            newBaseProtocolProjectId: _protocolFeeProjectId,
+            newHookStore: new JB721TiersHookStore()
         });
 
         hook.transferOwnership(address(deployer));

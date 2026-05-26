@@ -131,14 +131,14 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         governor = new DefifaGovernor(jbController(), address(this));
         deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
         deployer.setChainSpecificConstants({
-            hookCodeOrigin: address(hook),
-            tokenUriResolver: new DefifaTokenUriResolver(address(this)),
-            governor: governor,
-            controller: jbController(),
-            registry: new JBAddressRegistry(),
-            defifaProjectId: _defifaProjectId,
-            baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore()
+            newHookCodeOrigin: address(hook),
+            newTokenUriResolver: new DefifaTokenUriResolver(address(this)),
+            newGovernor: governor,
+            newController: jbController(),
+            newRegistry: new JBAddressRegistry(),
+            newDefifaProjectId: _defifaProjectId,
+            newBaseProtocolProjectId: _protocolFeeProjectId,
+            newHookStore: new JB721TiersHookStore()
         });
 
         // Grant deployer SET_SPLIT_GROUPS permission on the defifa fee project.
@@ -2404,7 +2404,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
     /// @dev Mints fungible project tokens by pranking as the terminal. Defifa games use weight=0 so `pay` does not
     /// mint fungible tokens. This helper simulates the token supply that `gamePhaseOf` now checks via
-    /// `CONTROLLER.TOKENS().totalSupplyOf(gameId)`.
+    /// `controller.TOKENS().totalSupplyOf(gameId)`.
     function _mintProjectTokens(address beneficiary, uint256 amount) internal {
         vm.prank(address(jbMultiTerminal()));
         jbController().mintTokensOf(_pid, amount, beneficiary, "", false);

@@ -101,14 +101,14 @@ contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
         _governorImpl = new DefifaGovernor(jbController(), address(this));
         _deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
         _deployer.setChainSpecificConstants({
-            hookCodeOrigin: address(_hookImpl),
-            tokenUriResolver: new DefifaTokenUriResolver(address(this)),
-            governor: _governorImpl,
-            controller: jbController(),
-            registry: new JBAddressRegistry(),
-            defifaProjectId: _defifaProjectId,
-            baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore()
+            newHookCodeOrigin: address(_hookImpl),
+            newTokenUriResolver: new DefifaTokenUriResolver(address(this)),
+            newGovernor: _governorImpl,
+            newController: jbController(),
+            newRegistry: new JBAddressRegistry(),
+            newDefifaProjectId: _defifaProjectId,
+            newBaseProtocolProjectId: _protocolFeeProjectId,
+            newHookStore: new JB721TiersHookStore()
         });
 
         _hookImpl.transferOwnership(address(_deployer));

@@ -109,21 +109,21 @@ contract DeployMainnet is Script, Sphinx {
             directory: core.directory, defifaToken: defifaToken, baseProtocolToken: baseProtocolToken
         });
         DefifaTokenUriResolver tokenUriResolver = new DefifaTokenUriResolver{salt: _salt}(safeAddress());
-        if (address(tokenUriResolver.TYPEFACE()) == address(0)) tokenUriResolver.setChainSpecificConstants(_typeface);
+        if (address(tokenUriResolver.typeface()) == address(0)) tokenUriResolver.setChainSpecificConstants(_typeface);
         DefifaGovernor governor = new DefifaGovernor{salt: _salt}({controller: core.controller, owner: safeAddress()});
         JB721TiersHookStore hookStore = new JB721TiersHookStore{salt: _salt}();
         DefifaDeployer deployer =
             new DefifaDeployer{salt: _salt}({deployer: safeAddress(), initialOwner: safeAddress()});
-        if (address(deployer.CONTROLLER()) == address(0)) {
+        if (address(deployer.controller()) == address(0)) {
             deployer.setChainSpecificConstants({
-                hookCodeOrigin: address(hook),
-                tokenUriResolver: tokenUriResolver,
-                governor: governor,
-                controller: core.controller,
-                registry: registry.registry,
-                defifaProjectId: _defifaProjectId,
-                baseProtocolProjectId: _baseProtocolProjectId,
-                hookStore: hookStore
+                newHookCodeOrigin: address(hook),
+                newTokenUriResolver: tokenUriResolver,
+                newGovernor: governor,
+                newController: core.controller,
+                newRegistry: registry.registry,
+                newDefifaProjectId: _defifaProjectId,
+                newBaseProtocolProjectId: _baseProtocolProjectId,
+                newHookStore: hookStore
             });
         }
 
