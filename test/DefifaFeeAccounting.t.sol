@@ -109,18 +109,18 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         hook = new DefifaHook(jbDirectory(), IERC20(_defifaToken), IERC20(_nanaToken));
         governor = new DefifaGovernor(jbController(), address(this));
         JBAddressRegistry _registry = new JBAddressRegistry();
-        DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(ITypeface(address(0)));
-        deployer = new DefifaDeployer(
-            address(hook),
-            _tokenUriResolver,
-            governor,
-            jbController(),
-            _registry,
-            _defifaProjectId,
-            _protocolFeeProjectId,
-            new JB721TiersHookStore(),
-            address(this)
-        );
+        DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
+        deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
+        deployer.setChainSpecificConstants({
+            newHookCodeOrigin: address(hook),
+            newTokenUriResolver: _tokenUriResolver,
+            newGovernor: governor,
+            newController: jbController(),
+            newRegistry: _registry,
+            newDefifaProjectId: _defifaProjectId,
+            newBaseProtocolProjectId: _protocolFeeProjectId,
+            newHookStore: new JB721TiersHookStore()
+        });
 
         // Grant the deployer SET_SPLIT_GROUPS permission on the defifa fee project.
         // This is needed so the deployer can set custom splits via controller.setSplitGroupsOf().
@@ -140,6 +140,82 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
 
         hook.transferOwnership(address(deployer));
         governor.transferOwnership(address(deployer));
+    }
+
+    function testSetChainSpecificConstantsRevertsIfAlreadyConfigured() external {
+        JBAddressRegistry registry = new JBAddressRegistry();
+        JB721TiersHookStore hookStore = new JB721TiersHookStore();
+
+        vm.expectRevert(DefifaDeployer.DefifaDeployer_AlreadyConfigured.selector);
+        deployer.setChainSpecificConstants({
+            newHookCodeOrigin: address(hook),
+            newTokenUriResolver: IJB721TokenUriResolver(address(0)),
+            newGovernor: governor,
+            newController: jbController(),
+            newRegistry: registry,
+            newDefifaProjectId: _defifaProjectId,
+            newBaseProtocolProjectId: _protocolFeeProjectId,
+            newHookStore: hookStore
+        });
+    }
+
+    function testSetChainSpecificConstantsRevertsIfUnauthorized() external {
+        address unauthorized = address(bytes20(keccak256("unauthorized")));
+        JBAddressRegistry registry = new JBAddressRegistry();
+        JB721TiersHookStore hookStore = new JB721TiersHookStore();
+
+        vm.prank(unauthorized);
+        vm.expectRevert(abi.encodeWithSelector(DefifaDeployer.DefifaDeployer_Unauthorized.selector, unauthorized));
+        deployer.setChainSpecificConstants({
+            newHookCodeOrigin: address(hook),
+            newTokenUriResolver: IJB721TokenUriResolver(address(0)),
+            newGovernor: governor,
+            newController: jbController(),
+            newRegistry: registry,
+            newDefifaProjectId: _defifaProjectId,
+            newBaseProtocolProjectId: _protocolFeeProjectId,
+            newHookStore: hookStore
+        });
+    }
+
+    function testSetChainSpecificConstantsStoresValues() external view {
+        assertEq(deployer.hookCodeOrigin(), address(hook));
+        assertEq(address(deployer.governor()), address(governor));
+        assertEq(address(deployer.controller()), address(jbController()));
+        assertEq(deployer.defifaProjectId(), _defifaProjectId);
+        assertEq(deployer.baseProtocolProjectId(), _protocolFeeProjectId);
+        assertEq(deployer.referralProjectId(), (uint256(1) << 48) | _defifaProjectId);
+    }
+
+    function testTokenUriResolverSetChainSpecificConstantsRevertsIfAlreadyConfigured() external {
+        DefifaTokenUriResolver resolver = new DefifaTokenUriResolver(address(this));
+        ITypeface typeface = ITypeface(address(bytes20(keccak256("typeface"))));
+
+        resolver.setChainSpecificConstants(typeface);
+
+        vm.expectRevert(DefifaTokenUriResolver.DefifaTokenUriResolver_AlreadyConfigured.selector);
+        resolver.setChainSpecificConstants(typeface);
+    }
+
+    function testTokenUriResolverSetChainSpecificConstantsRevertsIfUnauthorized() external {
+        DefifaTokenUriResolver resolver = new DefifaTokenUriResolver(address(this));
+        ITypeface typeface = ITypeface(address(bytes20(keccak256("typeface"))));
+        address unauthorized = address(bytes20(keccak256("unauthorized")));
+
+        vm.prank(unauthorized);
+        vm.expectRevert(
+            abi.encodeWithSelector(DefifaTokenUriResolver.DefifaTokenUriResolver_Unauthorized.selector, unauthorized)
+        );
+        resolver.setChainSpecificConstants(typeface);
+    }
+
+    function testTokenUriResolverSetChainSpecificConstantsStoresTypeface() external {
+        DefifaTokenUriResolver resolver = new DefifaTokenUriResolver(address(this));
+        ITypeface typeface = ITypeface(address(bytes20(keccak256("typeface"))));
+
+        resolver.setChainSpecificConstants(typeface);
+
+        assertEq(address(resolver.typeface()), address(typeface));
     }
 
     // -----------------------------------------------------------------------

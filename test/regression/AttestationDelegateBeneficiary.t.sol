@@ -98,17 +98,17 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
 
         hook = new DefifaHook(jbDirectory(), IERC20(_defifaToken), IERC20(_nanaToken));
         governor = new DefifaGovernor(jbController(), address(this));
-        deployer = new DefifaDeployer(
-            address(hook),
-            new DefifaTokenUriResolver(ITypeface(address(0))),
-            governor,
-            jbController(),
-            new JBAddressRegistry(),
-            _defifaProjectId,
-            _protocolFeeProjectId,
-            new JB721TiersHookStore(),
-            address(this)
-        );
+        deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
+        deployer.setChainSpecificConstants({
+            newHookCodeOrigin: address(hook),
+            newTokenUriResolver: new DefifaTokenUriResolver(address(this)),
+            newGovernor: governor,
+            newController: jbController(),
+            newRegistry: new JBAddressRegistry(),
+            newDefifaProjectId: _defifaProjectId,
+            newBaseProtocolProjectId: _protocolFeeProjectId,
+            newHookStore: new JB721TiersHookStore()
+        });
 
         hook.transferOwnership(address(deployer));
         governor.transferOwnership(address(deployer));

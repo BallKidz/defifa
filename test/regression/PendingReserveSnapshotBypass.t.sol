@@ -111,17 +111,17 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
 
         _hookImpl = new DefifaHook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
         _governorImpl = new DefifaGovernor(jbController(), address(this));
-        _deployer = new DefifaDeployer(
-            address(_hookImpl),
-            new DefifaTokenUriResolver(ITypeface(address(0))),
-            _governorImpl,
-            jbController(),
-            new JBAddressRegistry(),
-            _defifaProjectId,
-            _protocolFeeProjectId,
-            new JB721TiersHookStore(),
-            address(this)
-        );
+        _deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
+        _deployer.setChainSpecificConstants({
+            newHookCodeOrigin: address(_hookImpl),
+            newTokenUriResolver: new DefifaTokenUriResolver(address(this)),
+            newGovernor: _governorImpl,
+            newController: jbController(),
+            newRegistry: new JBAddressRegistry(),
+            newDefifaProjectId: _defifaProjectId,
+            newBaseProtocolProjectId: _protocolFeeProjectId,
+            newHookStore: new JB721TiersHookStore()
+        });
 
         _hookImpl.transferOwnership(address(_deployer));
         _governorImpl.transferOwnership(address(_deployer));

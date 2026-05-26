@@ -129,18 +129,18 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         );
         governor = new DefifaGovernor(jbController(), address(this));
         JBAddressRegistry _registry = new JBAddressRegistry();
-        DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(ITypeface(address(0)));
-        deployer = new DefifaDeployer(
-            address(hook),
-            _tokenUriResolver,
-            governor,
-            jbController(),
-            _registry,
-            _defifaProjectId,
-            _protocolFeeProjectId,
-            new JB721TiersHookStore(),
-            address(this)
-        );
+        DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
+        deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
+        deployer.setChainSpecificConstants({
+            newHookCodeOrigin: address(hook),
+            newTokenUriResolver: _tokenUriResolver,
+            newGovernor: governor,
+            newController: jbController(),
+            newRegistry: _registry,
+            newDefifaProjectId: _defifaProjectId,
+            newBaseProtocolProjectId: _protocolFeeProjectId,
+            newHookStore: new JB721TiersHookStore()
+        });
 
         // Transfer ownership of the hook to the deployer.
         hook.transferOwnership(address(deployer));

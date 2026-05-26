@@ -227,17 +227,17 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
 
         hookImpl = new DefifaHook(jbDirectory(), IERC20(_defifaToken), IERC20(_nanaToken));
         governor = new DefifaGovernor(jbController(), address(this));
-        deployer = new DefifaDeployer(
-            address(hookImpl),
-            new DefifaTokenUriResolver(ITypeface(address(0))),
-            governor,
-            jbController(),
-            new JBAddressRegistry(),
-            _protocolFeeProjectId,
-            _defifaProjectId,
-            new JB721TiersHookStore(),
-            address(this)
-        );
+        deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
+        deployer.setChainSpecificConstants({
+            newHookCodeOrigin: address(hookImpl),
+            newTokenUriResolver: new DefifaTokenUriResolver(address(this)),
+            newGovernor: governor,
+            newController: jbController(),
+            newRegistry: new JBAddressRegistry(),
+            newDefifaProjectId: _protocolFeeProjectId,
+            newBaseProtocolProjectId: _defifaProjectId,
+            newHookStore: new JB721TiersHookStore()
+        });
         hookImpl.transferOwnership(address(deployer));
         governor.transferOwnership(address(deployer));
 
