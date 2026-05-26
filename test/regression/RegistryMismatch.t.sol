@@ -86,17 +86,17 @@ contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
         DefifaHook hookCodeOrigin = new DefifaHook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
         DefifaGovernor governor = new DefifaGovernor(jbController(), address(this));
         registry = new JBAddressRegistry();
-        deployer = new DefifaDeployer(
-            address(hookCodeOrigin),
-            new DefifaTokenUriResolver(ITypeface(address(0))),
-            governor,
-            jbController(),
-            registry,
-            defifaProjectId,
-            protocolFeeProjectId,
-            new JB721TiersHookStore(),
-            address(this)
-        );
+        deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
+        deployer.setChainSpecificConstants({
+            hookCodeOrigin: address(hookCodeOrigin),
+            tokenUriResolver: new DefifaTokenUriResolver(address(this)),
+            governor: governor,
+            controller: jbController(),
+            registry: registry,
+            defifaProjectId: defifaProjectId,
+            baseProtocolProjectId: protocolFeeProjectId,
+            hookStore: new JB721TiersHookStore()
+        });
 
         hookCodeOrigin.transferOwnership(address(deployer));
         governor.transferOwnership(address(deployer));

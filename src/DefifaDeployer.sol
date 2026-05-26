@@ -56,6 +56,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     //*********************************************************************//
 
     error DefifaDeployer_CantFulfillYet(uint256 gameId);
+    error DefifaDeployer_AlreadyConfigured();
     error DefifaDeployer_InvalidGameConfiguration(
         uint256 start, uint256 mintPeriodDuration, uint256 refundPeriodDuration, uint256 tierCount
     );
@@ -65,50 +66,11 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     error DefifaDeployer_ReferralChainIdTooLarge(uint256 referralChainId);
     error DefifaDeployer_ReferralProjectIdTooLarge(uint256 referralProjectId);
     error DefifaDeployer_SplitsDontAddUp(uint256 totalPercent, uint256 maxPercent);
+    error DefifaDeployer_Unauthorized(address caller);
 
     //*********************************************************************//
-    // ----------------------- internal properties ----------------------- //
+    // ------------------------- public constants ------------------------ //
     //*********************************************************************//
-
-    /// @notice The game's ops.
-    mapping(uint256 => DefifaOpsData) internal _opsOf;
-
-    /// @notice This contract's nonce for deterministic hook deployment and registry entries.
-    /// @dev Initialized at 1 because the hook implementation is deployed before the first game clone.
-    uint256 internal _nonce;
-
-    //*********************************************************************//
-    // ------------------ public immutable properties -------------------- //
-    //*********************************************************************//
-
-    /// @notice The group relative to which splits are stored.
-    /// @dev This could be any fixed number.
-    uint256 public immutable override SPLIT_GROUP;
-
-    /// @notice The project ID that will receive game fees, and relative to which splits are stored.
-    /// @dev The owner of this project ID must give this contract operator permissions over the SET_SPLITS operation.
-    uint256 public immutable override DEFIFA_PROJECT_ID;
-
-    /// @notice The project ID that will receive protocol fees as commitments are fulfilled.
-    uint256 public immutable override BASE_PROTOCOL_PROJECT_ID;
-
-    /// @notice The original code for the Defifa hook to base subsequent instances on.
-    address public immutable override HOOK_CODE_ORIGIN;
-
-    /// @notice The default Defifa token URI resolver.
-    IJB721TokenUriResolver public immutable override TOKEN_URI_RESOLVER;
-
-    /// @notice The governance contract that ratifies scorecards for each game.
-    IDefifaGovernor public immutable override GOVERNOR;
-
-    /// @notice The controller with which new projects should be deployed.
-    IJBController public immutable override CONTROLLER;
-
-    /// @notice The Juicebox 721 tiers hook registry used to register deployed games.
-    IJBAddressRegistry public immutable REGISTRY;
-
-    /// @notice The 721 tiers hook store used by all games.
-    IJB721TiersHookStore public immutable HOOK_STORE;
 
     /// @notice The divisor that describes the protocol fee that should be taken.
     /// @dev This is equal to 100 divided by the fee percent (e.g. 40 = 2.5% fee).
@@ -119,15 +81,52 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     uint256 public constant override DEFIFA_FEE_DIVISOR = 20;
 
     //*********************************************************************//
+    // --------------- public immutable stored properties ---------------- //
+    //*********************************************************************//
+
+    /// @notice The group relative to which splits are stored.
+    /// @dev This could be any fixed number.
+    uint256 public immutable override SPLIT_GROUP;
+
+    //*********************************************************************//
+    // -------------- internal immutable stored properties -------------- //
+    //*********************************************************************//
+
+    /// @notice The address authorized to call `setChainSpecificConstants` exactly once.
+    address internal immutable _DEPLOYER;
+
+    //*********************************************************************//
     // --------------------- public stored properties -------------------- //
     //*********************************************************************//
+
+    /// @notice The project ID that will receive game fees, and relative to which splits are stored.
+    /// @dev The owner of this project ID must give this contract operator permissions over the SET_SPLITS operation.
+    uint256 public override DEFIFA_PROJECT_ID;
+
+    /// @notice The project ID that will receive protocol fees as commitments are fulfilled.
+    uint256 public override BASE_PROTOCOL_PROJECT_ID;
+
+    /// @notice The original code for the Defifa hook to base subsequent instances on.
+    address public override HOOK_CODE_ORIGIN;
+
+    /// @notice The default Defifa token URI resolver.
+    IJB721TokenUriResolver public override TOKEN_URI_RESOLVER;
+
+    /// @notice The governance contract that ratifies scorecards for each game.
+    IDefifaGovernor public override GOVERNOR;
+
+    /// @notice The controller with which new projects should be deployed.
+    IJBController public override CONTROLLER;
+
+    /// @notice The Juicebox 721 tiers hook registry used to register deployed games.
+    IJBAddressRegistry public REGISTRY;
+
+    /// @notice The 721 tiers hook store used by all games.
+    IJB721TiersHookStore public HOOK_STORE;
 
     /// @notice The amount of commitments a game has fulfilled.
     /// @dev The ID of the game to check.
     mapping(uint256 => uint256) public override fulfilledCommitmentsOf;
-
-    /// @notice The total absolute split percent for each game (out of SPLITS_TOTAL_PERCENT).
-    mapping(uint256 => uint256) internal _commitmentPercentOf;
 
     /// @notice Whether commitments have been fulfilled for a game.
     mapping(uint256 => bool) public commitmentsFulfilledFor;
@@ -141,6 +140,20 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// `(1, DEFIFA_PROJECT_ID)` so fee-volume credit accrues to the Defifa project on Ethereum mainnet
     /// regardless of which chain the game runs on. Settable by the owner via `setReferralProjectId`.
     uint256 public override referralProjectId;
+
+    //*********************************************************************//
+    // -------------------- internal stored properties ------------------- //
+    //*********************************************************************//
+
+    /// @notice The game's ops.
+    mapping(uint256 => DefifaOpsData) internal _opsOf;
+
+    /// @notice The total absolute split percent for each game (out of SPLITS_TOTAL_PERCENT).
+    mapping(uint256 => uint256) internal _commitmentPercentOf;
+
+    /// @notice This contract's nonce for deterministic hook deployment and registry entries.
+    /// @dev Initialized at 1 because the hook implementation is deployed before the first game clone.
+    uint256 internal _nonce;
 
     //*********************************************************************//
     // ------------------------- external views -------------------------- //
@@ -282,44 +295,14 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     // -------------------------- constructor ---------------------------- //
     //*********************************************************************//
 
-    /// @param hookCodeOrigin The code of the Defifa hook.
-    /// @param tokenUriResolver The standard default token URI resolver.
-    /// @param governor The Defifa governor.
-    /// @param controller The controller to use to launch the game from.
-    /// @param registry The contract storing references to the deployer of each hook.
-    /// @param defifaProjectId The ID of the project that should take the fee from the games.
-    /// @param baseProtocolProjectId The ID of the protocol project that will receive fees from fulfilling commitments.
-    /// @param hookStore The store used by Defifa hooks.
+    /// @param deployer The address authorized to call `setChainSpecificConstants` exactly once.
     /// @param initialOwner The address granted authority to call `setReferralProjectId`. The contract is otherwise
     /// stateless from an admin perspective — the owner only controls the referrer reference used when crediting
     /// fee-volume on `fulfillCommitmentsOf` payouts.
-    constructor(
-        address hookCodeOrigin,
-        IJB721TokenUriResolver tokenUriResolver,
-        IDefifaGovernor governor,
-        IJBController controller,
-        IJBAddressRegistry registry,
-        uint256 defifaProjectId,
-        uint256 baseProtocolProjectId,
-        IJB721TiersHookStore hookStore,
-        address initialOwner
-    )
-        Ownable(initialOwner)
-    {
-        HOOK_CODE_ORIGIN = hookCodeOrigin;
-        TOKEN_URI_RESOLVER = tokenUriResolver;
-        GOVERNOR = governor;
-        CONTROLLER = controller;
-        REGISTRY = registry;
-        DEFIFA_PROJECT_ID = defifaProjectId;
-        BASE_PROTOCOL_PROJECT_ID = baseProtocolProjectId;
-        HOOK_STORE = hookStore;
-        /// @dev Uses the deployer address as group ID. Game scoring rulesets use uint160(token) as group ID.
+    constructor(address deployer, address initialOwner) Ownable(initialOwner) {
+        _DEPLOYER = deployer;
+        // Use the deployer address as group ID. Game scoring rulesets use uint160(token) as group ID.
         SPLIT_GROUP = uint256(uint160(address(this)));
-
-        // Default referrer reference: Defifa project on Ethereum mainnet. Encoded `(chainId << 48) | projectId`
-        // per `JBMultiTerminal.currentReferralProjectId`. Owner can retarget via `setReferralProjectId`.
-        referralProjectId = (uint256(1) << 48) | defifaProjectId;
     }
 
     //*********************************************************************//
@@ -660,6 +643,45 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @notice Allows this contract to receive 721s.
     function onERC721Received(address, address, uint256, bytes calldata) external pure override returns (bytes4) {
         return IERC721Receiver.onERC721Received.selector;
+    }
+
+    /// @notice One-shot setter for chain-specific Defifa dependencies.
+    /// @param hookCodeOrigin The code of the Defifa hook.
+    /// @param tokenUriResolver The standard default token URI resolver.
+    /// @param governor The Defifa governor.
+    /// @param controller The controller to use to launch the game from.
+    /// @param registry The contract storing references to the deployer of each hook.
+    /// @param defifaProjectId The ID of the project that should take the fee from the games.
+    /// @param baseProtocolProjectId The ID of the protocol project that will receive fees from fulfilling commitments.
+    /// @param hookStore The store used by Defifa hooks.
+    function setChainSpecificConstants(
+        address hookCodeOrigin,
+        IJB721TokenUriResolver tokenUriResolver,
+        IDefifaGovernor governor,
+        IJBController controller,
+        IJBAddressRegistry registry,
+        uint256 defifaProjectId,
+        uint256 baseProtocolProjectId,
+        IJB721TiersHookStore hookStore
+    )
+        external
+        override
+    {
+        if (msg.sender != _DEPLOYER) revert DefifaDeployer_Unauthorized({caller: msg.sender});
+        if (address(CONTROLLER) != address(0)) revert DefifaDeployer_AlreadyConfigured();
+
+        HOOK_CODE_ORIGIN = hookCodeOrigin;
+        TOKEN_URI_RESOLVER = tokenUriResolver;
+        GOVERNOR = governor;
+        CONTROLLER = controller;
+        REGISTRY = registry;
+        DEFIFA_PROJECT_ID = defifaProjectId;
+        BASE_PROTOCOL_PROJECT_ID = baseProtocolProjectId;
+        HOOK_STORE = hookStore;
+
+        // Default referrer reference: Defifa project on Ethereum mainnet. Encoded `(chainId << 48) | projectId`
+        // per `JBMultiTerminal.currentReferralProjectId`. Owner can retarget via `setReferralProjectId`.
+        referralProjectId = (uint256(1) << 48) | defifaProjectId;
     }
 
     /// @notice Update the referrer reference credited on every fee-payout `sendPayoutsOf` call this deployer

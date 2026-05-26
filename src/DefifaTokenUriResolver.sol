@@ -25,6 +25,13 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
     using Strings for uint256;
 
     //*********************************************************************//
+    // --------------------------- custom errors ------------------------- //
+    //*********************************************************************//
+
+    error DefifaTokenUriResolver_AlreadyConfigured();
+    error DefifaTokenUriResolver_Unauthorized(address caller);
+
+    //*********************************************************************//
     // ----------------------- internal constants ------------------------ //
     //*********************************************************************//
 
@@ -32,18 +39,41 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
     uint256 internal constant _IMG_DECIMAL_FIDELITY = 5;
 
     //*********************************************************************//
-    // --------------- public immutable stored properties ---------------- //
+    // -------------- internal immutable stored properties -------------- //
+    //*********************************************************************//
+
+    /// @notice The address authorized to call `setChainSpecificConstants` exactly once.
+    address internal immutable _DEPLOYER;
+
+    //*********************************************************************//
+    // --------------------- public stored properties -------------------- //
     //*********************************************************************//
 
     /// @notice The typeface of the SVGs.
-    ITypeface public immutable override TYPEFACE;
+    /// @dev Set once by `_DEPLOYER` via `setChainSpecificConstants` so this resolver's constructor inputs are
+    /// byte-identical across chains.
+    ITypeface public override TYPEFACE;
 
     //*********************************************************************//
     // -------------------------- constructor ---------------------------- //
     //*********************************************************************//
 
-    constructor(ITypeface typeface) {
-        TYPEFACE = typeface;
+    /// @param deployer The address authorized to call `setChainSpecificConstants` exactly once.
+    constructor(address deployer) {
+        _DEPLOYER = deployer;
+    }
+
+    //*********************************************************************//
+    // ---------------------- external transactions ---------------------- //
+    //*********************************************************************//
+
+    /// @notice One-shot setter for this chain's typeface contract.
+    /// @param newTypeface The typeface of the SVGs on this chain.
+    function setChainSpecificConstants(ITypeface newTypeface) external override {
+        if (msg.sender != _DEPLOYER) revert DefifaTokenUriResolver_Unauthorized({caller: msg.sender});
+        if (address(TYPEFACE) != address(0)) revert DefifaTokenUriResolver_AlreadyConfigured();
+
+        TYPEFACE = newTypeface;
     }
 
     //*********************************************************************//

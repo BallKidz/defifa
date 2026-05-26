@@ -8,4 +8,8 @@ interface IDefifaTokenUriResolver {
     /// @notice The on-chain typeface contract used for rendering text in token SVGs.
     /// @return The typeface contract.
     function TYPEFACE() external view returns (ITypeface);
+
+    /// @notice One-shot setter for this chain's typeface contract.
+    /// @param newTypeface The typeface of the SVGs on this chain.
+    function setChainSpecificConstants(ITypeface newTypeface) external;
 }

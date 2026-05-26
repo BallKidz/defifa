@@ -132,6 +132,27 @@ interface IDefifaDeployer {
     /// @return gameId The ID of the newly launched game.
     function launchGameWith(DefifaLaunchProjectData calldata launchProjectData) external returns (uint256 gameId);
 
+    /// @notice One-shot setter for chain-specific Defifa dependencies.
+    /// @param hookCodeOrigin The code of the Defifa hook.
+    /// @param tokenUriResolver The standard default token URI resolver.
+    /// @param governor The Defifa governor.
+    /// @param controller The controller to use to launch the game from.
+    /// @param registry The contract storing references to the deployer of each hook.
+    /// @param defifaProjectId The ID of the project that should take the fee from the games.
+    /// @param baseProtocolProjectId The ID of the protocol project that will receive fees from fulfilling commitments.
+    /// @param hookStore The store used by Defifa hooks.
+    function setChainSpecificConstants(
+        address hookCodeOrigin,
+        IJB721TokenUriResolver tokenUriResolver,
+        IDefifaGovernor governor,
+        IJBController controller,
+        IJBAddressRegistry registry,
+        uint256 defifaProjectId,
+        uint256 baseProtocolProjectId,
+        IJB721TiersHookStore hookStore
+    )
+        external;
+
     /// @notice Update the referrer reference credited on every fee-payout `sendPayoutsOf` call this deployer
     /// makes during `fulfillCommitmentsOf`.
     /// @dev Stores the packed `(newReferralChainId << 48) | newReferralProjectId` value used by

@@ -94,17 +94,17 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
 
         _hookImpl = new DefifaHook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
         _governorImpl = new DefifaGovernor(jbController(), address(this));
-        _deployer = new DefifaDeployer(
-            address(_hookImpl),
-            new DefifaTokenUriResolver(ITypeface(address(0))),
-            _governorImpl,
-            jbController(),
-            new JBAddressRegistry(),
-            _defifaProjectId,
-            _protocolFeeProjectId,
-            new JB721TiersHookStore(),
-            address(this)
-        );
+        _deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
+        _deployer.setChainSpecificConstants({
+            hookCodeOrigin: address(_hookImpl),
+            tokenUriResolver: new DefifaTokenUriResolver(address(this)),
+            governor: _governorImpl,
+            controller: jbController(),
+            registry: new JBAddressRegistry(),
+            defifaProjectId: _defifaProjectId,
+            baseProtocolProjectId: _protocolFeeProjectId,
+            hookStore: new JB721TiersHookStore()
+        });
 
         _hookImpl.transferOwnership(address(_deployer));
         _governorImpl.transferOwnership(address(_deployer));

@@ -98,17 +98,17 @@ contract OneTierZeroTimeoutLockTest is JBTest, TestBaseWorkflow {
 
         hook = new DefifaHook(jbDirectory(), IERC20(defifaToken), IERC20(protocolFeeToken));
         governor = new DefifaGovernor(jbController(), address(this));
-        deployer = new DefifaDeployer(
-            address(hook),
-            new DefifaTokenUriResolver(ITypeface(address(0))),
-            governor,
-            jbController(),
-            new JBAddressRegistry(),
-            defifaProjectId,
-            protocolFeeProjectId,
-            new JB721TiersHookStore(),
-            address(this)
-        );
+        deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
+        deployer.setChainSpecificConstants({
+            hookCodeOrigin: address(hook),
+            tokenUriResolver: new DefifaTokenUriResolver(address(this)),
+            governor: governor,
+            controller: jbController(),
+            registry: new JBAddressRegistry(),
+            defifaProjectId: defifaProjectId,
+            baseProtocolProjectId: protocolFeeProjectId,
+            hookStore: new JB721TiersHookStore()
+        });
 
         hook.transferOwnership(address(deployer));
         governor.transferOwnership(address(deployer));

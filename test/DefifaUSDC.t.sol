@@ -136,17 +136,17 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
         hook =
             new DefifaHook(jbDirectory(), IERC20(_defifaProjectTokenAccount), IERC20(_protocolFeeProjectTokenAccount));
         governor = new DefifaGovernor(jbController(), address(this));
-        deployer = new DefifaDeployer(
-            address(hook),
-            new DefifaTokenUriResolver(ITypeface(address(0))),
-            governor,
-            jbController(),
-            new JBAddressRegistry(),
-            _defifaProjectId,
-            _protocolFeeProjectId,
-            new JB721TiersHookStore(),
-            address(this)
-        );
+        deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
+        deployer.setChainSpecificConstants({
+            hookCodeOrigin: address(hook),
+            tokenUriResolver: new DefifaTokenUriResolver(address(this)),
+            governor: governor,
+            controller: jbController(),
+            registry: new JBAddressRegistry(),
+            defifaProjectId: _defifaProjectId,
+            baseProtocolProjectId: _protocolFeeProjectId,
+            hookStore: new JB721TiersHookStore()
+        });
 
         uint8[] memory permissionIds = new uint8[](1);
         permissionIds[0] = JBPermissionIds.SET_SPLIT_GROUPS;
