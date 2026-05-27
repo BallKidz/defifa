@@ -3,7 +3,7 @@
   "version": "0.0.48",
   "license": "MIT",
   "engines": {
-    "node": "25.9.0"
+    "node": ">=20.0.0"
   },
   "bugs": {
     "url": "https://github.com/BallKidz/defifa/issues"
