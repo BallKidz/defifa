@@ -1281,40 +1281,4 @@ contract BWAFunctionComparisonTest is Test {
             assertTrue(roiPct < 15, "ROI < 15% at N=32");
         }
     }
-
-    // ===========================
-    // TEST 20: Summary — Conclusions Proven
-    // ===========================
-
-    function test_conclusionsProven() public pure {
-        // 1. LINEAR f(x) = 1-x is the UNIQUE function with constant total attestation.
-
-        // 2. BWA is TIER-level. Sybil (address splitting) is irrelevant.
-
-        // 3. Under linear BWA, uniform attacker gets alpha x (N-1) x V_MAX power,
-        //    INDEPENDENT of scorecard. No scorecard manipulation possible.
-
-        // 4. Security threshold: >50% of tokens per tier.
-
-        // 5. Quadratic/golden: variable quorum = exploitable. Linear: fixed quorum.
-
-        // 6. DEAD TOKEN ECONOMICS: tokens used for attestation power (non-winning tiers)
-        //    return $0 under the fraudulent scorecard. This is the attack cost.
-        //    With UNIFORM ownership (alpha% of all tiers), fees guarantee a NET LOSS.
-        //    Fraud is only profitable with OVERWEIGHT in one tier (alpha_w > ~1.1 x alpha_v).
-
-        // 7. THE IRREDUCIBLE LIMIT: With enough money and overweight ownership,
-        //    an attacker CAN push a fraudulent scorecard. This is the 51% attack —
-        //    the same fundamental limit as PoS blockchains.
-
-        // DEFENSE STACK:
-        //   a) BWA: makes attestation require >50% ownership (dead token cost)
-        //   b) Fees (7.5%): make uniform attacks always unprofitable
-        //   c) Delegate: coordination point for honest minority
-        //   d) scorecardTimeout -> NO_CONTEST: backstop if no honest quorum
-        //   e) Game design: tier supply, mint window, reserve tokens
-        //      -> make it competitive to acquire >50% during mint
-
-        assertTrue(true);
-    }
 }
