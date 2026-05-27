@@ -377,8 +377,10 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @notice Launches a new game owned by this contract with a DefifaHook attached.
     /// @param launchProjectData Data necessary to fulfill the transaction to launch a game.
     /// @return gameId The ID of the newly configured game.
+    /// @dev Forwards `msg.value` to `JBProjects.createFor` to cover any configured project creation fee.
     function launchGameWith(DefifaLaunchProjectData memory launchProjectData)
         external
+        payable
         override
         returns (uint256 gameId)
     {
@@ -476,7 +478,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         }
 
         // Reserve the game ID up front so permissionless project creations cannot invalidate hook deployment.
-        gameId = controller.PROJECTS().createFor(address(this));
+        gameId = controller.PROJECTS().createFor{value: msg.value}(address(this));
 
         {
             // Store the timestamps that define the game phases.

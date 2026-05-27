@@ -52,6 +52,7 @@
 ## Operational Notes
 
 - Validate game timings, tier setup, fee routing, and attestation settings before launch.
+- If `JBProjects` has a creation fee, include the exact native-token fee when calling `launchGameWith()`.
 - Treat `launchGameWith()` as the real admin commitment.
 - During scoring, follow the submission, attestation, and ratification flow rather than looking for discretionary overrides.
 - Use `triggerNoContestFor()` only when the game has actually entered the documented no-contest condition.
