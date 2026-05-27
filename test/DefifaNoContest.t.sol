@@ -692,7 +692,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         JB721Tier memory tier = _nft.store().tierOf(address(_nft), 1, false);
         uint256 nb = _nft.store().numberOfBurnedFor(address(_nft), 1);
         uint256 tnum = tier.initialSupply - tier.remainingSupply + nb;
-        cid[0] = (1 * 1_000_000_000) + tnum;
+        cid[0] = 1_000_000_000 + tnum;
         bytes[] memory data = new bytes[](1);
         data[0] = abi.encode(cid);
         bytes4[] memory ids = new bytes4[](1);
