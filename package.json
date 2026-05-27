@@ -1,6 +1,6 @@
 {
   "name": "@ballkidz/defifa",
-  "version": "0.0.48",
+  "version": "0.0.49",
   "license": "MIT",
   "engines": {
     "node": ">=20.0.0"
