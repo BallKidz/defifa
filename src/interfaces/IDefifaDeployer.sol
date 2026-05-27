@@ -130,7 +130,11 @@ interface IDefifaDeployer {
     /// @notice Launch a new Defifa game.
     /// @param launchProjectData The configuration for launching the game.
     /// @return gameId The ID of the newly launched game.
-    function launchGameWith(DefifaLaunchProjectData calldata launchProjectData) external returns (uint256 gameId);
+    /// @dev Forwards `msg.value` to `JBProjects.createFor` to cover any configured project creation fee.
+    function launchGameWith(DefifaLaunchProjectData calldata launchProjectData)
+        external
+        payable
+        returns (uint256 gameId);
 
     /// @notice One-shot setter for chain-specific Defifa dependencies.
     /// @param newHookCodeOrigin The code of the Defifa hook.

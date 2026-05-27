@@ -31,6 +31,7 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 - the creator knows the game start time, mint duration, optional refund duration, and scoring-timeout assumptions
 - tier count, tier names, tier price, and split commitments are finalized
 - the chosen terminal and payment token are correct because the launch path is intentionally one-way
+- if `JBProjects` has a creation fee, the launch caller sends that exact native-token amount
 
 **Main Flow**
 

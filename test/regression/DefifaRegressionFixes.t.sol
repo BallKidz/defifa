@@ -165,6 +165,28 @@ contract DefifaRegressionFixesTest is JBTest, TestBaseWorkflow {
         assertGt(gameId, 0, "game should launch successfully");
     }
 
+    function test_launchGameWith_forwardsCreationFee() external {
+        uint256 creationFee = 0.0001 ether;
+        address payable creationFeeReceiver = payable(makeAddr("creationFeeReceiver"));
+
+        vm.prank(multisig());
+        jbProjects().setCreationFee({fee: creationFee, receiver: creationFeeReceiver});
+
+        DefifaLaunchProjectData memory d = _launchDataCustomTimeout({
+            attestationGracePeriod: uint32(1 days), scorecardTimeout: uint32(2 days), timelockDuration: 1 hours
+        });
+
+        vm.expectRevert();
+        deployer.launchGameWith(d);
+
+        vm.deal(address(this), creationFee);
+        uint256 gameId = deployer.launchGameWith{value: creationFee}(d);
+
+        assertGt(gameId, 0, "game should launch with creation fee");
+        assertEq(creationFeeReceiver.balance, creationFee, "fee forwarded");
+        assertEq(address(deployer).balance, 0, "deployer does not retain fee");
+    }
+
     // =========================================================================
     // tokensClaimableFor includes pending reserve mint cost
     // =========================================================================
