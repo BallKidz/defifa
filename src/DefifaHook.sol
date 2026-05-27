@@ -762,7 +762,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice Mint reserved tokens within the tier for the provided value.
     /// @param mintReservesForTiersData Contains information about how many reserved tokens to mint for each tier.
     function mintReservesFor(JB721TiersMintReservesConfig[] calldata mintReservesForTiersData) external override {
-        // Keep a reference to the number of tiers there are to mint reserves for.
+        // Keep a reference to the number of tiers to mint reserves for.
         uint256 numberOfTiers = mintReservesForTiersData.length;
 
         for (uint256 i; i < numberOfTiers;) {
@@ -1158,7 +1158,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             if (_firstOwnerOf[tokenId] == address(0)) _firstOwnerOf[tokenId] = from;
         }
 
-        // Dont transfer on mint since the delegation will be transferred more efficiently in _processPayment.
+        // Don't transfer on mint since the delegation will be transferred more efficiently in _processPayment.
         if (from != address(0)) {
             _transferTierAttestationUnits({from: from, to: to, tierId: tier.id, amount: tier.votingUnits});
         }

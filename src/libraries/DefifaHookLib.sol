@@ -38,7 +38,7 @@ library DefifaHookLib {
     //*********************************************************************//
 
     /// @notice The total cash-out weight that can be divided among tiers.
-    uint256 internal constant TOTAL_CASHOUT_WEIGHT = 1_000_000_000_000_000_000;
+    uint256 internal constant _TOTAL_CASHOUT_WEIGHT = 1_000_000_000_000_000_000;
 
     //*********************************************************************//
     // -------------------------- public views --------------------------- //
@@ -170,7 +170,7 @@ library DefifaHookLib {
         } else {
             // If the game is in its scoring or complete phase, reclaim amount is based on the tier weights.
             cashOutCount = mulDiv({
-                x: surplusValue + totalAmountRedeemed, y: cumulativeCashOutWeight, denominator: TOTAL_CASHOUT_WEIGHT
+                x: surplusValue + totalAmountRedeemed, y: cumulativeCashOutWeight, denominator: _TOTAL_CASHOUT_WEIGHT
             });
         }
     }
@@ -442,9 +442,9 @@ library DefifaHookLib {
         }
 
         // Make sure the cumulative amount is exactly the total cashOut weight.
-        if (cumulativeCashOutWeight != TOTAL_CASHOUT_WEIGHT) {
+        if (cumulativeCashOutWeight != _TOTAL_CASHOUT_WEIGHT) {
             revert DefifaHook_InvalidCashoutWeights({
-                totalWeight: cumulativeCashOutWeight, expectedWeight: TOTAL_CASHOUT_WEIGHT
+                totalWeight: cumulativeCashOutWeight, expectedWeight: _TOTAL_CASHOUT_WEIGHT
             });
         }
     }

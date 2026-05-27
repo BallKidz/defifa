@@ -943,7 +943,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         tierParams[0] = DefifaTierParams({
             reservedRate: 0,
             reservedTokenBeneficiary: address(0),
-            encodedIpfsUri: bytes32(0), // this way we dont need more tokenUris
+            encodedIpfsUri: bytes32(0), // this way we don't need more tokenUris
             shouldUseReservedTokenBeneficiaryAsDefault: false,
             name: "DEFIFA"
         });
@@ -1224,7 +1224,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             tierParams[i] = DefifaTierParams({
                 reservedRate: 0,
                 reservedTokenBeneficiary: address(0),
-                encodedIpfsUri: bytes32(0), // this way we dont need more tokenUris
+                encodedIpfsUri: bytes32(0), // this way we don't need more tokenUris
                 shouldUseReservedTokenBeneficiaryAsDefault: false,
                 name: "DEFIFA"
             });
