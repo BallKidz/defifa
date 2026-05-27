@@ -154,8 +154,8 @@ contract BWAFunctionComparisonTest is Test {
         assertEq(rTwoWin.linearTotal, expected, "Linear: two-winners != (N-1)*V_MAX");
 
         // QUADRATIC & GOLDEN: NOT constant
-        assertTrue(rEqual.quadraticTotal != rWta.quadraticTotal, "Quadratic: should vary");
-        assertTrue(rEqual.goldenTotal != rWta.goldenTotal, "Golden: should vary");
+        assertNotEq(rEqual.quadraticTotal, rWta.quadraticTotal, "Quadratic: should vary");
+        assertNotEq(rEqual.goldenTotal, rWta.goldenTotal, "Golden: should vary");
     }
 
     /// @notice 32-tier constant-total test (World Cup scale).
@@ -505,7 +505,7 @@ contract BWAFunctionComparisonTest is Test {
         uint256 quadRatioA = (rA.attackerPowerQuad * 1e18) / (totalsA.quadraticTotal / 2);
         uint256 quadRatioB = (rB.attackerPowerQuad * 1e18) / (totalsB.quadraticTotal / 2);
         // Ratios differ: attacker can optimize scorecard for best ratio
-        assertTrue(quadRatioA != quadRatioB, "Quadratic: power/quorum ratio varies with scorecard");
+        assertNotEq(quadRatioA, quadRatioB, "Quadratic: power/quorum ratio varies with scorecard");
 
         // Compare linear ratios - they ALSO differ in raw power, but quorum is same
         // Linear: raw power differs but quorum is fixed -> one-dimensional optimization only
@@ -909,11 +909,11 @@ contract BWAFunctionComparisonTest is Test {
 
         uint256 quadA = bwaQuadratic(W_TOTAL, W_TOTAL) + 3 * bwaQuadratic(0, W_TOTAL);
         uint256 quadB = 4 * bwaQuadratic(W_TOTAL / 4, W_TOTAL);
-        assertTrue(quadA != quadB, "Quadratic: NOT constant (p=2)");
+        assertNotEq(quadA, quadB, "Quadratic: NOT constant (p=2)");
 
         uint256 goldA = bwaGoldenRatio(W_TOTAL, W_TOTAL) + 3 * bwaGoldenRatio(0, W_TOTAL);
         uint256 goldB = 4 * bwaGoldenRatio(W_TOTAL / 4, W_TOTAL);
-        assertTrue(goldA != goldB, "Golden: NOT constant (p=phi)");
+        assertNotEq(goldA, goldB, "Golden: NOT constant (p=phi)");
     }
 
     // ===========================
