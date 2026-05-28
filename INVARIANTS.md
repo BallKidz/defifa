@@ -1,7 +1,5 @@
 # Invariants of Defifa
 
-Last updated: 2026-05-28.
-
 Scope: the Defifa game protocol (`@ballkidz/defifa`) — `DefifaDeployer`, `DefifaGovernor`, `DefifaHook`, `DefifaProjectOwner`, and `DefifaTokenUriResolver`. Each Defifa game is a standalone Juicebox V6 project owned by the `DefifaDeployer` contract, with a per-game `DefifaHook` clone owned by the singleton `DefifaGovernor`.
 
 For the cryptoeconomic model (pot formation, prize distribution formula, fee pipeline, parimutuel game theory, parameter design), see `CRYPTO_ECON.md`. This document covers only the **structural / authorization / lifecycle invariants** of the contracts.
