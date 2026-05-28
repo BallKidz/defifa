@@ -4,12 +4,18 @@ Defifa is an onchain prediction game system built on Juicebox. Each game is a Ju
 
 Use this repo when the question is about game lifecycle, scorecard ratification, attestation power, or Defifa-specific settlement behavior. Do not start here for generic project accounting, terminal behavior, or standard 721-tier mechanics.
 
-Architecture: [ARCHITECTURE.md](./ARCHITECTURE.md)  
-User journeys: [USER_JOURNEYS.md](./USER_JOURNEYS.md)  
-Skills: [SKILLS.md](./SKILLS.md)  
-Risks: [RISKS.md](./RISKS.md)  
-Administration: [ADMINISTRATION.md](./ADMINISTRATION.md)  
-Audit instructions: [AUDIT_INSTRUCTIONS.md](./AUDIT_INSTRUCTIONS.md)
+## Documentation
+
+- [ARCHITECTURE.md](./ARCHITECTURE.md) — system overview, module boundaries, where state lives.
+- [USER_JOURNEYS.md](./USER_JOURNEYS.md) — end-to-end flows for players, scorers, and operators.
+- [INVARIANTS.md](./INVARIANTS.md) — structural, authorization, and lifecycle invariants of the game protocol.
+- [CRYPTO_ECON.md](./CRYPTO_ECON.md) — cryptoeconomic model: pot formation, prize distribution formula, fee pipeline, parimutuel game theory, parameter design.
+- [RISKS.md](./RISKS.md) — known risk surfaces and trust assumptions.
+- [ADMINISTRATION.md](./ADMINISTRATION.md) — privileged roles and operational responsibilities.
+- [AUDIT_INSTRUCTIONS.md](./AUDIT_INSTRUCTIONS.md) — guidance for auditors entering the codebase.
+- [SKILLS.md](./SKILLS.md) — reusable patterns and gotchas captured during development.
+- [STYLE_GUIDE.md](./STYLE_GUIDE.md) — repo conventions.
+- [CHANGELOG.md](./CHANGELOG.md) — notable changes.
 
 ## What This Repo Owns
 
