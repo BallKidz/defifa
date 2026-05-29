@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.0.50 — Remove `DefifaDeployer.setChainSpecificConstants`; bind dependencies as constructor immutables
+
+- **`DefifaDeployer.setChainSpecificConstants(...)` is removed.** None of the values it bound are actually chain-specific: `controller`, `registry`, and `hookStore` have unified CREATE2 addresses; `governor`, `tokenUriResolver`, and the hook code origin deploy deterministically from chain-same salt + ctor args; and `defifaProjectId` (5) / `baseProtocolProjectId` (1) are canonical project IDs identical on every chain (verified against `deploy-all-v6`). They are now bound as constructor `immutable`s, so the one-shot setter is unnecessary. (`DefifaTokenUriResolver.setChainSpecificConstants(ITypeface)` is unaffected — the typeface address genuinely differs per chain.)
+- **Breaking constructor signature change.** `DefifaDeployer`'s constructor now takes `(address initialOwner, address hookCodeOrigin, IJB721TokenUriResolver tokenUriResolver, IDefifaGovernor governor, IJBController controller, IJBAddressRegistry registry, uint256 defifaProjectId, uint256 baseProtocolProjectId, IJB721TiersHookStore hookStore)`. The `address deployer` binder arg and the internal `_DEPLOYER` immutable are gone.
+- **Breaking getter renames.** The eight fields are now `immutable` and follow the `ALL_CAPS` convention: `controller()→CONTROLLER()`, `registry()→REGISTRY()`, `hookStore()→HOOK_STORE()`, `governor()→GOVERNOR()`, `tokenUriResolver()→TOKEN_URI_RESOLVER()`, `hookCodeOrigin()→HOOK_CODE_ORIGIN()`, `defifaProjectId()→DEFIFA_PROJECT_ID()`, `baseProtocolProjectId()→BASE_PROTOCOL_PROJECT_ID()`.
+- Removed the now-unused `DefifaDeployer_AlreadyConfigured` and `DefifaDeployer_Unauthorized` errors (the deployer's `setChainSpecificConstants` was their only user).
+- `referralProjectId` is unchanged in behavior — still defaulted to `(1 << 48) | DEFIFA_PROJECT_ID` in the constructor and owner-settable via `setReferralProjectId`.
+
 ## 0.0.41 — Owner-settable referral target on `DefifaDeployer`
 
 - `DefifaDeployer` now inherits OpenZeppelin `Ownable`. New constructor arg `address initialOwner` is passed straight to `Ownable(initialOwner)`. **This is a breaking constructor signature change** — `script/Deploy.s.sol` and every test that instantiates `DefifaDeployer` directly was updated to pass `initialOwner` (typically `safeAddress()` in the deploy script; `address(this)` in tests).

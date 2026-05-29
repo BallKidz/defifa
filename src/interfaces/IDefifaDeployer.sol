@@ -58,11 +58,11 @@ interface IDefifaDeployer {
 
     /// @notice The Juicebox project ID of the base protocol project.
     /// @return The project ID.
-    function baseProtocolProjectId() external view returns (uint256);
+    function BASE_PROTOCOL_PROJECT_ID() external view returns (uint256);
 
     /// @notice The Juicebox controller used to manage projects.
     /// @return The controller contract.
-    function controller() external view returns (IJBController);
+    function CONTROLLER() external view returns (IJBController);
 
     /// @notice The fee divisor for Defifa fees (100 / fee percent).
     /// @return The fee divisor.
@@ -70,27 +70,28 @@ interface IDefifaDeployer {
 
     /// @notice The Juicebox project ID of the Defifa project.
     /// @return The project ID.
-    function defifaProjectId() external view returns (uint256);
+    function DEFIFA_PROJECT_ID() external view returns (uint256);
 
     /// @notice The governor contract responsible for scorecard submission and attestation-based ratification.
     /// @return The governor contract.
-    function governor() external view returns (IDefifaGovernor);
+    function GOVERNOR() external view returns (IDefifaGovernor);
 
     /// @notice The code origin address used as an implementation for hook clones.
     /// @return The code origin address.
-    function hookCodeOrigin() external view returns (address);
+    function HOOK_CODE_ORIGIN() external view returns (address);
 
     /// @notice The 721 tiers hook store used by all games.
     /// @return The hook store contract.
-    function hookStore() external view returns (IJB721TiersHookStore);
+    function HOOK_STORE() external view returns (IJB721TiersHookStore);
 
     /// @notice The address registry used for content-addressable deployment lookups.
     /// @return The address registry contract.
-    function registry() external view returns (IJBAddressRegistry);
+    function REGISTRY() external view returns (IJBAddressRegistry);
 
     /// @notice The packed `(referralChainId << 48) | referralProjectId` reference credited as the referrer on
     /// every fee-payout `sendPayoutsOf` call this deployer makes. Defaults to `(1, defifaProjectId)` so
-    /// credit accrues to Defifa on Ethereum mainnet; owner-settable via `setReferralProjectId`.
+    /// credit accrues to Defifa on Ethereum mainnet; owner-settable via `setReferralProjectId`. (Uses
+    /// `DEFIFA_PROJECT_ID`.)
     /// @return The packed referrer reference.
     function referralProjectId() external view returns (uint256);
 
@@ -100,7 +101,7 @@ interface IDefifaDeployer {
 
     /// @notice The token URI resolver used for game NFT metadata.
     /// @return The token URI resolver contract.
-    function tokenUriResolver() external view returns (IJB721TokenUriResolver);
+    function TOKEN_URI_RESOLVER() external view returns (IJB721TokenUriResolver);
 
     /// @notice Whether the next game phase needs to be queued.
     /// @param gameId The ID of the game.
@@ -135,28 +136,6 @@ interface IDefifaDeployer {
         external
         payable
         returns (uint256 gameId);
-
-    /// @notice One-shot setter for chain-specific Defifa dependencies.
-    /// @param newHookCodeOrigin The code of the Defifa hook.
-    /// @param newTokenUriResolver The standard default token URI resolver.
-    /// @param newGovernor The Defifa governor.
-    /// @param newController The controller to use to launch the game from.
-    /// @param newRegistry The contract storing references to the deployer of each hook.
-    /// @param newDefifaProjectId The ID of the project that should take the fee from the games.
-    /// @param newBaseProtocolProjectId The ID of the protocol project that will receive fees from fulfilling
-    /// commitments.
-    /// @param newHookStore The store used by Defifa hooks.
-    function setChainSpecificConstants(
-        address newHookCodeOrigin,
-        IJB721TokenUriResolver newTokenUriResolver,
-        IDefifaGovernor newGovernor,
-        IJBController newController,
-        IJBAddressRegistry newRegistry,
-        uint256 newDefifaProjectId,
-        uint256 newBaseProtocolProjectId,
-        IJB721TiersHookStore newHookStore
-    )
-        external;
 
     /// @notice Update the referrer reference credited on every fee-payout `sendPayoutsOf` call this deployer
     /// makes during `fulfillCommitmentsOf`.

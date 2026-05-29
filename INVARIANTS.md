@@ -69,8 +69,8 @@ NO_CONTEST is reported by the view as soon as the condition is met; the on-chain
 
 Ownable surface, intentionally tiny.
 
-- **`setReferralProjectId(newReferralProjectId, newReferralChainId)`** — `onlyOwner`. Updates the packed `(chainId << 48) | projectId` reference credited as the referrer on every `sendPayoutsOf` made during `fulfillCommitmentsOf`. Bounded so the pack is lossless (`projectId ≤ uint48.max`, `chainId ≤ uint208.max`). `(0,0)` disables referral credit. The owner **cannot** change ruleset configurations, fees, or the protocol-fee project ID. (`DefifaDeployer.sol:696-716`)
-- **`setChainSpecificConstants(...)`** — `_DEPLOYER` only (a fixed address captured in the constructor), one-shot per chain (`controller != address(0)` reverts `AlreadyConfigured`). Binds: hook code origin, default token URI resolver, governor, controller, registry, defifaProjectId, baseProtocolProjectId, hookStore. Owner cannot call this. (`DefifaDeployer.sol:658-686`)
+- **`setReferralProjectId(newReferralProjectId, newReferralChainId)`** — `onlyOwner`. Updates the packed `(chainId << 48) | projectId` reference credited as the referrer on every `sendPayoutsOf` made during `fulfillCommitmentsOf`. Bounded so the pack is lossless (`projectId ≤ uint48.max`, `chainId ≤ uint208.max`). `(0,0)` disables referral credit. The owner **cannot** change ruleset configurations, fees, or the protocol-fee project ID. (`DefifaDeployer.sol:680-700`)
+- **Dependency bindings are constructor `immutable`s, not a runtime setter.** `HOOK_CODE_ORIGIN`, `TOKEN_URI_RESOLVER`, `GOVERNOR`, `CONTROLLER`, `REGISTRY`, `DEFIFA_PROJECT_ID`, `BASE_PROTOCOL_PROJECT_ID`, and `HOOK_STORE` are all fixed at construction (`DefifaDeployer.sol:300-328`). These dependencies share unified CREATE2 addresses / canonical project IDs across chains, so nothing chain-specific remains to wire post-deploy — no address can mutate them after deployment.
 
 The owner cannot retro-edit any existing game's rulesets, splits, fee divisors, or tier configuration. The protocol-fee divisor (`BASE_PROTOCOL_FEE_DIVISOR = 40` ⇒ 2.5%) and Defifa-fee divisor (`DEFIFA_FEE_DIVISOR = 20` ⇒ 5%) are `constant` (`DefifaDeployer.sol:77, 81`).
 
@@ -114,9 +114,9 @@ Owns every game's project NFT (`PROJECTS.createFor(this)` in `launchGameWith`). 
 
 - **`setReferralProjectId(newReferralProjectId, newReferralChainId)`** — `onlyOwner`. Lossless-pack-bounded; emits `SetReferralProjectId`. (`DefifaDeployer.sol:696-716`)
 
-**Deployer-only (one-shot):**
+**Construction-time bindings:**
 
-- **`setChainSpecificConstants(...)`** — `_DEPLOYER` only, irreversible (`controller != address(0)` ⇒ `AlreadyConfigured`). Binds hook origin, URI resolver, governor, controller, registry, fee project IDs, hook store. Defaults `referralProjectId = (1 << 48) | defifaProjectId`. (`DefifaDeployer.sol:658-686`)
+- All Defifa dependencies (hook origin, URI resolver, governor, controller, registry, fee project IDs, hook store) are constructor `immutable`s — there is no post-deploy setter to bind or rebind them. `referralProjectId` defaults to `(1 << 48) | DEFIFA_PROJECT_ID` at construction. (`DefifaDeployer.sol:300-328`)
 
 **ERC-721 receipt:**
 
@@ -202,7 +202,7 @@ Pure rendering surface — no privileged surface that affects game outcome or fu
 10. **Atomic ratification + commitment.** `ratifyScorecardFrom` calls `fulfillCommitmentsOf` in the same tx, ensuring the COMPLETE ruleset is always queued after weights are set (`DefifaGovernor.sol:231-233`).
 11. **State-before-external-call ordering.** `commitmentsFulfilledFor`, `noContestTriggeredFor`, `ratifiedScorecardIdOf`, and `cashOutWeightIsSet` are all written BEFORE the external call that consumes them — re-entrancy cannot replay the action.
 12. **Permissionless settlement triggers extract no value beyond canonical allocation.** `fulfillCommitmentsOf`, `triggerNoContestFor`, `mintReservesFor`, `submitScorecardFor`, `attestToScorecardFrom`, `ratifyScorecardFrom` — caller's reward is exactly the gas-funded service to the game, never a redirected payout.
-13. **One-shot deployer setters.** `DefifaDeployer.setChainSpecificConstants`, `DefifaHook.initialize`, `DefifaHook.setTierCashOutWeightsTo`, `DefifaGovernor.initializeGame` — all irreversible bindings.
+13. **One-shot bindings.** `DefifaHook.initialize`, `DefifaHook.setTierCashOutWeightsTo`, `DefifaGovernor.initializeGame` — all irreversible. `DefifaDeployer`'s own dependencies are constructor `immutable`s (no setter at all).
 14. **Front-run-resistant clone deployment.** `cloneDeterministic` salt includes `msg.sender`; a different caller produces a different address (`DefifaDeployer.sol:589`).
 15. **Participation immune to balance inflation.** `minParticipation` checks `hook.totalMintCost`, not terminal balance — `addToBalanceOf` donations cannot satisfy the threshold (`DefifaDeployer.sol:274-281`).
 16. **NFT-only cash-out path.** `beforeCashOutRecordedWith` reverts if fungible project tokens are cashed out (`DefifaHook.sol:289`). The hook is the sole cash-out surface for Defifa games.
@@ -216,7 +216,7 @@ For the underlying parimutuel game mechanics, pot-formation math, fee pipeline, 
 These are NOT third-party attack vectors but are powers held by privileged addresses:
 
 - **`DefifaDeployer` Ownable owner** can rotate `referralProjectId`. Worst case: future game commitments credit a different project ID for fee volume (the volume itself still flows to the configured fee projects via splits — only the indexer's "referrer" attribution is affected). No game's payouts redirected; no surplus mis-routed.
-- **`DefifaDeployer._DEPLOYER`** is a hardcoded immutable address with one-shot `setChainSpecificConstants` authority. After the first call, this address has no further authority. Misuse before the first call would bind the deployer to wrong contracts (wrong governor, wrong fee project IDs, etc.) — operationally caught by deploy script validation.
+- **`DefifaDeployer` dependency wiring** (governor, controller, registry, fee project IDs, hook origin, URI resolver, hook store) is fixed at construction as `immutable`s — there is no privileged post-deploy setter. Misconfiguration would require deploying with wrong constructor args (wrong governor, wrong fee project IDs, etc.) — operationally caught by deploy script validation.
 - **`DefifaGovernor` Ownable owner** can call `initializeGame`. In production deployment this owner is the `DefifaDeployer` (called during `launchGameWith`). If the governor's owner were ever rotated to a non-deployer address, that address could bootstrap rogue scorecards for games it didn't deploy — but only games whose hook ownership it also controls, which would require breaking `DefifaDeployer.launchGameWith`'s `hook.transferOwnership(governor)` flow.
 - **`DefifaGovernor` as `DefifaHook` owner** is the **single ratifier** of every game's scorecard. The governor itself doesn't decide outcomes — it only enforces the BWA quorum + grace + timelock state machine. But the governor's *bytecode* is the source of truth for ratification rules; replacing the governor (via a controller-level migration or hook-ownership transfer) would change the rules. The deploy script intentionally leaves the governor in place and the hooks owned by it — there is no path in this codebase to rotate hook ownership away from the original governor.
 - **`DefifaDeployer` as `JBProjects` NFT holder** is the sole `ownerMustSendPayouts` invoker during SCORING (the SCORING ruleset sets `ownerMustSendPayouts=true`). `fulfillCommitmentsOf` is the deployer's `sendPayoutsOf` invocation — and it's permissionless. No human address has owner power over a Defifa game's payouts post-launch.

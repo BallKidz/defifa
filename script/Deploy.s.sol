@@ -112,20 +112,17 @@ contract DeployMainnet is Script, Sphinx {
         if (address(tokenUriResolver.typeface()) == address(0)) tokenUriResolver.setChainSpecificConstants(_typeface);
         DefifaGovernor governor = new DefifaGovernor{salt: _salt}({controller: core.controller, owner: safeAddress()});
         JB721TiersHookStore hookStore = new JB721TiersHookStore{salt: _salt}();
-        DefifaDeployer deployer =
-            new DefifaDeployer{salt: _salt}({deployer: safeAddress(), initialOwner: safeAddress()});
-        if (address(deployer.controller()) == address(0)) {
-            deployer.setChainSpecificConstants({
-                newHookCodeOrigin: address(hook),
-                newTokenUriResolver: tokenUriResolver,
-                newGovernor: governor,
-                newController: core.controller,
-                newRegistry: registry.registry,
-                newDefifaProjectId: _defifaProjectId,
-                newBaseProtocolProjectId: _baseProtocolProjectId,
-                newHookStore: hookStore
-            });
-        }
+        DefifaDeployer deployer = new DefifaDeployer{salt: _salt}({
+            initialOwner: safeAddress(),
+            hookCodeOrigin: address(hook),
+            tokenUriResolver: tokenUriResolver,
+            governor: governor,
+            controller: core.controller,
+            registry: registry.registry,
+            defifaProjectId: _defifaProjectId,
+            baseProtocolProjectId: _baseProtocolProjectId,
+            hookStore: hookStore
+        });
 
         governor.transferOwnership(address(deployer));
     }
