@@ -98,16 +98,16 @@ contract AttestationDoubleCountTest is JBTest, TestBaseWorkflow {
 
         hook = new DefifaHook(jbDirectory(), IERC20(_defifaToken), IERC20(_nanaToken));
         governor = new DefifaGovernor(jbController(), address(this));
-        deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
-        deployer.setChainSpecificConstants({
-            newHookCodeOrigin: address(hook),
-            newTokenUriResolver: new DefifaTokenUriResolver(address(this)),
-            newGovernor: governor,
-            newController: jbController(),
-            newRegistry: new JBAddressRegistry(),
-            newDefifaProjectId: _defifaProjectId,
-            newBaseProtocolProjectId: _protocolFeeProjectId,
-            newHookStore: new JB721TiersHookStore()
+        deployer = new DefifaDeployer({
+            initialOwner: address(this),
+            hookCodeOrigin: address(hook),
+            tokenUriResolver: new DefifaTokenUriResolver(address(this)),
+            governor: governor,
+            controller: jbController(),
+            registry: new JBAddressRegistry(),
+            defifaProjectId: _defifaProjectId,
+            baseProtocolProjectId: _protocolFeeProjectId,
+            hookStore: new JB721TiersHookStore()
         });
 
         hook.transferOwnership(address(deployer));

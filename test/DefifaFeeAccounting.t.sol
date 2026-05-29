@@ -110,16 +110,16 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         governor = new DefifaGovernor(jbController(), address(this));
         JBAddressRegistry _registry = new JBAddressRegistry();
         DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
-        deployer = new DefifaDeployer({deployer: address(this), initialOwner: address(this)});
-        deployer.setChainSpecificConstants({
-            newHookCodeOrigin: address(hook),
-            newTokenUriResolver: _tokenUriResolver,
-            newGovernor: governor,
-            newController: jbController(),
-            newRegistry: _registry,
-            newDefifaProjectId: _defifaProjectId,
-            newBaseProtocolProjectId: _protocolFeeProjectId,
-            newHookStore: new JB721TiersHookStore()
+        deployer = new DefifaDeployer({
+            initialOwner: address(this),
+            hookCodeOrigin: address(hook),
+            tokenUriResolver: _tokenUriResolver,
+            governor: governor,
+            controller: jbController(),
+            registry: _registry,
+            defifaProjectId: _defifaProjectId,
+            baseProtocolProjectId: _protocolFeeProjectId,
+            hookStore: new JB721TiersHookStore()
         });
 
         // Grant the deployer SET_SPLIT_GROUPS permission on the defifa fee project.
@@ -142,48 +142,12 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         governor.transferOwnership(address(deployer));
     }
 
-    function testSetChainSpecificConstantsRevertsIfAlreadyConfigured() external {
-        JBAddressRegistry registry = new JBAddressRegistry();
-        JB721TiersHookStore hookStore = new JB721TiersHookStore();
-
-        vm.expectRevert(DefifaDeployer.DefifaDeployer_AlreadyConfigured.selector);
-        deployer.setChainSpecificConstants({
-            newHookCodeOrigin: address(hook),
-            newTokenUriResolver: IJB721TokenUriResolver(address(0)),
-            newGovernor: governor,
-            newController: jbController(),
-            newRegistry: registry,
-            newDefifaProjectId: _defifaProjectId,
-            newBaseProtocolProjectId: _protocolFeeProjectId,
-            newHookStore: hookStore
-        });
-    }
-
-    function testSetChainSpecificConstantsRevertsIfUnauthorized() external {
-        address unauthorized = address(bytes20(keccak256("unauthorized")));
-        JBAddressRegistry registry = new JBAddressRegistry();
-        JB721TiersHookStore hookStore = new JB721TiersHookStore();
-
-        vm.prank(unauthorized);
-        vm.expectRevert(abi.encodeWithSelector(DefifaDeployer.DefifaDeployer_Unauthorized.selector, unauthorized));
-        deployer.setChainSpecificConstants({
-            newHookCodeOrigin: address(hook),
-            newTokenUriResolver: IJB721TokenUriResolver(address(0)),
-            newGovernor: governor,
-            newController: jbController(),
-            newRegistry: registry,
-            newDefifaProjectId: _defifaProjectId,
-            newBaseProtocolProjectId: _protocolFeeProjectId,
-            newHookStore: hookStore
-        });
-    }
-
-    function testSetChainSpecificConstantsStoresValues() external view {
-        assertEq(deployer.hookCodeOrigin(), address(hook));
-        assertEq(address(deployer.governor()), address(governor));
-        assertEq(address(deployer.controller()), address(jbController()));
-        assertEq(deployer.defifaProjectId(), _defifaProjectId);
-        assertEq(deployer.baseProtocolProjectId(), _protocolFeeProjectId);
+    function testConstructorStoresValues() external view {
+        assertEq(deployer.HOOK_CODE_ORIGIN(), address(hook));
+        assertEq(address(deployer.GOVERNOR()), address(governor));
+        assertEq(address(deployer.CONTROLLER()), address(jbController()));
+        assertEq(deployer.DEFIFA_PROJECT_ID(), _defifaProjectId);
+        assertEq(deployer.BASE_PROTOCOL_PROJECT_ID(), _protocolFeeProjectId);
         assertEq(deployer.referralProjectId(), (uint256(1) << 48) | _defifaProjectId);
     }
 
