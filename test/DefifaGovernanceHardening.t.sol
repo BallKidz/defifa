@@ -1094,8 +1094,8 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
     // FORMAL VERIFICATION: STATE MACHINE TRANSITIONS
     // =========================================================================
 
-    /// @notice FV-9: State machine follows ACTIVE -> QUEUED -> SUCCEEDED -> RATIFIED.
-    /// @dev With attestationStartTime=0, scorecards are immediately ACTIVE after submission in scoring phase.
+    /// @notice FV-9: State machine follows PENDING -> ACTIVE -> QUEUED -> SUCCEEDED -> RATIFIED.
+    /// @dev Immediate scorecards open on the next timestamp so same-timestamp reserve mints are in the snapshot.
     function test_fv_stateMachine_transitions() external {
         uint256 timelockDuration = 1 days;
         _setupGameWithTimelock(4, 1 ether, timelockDuration);
@@ -1104,10 +1104,14 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
         uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
 
-        // ACTIVE: attestationStartTime=0, so immediately active after submission in scoring phase.
-        assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.ACTIVE), "should be ACTIVE");
+        assertEq(
+            uint256(_gov.stateOf(_gameId, scorecardId)),
+            uint256(DefifaScorecardState.PENDING),
+            "should be PENDING before next timestamp"
+        );
 
         vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.ACTIVE), "should be ACTIVE");
 
         // Attest all users.
         for (uint256 i; i < 4; i++) {

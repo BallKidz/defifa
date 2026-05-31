@@ -430,15 +430,16 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         sc[2].cashOutWeight = tw / 4;
         sc[3].cashOutWeight = tw / 4;
 
-        // Only paid minters attest -- reserve beneficiary has zero attestation weight at the
-        // snapshot (attestationsBegin - 1) because they received NFTs via reserve minting after
-        // the snapshot timestamp.
+        // Paid minters and reserve beneficiary attest. The immediate-submission snapshot includes the reserve mints
+        // because they happened before the scorecard was submitted.
         uint256 pid = _gov.submitScorecardFor(_gameId, sc);
         vm.warp(_tsReader.timestamp() + _gov.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
             _gov.attestToScorecardFrom(_gameId, pid);
         }
+        vm.prank(_reserveAddr);
+        _gov.attestToScorecardFrom(_gameId, pid);
         vm.warp(_tsReader.timestamp() + _gov.attestationGracePeriodOf(_gameId) + 1);
         _gov.ratifyScorecardFrom(_gameId, sc);
         vm.warp(_tsReader.timestamp() + 1);
