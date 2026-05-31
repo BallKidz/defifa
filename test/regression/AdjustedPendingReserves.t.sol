@@ -319,6 +319,7 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
         sc[2] = DefifaTierCashOutWeight({id: 3, cashOutWeight: 0});
         sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: 0});
         uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.timestamp() + _gov.attestationStartTimeOf(_gameId) + 1);
 
         // Disinterested users attest.
         vm.prank(disinterested1);

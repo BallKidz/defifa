@@ -37,6 +37,7 @@ contract CurrencyMismatchBypassTest is DefifaUSDCTest {
 
         vm.prank(_users[1]);
         uint256 scorecardId = _gov.submitScorecardFor(_pid, scorecard);
+        vm.warp(block.timestamp + _gov.attestationStartTimeOf(_pid) + 1);
 
         vm.prank(_users[1]);
         _gov.attestToScorecardFrom(_pid, scorecardId);

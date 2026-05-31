@@ -154,6 +154,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         vm.warp(259_202);
         DefifaTierCashOutWeight[] memory scorecard = _buildScorecard();
         uint256 proposalId = _gov.submitScorecardFor(_gameId, scorecard);
+        vm.warp(block.timestamp + _gov.attestationStartTimeOf(_gameId) + 1);
 
         // Quorum = 4 tiers * MAX_POWER / 2 = 2 * MAX_POWER
         uint256 snapshotQuorum = _gov.quorum(_gameId);
@@ -215,6 +216,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         vm.warp(259_202);
         DefifaTierCashOutWeight[] memory scorecard = _buildScorecard();
         uint256 proposalId = _gov.submitScorecardFor(_gameId, scorecard);
+        vm.warp(block.timestamp + _gov.attestationStartTimeOf(_gameId) + 1);
         vm.prank(_player0);
         _gov.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(_player1);

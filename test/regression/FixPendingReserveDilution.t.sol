@@ -7,6 +7,7 @@ import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
+import {DefifaScorecardState} from "../../src/enums/DefifaScorecardState.sol";
 import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
 
@@ -163,6 +164,8 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: 0});
         uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
 
+        vm.warp(block.timestamp + 1);
+
         // Disinterested users attest (they have full BWA power since their tiers get 0 weight).
         // The player (tier 1, 100% weight) has 0 BWA power and cannot meaningfully attest.
         vm.prank(disinterested1);
@@ -228,6 +231,8 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: 0});
         uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
 
+        vm.warp(block.timestamp + 1);
+
         // Disinterested users attest (full BWA power since 0 weight tiers).
         vm.prank(disinterested1);
         _gov.attestToScorecardFrom(_gameId, proposalId);
@@ -262,6 +267,45 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
             1, // 1 wei tolerance
             "paid and reserve holders should get equal shares"
         );
+    }
+
+    /// @notice Same-timestamp reserve mints are included in the scorecard's attestation snapshot.
+    function test_sameTimestampReserveMintCanAttestAfterImmediateSubmission() external {
+        (_pid, _nft, _gov) = _launch(_launchData());
+
+        // Mint phase: tier 1 creates one pending reserve, tier 2 gives the scorecard a live opposing tier.
+        vm.warp(block.timestamp + 1 days + 1);
+        _mint(player, 1, 1 ether);
+        _delegateSelf(player, 1);
+        vm.warp(block.timestamp + 1);
+        _mint(disinterested1, 2, 1 ether);
+        _delegateSelf(disinterested1, 2);
+
+        // Advance to scoring, then mint the reserve and submit in the same timestamp.
+        vm.warp(block.timestamp + 2 days + 1);
+        JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
+        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
+        _nft.mintReservesFor(reserveConfigs);
+
+        DefifaTierCashOutWeight[] memory sc = new DefifaTierCashOutWeight[](4);
+        sc[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: 0});
+        sc[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT()});
+        sc[2] = DefifaTierCashOutWeight({id: 3, cashOutWeight: 0});
+        sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: 0});
+        uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
+
+        assertEq(
+            uint256(_gov.stateOf(_gameId, proposalId)),
+            uint256(DefifaScorecardState.PENDING),
+            "immediate scorecard should wait for the next timestamp"
+        );
+
+        vm.warp(block.timestamp + 1);
+
+        vm.prank(reserveBeneficiary);
+        uint256 weight = _gov.attestToScorecardFrom(_gameId, proposalId);
+
+        assertGt(weight, 0, "same-timestamp reserve mint should be included in snapshot");
     }
 
     // ---- helpers ----

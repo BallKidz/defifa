@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.51 — Include same-timestamp reserve mints in immediate scorecard snapshots
+
+- Immediate scorecard submissions now open attestations at the next timestamp. This keeps the BWA checkpoint at `attestationsBegin - 1` while ensuring same-timestamp reserve mints that happened before submission are included in the snapshot.
+- Added regression coverage for same-timestamp reserve minting before scorecard submission.
+
 ## 0.0.50 — Remove `DefifaDeployer.setChainSpecificConstants`; bind dependencies as constructor immutables
 
 - **`DefifaDeployer.setChainSpecificConstants(...)` is removed.** None of the values it bound are actually chain-specific: `controller`, `registry`, and `hookStore` have unified CREATE2 addresses; `governor`, `tokenUriResolver`, and the hook code origin deploy deterministically from chain-same salt + ctor args; and `defifaProjectId` (5) / `baseProtocolProjectId` (1) are canonical project IDs identical on every chain (verified against `deploy-all-v6`). They are now bound as constructor `immutable`s, so the one-shot setter is unnecessary. (`DefifaTokenUriResolver.setChainSpecificConstants(ITypeface)` is unaffected — the typeface address genuinely differs per chain.)

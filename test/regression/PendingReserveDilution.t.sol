@@ -157,6 +157,8 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: 0});
         uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
 
+        vm.warp(block.timestamp + 1);
+
         // Disinterested users attest (full BWA power since 0 weight tiers).
         vm.prank(disinterested1);
         _gov.attestToScorecardFrom(_gameId, proposalId);

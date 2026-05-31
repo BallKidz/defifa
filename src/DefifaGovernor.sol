@@ -333,14 +333,20 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         uint256 attestationStartTime = attestationStartTimeOf(gameId);
 
-        // Game phase timing is timestamp-based by design.
+        // Game phase timing is timestamp-based by design. If attestations would otherwise open immediately,
+        // wait until the next timestamp so the `attestationsBegin - 1` checkpoint includes all submission-time
+        // state changes, including same-block reserve mints that happened before submission.
         uint256 currentTimestamp = block.timestamp;
-        uint256 timeUntilAttestationsBegin =
-            currentTimestamp > attestationStartTime ? 0 : attestationStartTime - currentTimestamp;
+        uint256 attestationsBeginTimestamp = attestationStartTime;
+        if (currentTimestamp >= attestationStartTime) attestationsBeginTimestamp = currentTimestamp + 1;
 
-        // Casting to uint48 is safe because block.timestamp fits in uint48 until year 8921556.
+        if (attestationsBeginTimestamp > type(uint48).max) {
+            revert DefifaGovernor_Uint48Overflow({value: attestationsBeginTimestamp, max: type(uint48).max});
+        }
+
+        // Safe after the explicit max check above.
         // forge-lint: disable-next-line(unsafe-typecast)
-        uint48 attestationsBegin = uint48(currentTimestamp + timeUntilAttestationsBegin);
+        uint48 attestationsBegin = uint48(attestationsBeginTimestamp);
         scorecard.attestationsBegin = attestationsBegin;
         // Grace period extends from when attestations begin, not from submission time.
         // This prevents the grace period from expiring before attestations even start
