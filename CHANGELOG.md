@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.0.52 — Raise dependency floors; document NatSpec, comment, and lint conventions
+
+- Raised dependency caret floors to the latest published versions: `@bananapus/core-v6` `^0.0.72 → ^0.0.78`, `@bananapus/721-hook-v6` `^0.0.59 → ^0.0.65`, `@bananapus/address-registry-v6` `^0.0.29 → ^0.0.32`, `@bananapus/permission-ids-v6` `^0.0.27 → ^0.0.28`.
+- Documented NatSpec, comment, and lint conventions in `STYLE_GUIDE.md`: expanded the NatSpec section with the required tags for every member, added a Comments section, and clarified the linting expectations. These make existing conventions explicit; no source behavior changes.
+
 ## 0.0.51 — Include same-timestamp reserve mints in immediate scorecard snapshots
 
 - Immediate scorecard submissions now open attestations at the next timestamp. This keeps the BWA checkpoint at `attestationsBegin - 1` while ensuring same-timestamp reserve mints that happened before submission are included in the snapshot.
