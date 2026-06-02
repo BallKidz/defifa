@@ -1013,8 +1013,11 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         sc[0].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT() / 2;
         sc[1].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT() / 2;
 
-        // Paid minters and the reserve beneficiary attest. The immediate-submission snapshot includes reserve mints
-        // made before the scorecard was submitted.
+        // Advance one block so the reserve mints land before the submission block. The BWA snapshot is frozen one
+        // second before submission, so reserves must be minted in an earlier block to carry attestation power.
+        vm.warp(_tsReader.timestamp() + 1);
+
+        // Paid minters and the reserve beneficiary attest; both minted before the submission block, so both count.
         uint256 pid = _gov.submitScorecardFor(_gameId, sc);
         vm.warp(_tsReader.timestamp() + _gov.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < _users.length; i++) {
