@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.0.53 — Freeze BWA attestation snapshot to the pre-submission block
+
+- **Security fix.** A scorecard's BWA attestation power was read at the submission timestamp. Attestation checkpoints are `block.timestamp`-keyed and equal-key writes overwrite in place, so a `mintReservesFor` or `transferFrom` in the submission block — in either order relative to submission — could grant or move attestation power for that scorecard, letting a reserve beneficiary (or a same-block transfer recipient) manufacture quorum for a self-serving cash-out scorecard. The BWA snapshot is now read at `scorecard.snapshotTimestamp` (submission − 1), excluding the entire submission block.
+- **Behavior change.** A reserve minted in the same block as submission no longer carries attestation power for that scorecard — reserves must be minted in an earlier block. This supersedes the 0.0.51 "include same-timestamp reserve mints" behavior: timestamp-keyed checkpoints cannot distinguish a pre- from a post-submission same-block mint, so the whole submission block is excluded. The minted-unit clamp and pending-reserve snapshot are retained (they still bound the denominator for reads at a later timestamp, e.g. delayed-attestation games).
+- Updated `INVARIANTS.md` and `CRYPTO_ECON.md`; added regression coverage for the reserve-mint and same-block-transfer variants.
+
 ## 0.0.52 — Raise dependency floors; document NatSpec, comment, and lint conventions
 
 - Raised dependency caret floors to the latest published versions: `@bananapus/core-v6` `^0.0.72 → ^0.0.78`, `@bananapus/721-hook-v6` `^0.0.59 → ^0.0.65`, `@bananapus/address-registry-v6` `^0.0.29 → ^0.0.32`, `@bananapus/permission-ids-v6` `^0.0.27 → ^0.0.28`.

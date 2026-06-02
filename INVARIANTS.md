@@ -135,7 +135,7 @@ Singleton. Owns every `DefifaHook` clone post-launch.
 **Permissionless during SCORING:**
 
 - **`submitScorecardFor(gameId, DefifaTierCashOutWeight[]) → scorecardId`** — anyone. Reverts if `ratifiedScorecardIdOf[gameId] != 0` or game not initialized or not in SCORING. Validates each weight via `DefifaHookLib.validateAndBuildWeights` (same validation the hook applies at ratification); ensures any `cashOutWeight > 0` tier has live ownership. Snapshots pending reserves and minted attestation units per tier (BWA denominator stability). Computes concentration-adjusted quorum (`baseQuorum + headroom × maxShare² / totalCashOutWeight`). Same hash twice reverts `DuplicateScorecard`. (`DefifaGovernor.sol:276-435`)
-- **`attestToScorecardFrom(gameId, scorecardId) → weight`** — anyone with BWA power > 0 during ACTIVE/SUCCEEDED/QUEUED. Reads voting power at `attestationsBegin - 1`. Zero-power callers revert `NotAllowed` (prevents zero-weight repeat). Records when quorum is first reached. (`DefifaGovernor.sol:135-191`)
+- **`attestToScorecardFrom(gameId, scorecardId) → weight`** — anyone with BWA power > 0 during ACTIVE/SUCCEEDED/QUEUED. Reads voting power at `scorecard.snapshotTimestamp` (one second before submission). Zero-power callers revert `NotAllowed` (prevents zero-weight repeat). Records when quorum is first reached. (`DefifaGovernor.sol` `attestToScorecardFrom`)
 - **`revokeAttestationFrom(gameId, scorecardId)`** — prior attester only, ACTIVE state only. Decrements `attestations.count`; resets `_quorumReachedAtOf` if count drops below quorum. (`DefifaGovernor.sol:243-270`)
 - **`ratifyScorecardFrom(gameId, DefifaTierCashOutWeight[]) → scorecardId`** — anyone once `state == SUCCEEDED`. Reverts if already ratified. Stores `ratifiedScorecardIdOf`, low-level-calls `metadata.dataHook.setTierCashOutWeightsTo(tierWeights)` (the governor is the hook's owner), then calls `IDefifaDeployer.fulfillCommitmentsOf(gameId)`. (`DefifaGovernor.sol:197-236`)
   - **Invariant:** ratification and commitment fulfillment are atomic; cash-out weights set exactly once per game.
@@ -196,7 +196,7 @@ Pure rendering surface — no privileged surface that affects game outcome or fu
 4. **Single NO_CONTEST trigger per game.** `noContestTriggeredFor[gameId]` set before queuing the refund ruleset; `NoContestAlreadyTriggered` on second call (`DefifaDeployer.sol:731, 738`).
 5. **Reserve mints blocked in NO_CONTEST.** Prevents reviving a failed `minParticipation` game by free-minting reserved face value (`DefifaHook.sol:577-579`).
 6. **Delegate changes restricted to MINT.** Locks voting power before scoring opens (`DefifaHook.sol:817-819, 830-832`).
-7. **BWA snapshot one second before attestations open.** Blocks same-block transfer-and-attest sandwich (`DefifaGovernor.sol:167-171`).
+7. **BWA snapshot one second before submission.** Excludes the whole submission block, blocking same-block mint/transfer-and-attest injection in either order (`DefifaGovernor.sol` `attestToScorecardFrom` / `submitScorecardFor`).
 8. **Beneficiaries cannot self-attest at full power.** BWA reduces tier power by `tierWeight / totalCashOutWeight`; zero-power attestations revert (`DefifaGovernor.sol:705-709, 175-177`).
 9. **Revocation disabled once QUEUED.** Kills attest/revoke griefing (`DefifaGovernor.sol:243-247`).
 10. **Atomic ratification + commitment.** `ratifyScorecardFrom` calls `fulfillCommitmentsOf` in the same tx, ensuring the COMPLETE ruleset is always queued after weights are set (`DefifaGovernor.sol:231-233`).
@@ -238,7 +238,7 @@ These are NOT third-party attack vectors but are powers held by privileged addre
 - SCORING ruleset (`ownerMustSendPayouts=true`): `defifa/src/DefifaDeployer.sol:1008-1049`
 - `minParticipation` check uses `totalMintCost`: `defifa/src/DefifaDeployer.sol:274-281`
 - Governor `initializeGame` (grace period + uint48 bounds): `defifa/src/DefifaGovernor.sol:484-538`
-- BWA snapshot at `attestationsBegin - 1`: `defifa/src/DefifaGovernor.sol:167-171`
+- BWA snapshot at `scorecard.snapshotTimestamp` (submission − 1): set in `defifa/src/DefifaGovernor.sol` `submitScorecardFor`, read in `attestToScorecardFrom`
 - BWA self-attest guard (zero-power revert): `defifa/src/DefifaGovernor.sol:175-177`
 - BWA tier-weight reduction: `defifa/src/DefifaGovernor.sol:705-709`
 - Revocation gated to ACTIVE: `defifa/src/DefifaGovernor.sol:243-247`
