@@ -430,8 +430,11 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         sc[2].cashOutWeight = tw / 4;
         sc[3].cashOutWeight = tw / 4;
 
-        // Paid minters and reserve beneficiary attest. The immediate-submission snapshot includes the reserve mints
-        // because they happened before the scorecard was submitted.
+        // Advance one block so the reserve mints land before the submission block. The BWA snapshot is frozen one
+        // second before submission, so reserves must be minted in an earlier block to carry attestation power.
+        vm.warp(_tsReader.timestamp() + 1);
+
+        // Paid minters and reserve beneficiary attest; both minted before the submission block, so both count.
         uint256 pid = _gov.submitScorecardFor(_gameId, sc);
         vm.warp(_tsReader.timestamp() + _gov.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < _users.length; i++) {

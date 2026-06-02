@@ -163,11 +163,11 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             revert DefifaGovernor_AlreadyAttested({gameId: gameId, scorecardId: scorecardId, account: msg.sender});
         }
 
-        // Get a reference to the BWA-adjusted attestation weight, snapshotted at one second before
-        // `attestationsBegin`. Using `attestationsBegin - 1` ensures the checkpoint is from before the
-        // attestation window opens, preventing same-block transfer/re-attest exploits.
+        // Get a reference to the BWA-adjusted attestation weight, read at the scorecard's frozen snapshot
+        // timestamp (one second before submission). This excludes the entire submission block, so a mint or
+        // transfer sharing that block cannot grant or move attestation power for this scorecard.
         weight = getBWAAttestationWeight({
-            gameId: gameId, scorecardId: scorecardId, account: msg.sender, timestamp: scorecard.attestationsBegin - 1
+            gameId: gameId, scorecardId: scorecardId, account: msg.sender, timestamp: scorecard.snapshotTimestamp
         });
 
         // Revert if BWA reduces this account's power to zero (e.g. 100% beneficiary of the scorecard).
@@ -334,8 +334,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         uint256 attestationStartTime = attestationStartTimeOf(gameId);
 
         // Game phase timing is timestamp-based by design. If attestations would otherwise open immediately,
-        // wait until the next timestamp so the `attestationsBegin - 1` checkpoint includes all submission-time
-        // state changes, including same-block reserve mints that happened before submission.
+        // wait until the next timestamp so the attestation window opens in a later block than submission,
+        // preventing same-block attestation. The BWA snapshot is taken separately, one second before submission.
         uint256 currentTimestamp = block.timestamp;
         uint256 attestationsBeginTimestamp = attestationStartTime;
         if (currentTimestamp >= attestationStartTime) attestationsBeginTimestamp = currentTimestamp + 1;
@@ -358,6 +358,15 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Safe after the explicit max check above.
         // forge-lint: disable-next-line(unsafe-typecast)
         scorecard.gracePeriodEnds = uint48(gracePeriodEnds);
+
+        // Freeze the BWA snapshot one second before submission. `getPastTier*AttestationUnitsOf` reads checkpoints
+        // keyed by `block.timestamp`, and same-timestamp checkpoint writes overwrite in place — so reading at the
+        // submission timestamp would let a mint or transfer in the submission block (in either order relative to
+        // submission) change this scorecard's attestation power. Reading one second earlier excludes the entire
+        // submission block.
+        // Safe: `currentTimestamp - 1 < attestationsBeginTimestamp <= type(uint48).max` per the check above.
+        // forge-lint: disable-next-line(unsafe-typecast)
+        scorecard.snapshotTimestamp = uint48(currentTimestamp - 1);
 
         // Store tier weights for BWA computation.
         for (uint256 i; i < numberOfTierWeights;) {
