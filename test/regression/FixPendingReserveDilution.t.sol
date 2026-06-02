@@ -269,8 +269,11 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         );
     }
 
-    /// @notice Same-timestamp reserve mints are included in the scorecard's attestation snapshot.
-    function test_sameTimestampReserveMintCanAttestAfterImmediateSubmission() external {
+    /// @notice A reserve minted in the SAME block as submission is excluded from the scorecard's attestation
+    /// snapshot. The BWA snapshot is frozen one second before submission, so a same-block `mintReservesFor` (which
+    /// shares the submission timestamp and would otherwise overwrite the equally-keyed checkpoint) grants the
+    /// reserve beneficiary no attestation power. To attest, a reserve must be minted in a block before submission.
+    function test_sameTimestampReserveMintCannotAttestAfterImmediateSubmission() external {
         (_pid, _nft, _gov) = _launch(_launchData());
 
         // Mint phase: tier 1 creates one pending reserve, tier 2 gives the scorecard a live opposing tier.
@@ -302,10 +305,21 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
 
         vm.warp(block.timestamp + 1);
 
+        // The reserve was minted in the submission block, so the frozen snapshot gives it zero power and attesting
+        // reverts on the zero-weight guard.
         vm.prank(reserveBeneficiary);
-        uint256 weight = _gov.attestToScorecardFrom(_gameId, proposalId);
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DefifaGovernor.DefifaGovernor_NotAllowed.selector, _gameId, proposalId, reserveBeneficiary
+            )
+        );
+        _gov.attestToScorecardFrom(_gameId, proposalId);
 
-        assertGt(weight, 0, "same-timestamp reserve mint should be included in snapshot");
+        // A holder that minted in an earlier block (tier-1 paid holder, on the 0-weight tier so BWA leaves it full
+        // power) keeps its pre-submission attestation power — only same-block activity is excluded.
+        vm.prank(player);
+        uint256 playerWeight = _gov.attestToScorecardFrom(_gameId, proposalId);
+        assertGt(playerWeight, 0, "pre-submission holder retains its frozen attestation power");
     }
 
     // ---- helpers ----
