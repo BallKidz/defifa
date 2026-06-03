@@ -111,7 +111,6 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         JBAddressRegistry _registry = new JBAddressRegistry();
         DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
         deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(hook),
             tokenUriResolver: _tokenUriResolver,
             governor: governor,
@@ -148,7 +147,6 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         assertEq(address(deployer.CONTROLLER()), address(jbController()));
         assertEq(deployer.DEFIFA_PROJECT_ID(), _defifaProjectId);
         assertEq(deployer.BASE_PROTOCOL_PROJECT_ID(), _protocolFeeProjectId);
-        assertEq(deployer.referralProjectId(), (uint256(1) << 48) | _defifaProjectId);
     }
 
     function testTokenUriResolverSetChainSpecificConstantsRevertsIfAlreadyConfigured() external {
@@ -267,8 +265,7 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
                 tokenToReclaim: JBConstants.NATIVE_TOKEN,
                 minTokensReclaimed: 0,
                 beneficiary: payable(users[i]),
-                metadata: cashOutMetadata,
-                referralProjectId: 0
+                metadata: cashOutMetadata
             });
 
             totalCashedOut += users[i].balance - balBefore;
@@ -396,8 +393,7 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
                 tokenToReclaim: JBConstants.NATIVE_TOKEN,
                 minTokensReclaimed: 0,
                 beneficiary: payable(users[i]),
-                metadata: cashOutMetadata,
-                referralProjectId: 0
+                metadata: cashOutMetadata
             });
 
             totalCashedOut += users[i].balance - balBefore;

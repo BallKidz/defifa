@@ -87,7 +87,6 @@ contract TierCapValidationRegressionTest is JBTest, TestBaseWorkflow {
         hookCodeOrigin = new DefifaHook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
         governor = new DefifaGovernor(jbController(), address(this));
         deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(hookCodeOrigin),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
             governor: governor,

@@ -100,7 +100,6 @@ contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
         _hookImpl = new DefifaHook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
         _governorImpl = new DefifaGovernor(jbController(), address(this));
         _deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(_hookImpl),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
             governor: _governorImpl,

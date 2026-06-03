@@ -87,7 +87,6 @@ contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
         DefifaGovernor governor = new DefifaGovernor(jbController(), address(this));
         registry = new JBAddressRegistry();
         deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(hookCodeOrigin),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
             governor: governor,

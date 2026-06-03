@@ -51,8 +51,7 @@ contract RegressionBeneficiaryMismatchTest is DefifaFeeAccountingTest {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: beneficiary,
-            metadata: cashOutMetadata,
-            referralProjectId: 0
+            metadata: cashOutMetadata
         });
 
         assertGt(beneficiary.balance, beneficiaryEthBefore, "terminal reclaim goes to beneficiary");

@@ -148,7 +148,6 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
             new DefifaHook(jbDirectory(), IERC20(_defifaProjectTokenAccount), IERC20(_protocolFeeProjectTokenAccount));
         governor = new DefifaGovernor(jbController(), address(this));
         deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
             governor: governor,
@@ -333,8 +332,7 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
             tokenToReclaim: address(token),
             minTokensReclaimed: 0,
             beneficiary: payable(user),
-            metadata: cashOutMetadata,
-            referralProjectId: 0
+            metadata: cashOutMetadata
         });
     }
 
@@ -614,7 +612,6 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
             new DefifaHook(jbDirectory(), IERC20(_defifaProjectTokenAccount), IERC20(_protocolFeeProjectTokenAccount));
         governor = new DefifaGovernor(jbController(), address(this));
         deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
             governor: governor,
@@ -745,8 +742,7 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(user),
-            metadata: meta,
-            referralProjectId: 0
+            metadata: meta
         });
     }
 

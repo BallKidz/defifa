@@ -134,8 +134,7 @@ contract MintCostHandler is Test {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(info.holder),
-            metadata: metaHelper.createMetadata(bids, data),
-            referralProjectId: 0
+            metadata: metaHelper.createMetadata(bids, data)
         });
 
         expectedMintCost -= tierPrice;
@@ -228,7 +227,6 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
         hookImpl = new DefifaHook(jbDirectory(), IERC20(_defifaToken), IERC20(_nanaToken));
         governor = new DefifaGovernor(jbController(), address(this));
         deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(hookImpl),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
             governor: governor,

@@ -22,16 +22,6 @@
 - **Breaking constructor signature change.** `DefifaDeployer`'s constructor now takes `(address initialOwner, address hookCodeOrigin, IJB721TokenUriResolver tokenUriResolver, IDefifaGovernor governor, IJBController controller, IJBAddressRegistry registry, uint256 defifaProjectId, uint256 baseProtocolProjectId, IJB721TiersHookStore hookStore)`. The `address deployer` binder arg and the internal `_DEPLOYER` immutable are gone.
 - **Breaking getter renames.** The eight fields are now `immutable` and follow the `ALL_CAPS` convention: `controller()→CONTROLLER()`, `registry()→REGISTRY()`, `hookStore()→HOOK_STORE()`, `governor()→GOVERNOR()`, `tokenUriResolver()→TOKEN_URI_RESOLVER()`, `hookCodeOrigin()→HOOK_CODE_ORIGIN()`, `defifaProjectId()→DEFIFA_PROJECT_ID()`, `baseProtocolProjectId()→BASE_PROTOCOL_PROJECT_ID()`.
 - Removed the now-unused `DefifaDeployer_AlreadyConfigured` and `DefifaDeployer_Unauthorized` errors (the deployer's `setChainSpecificConstants` was their only user).
-- `referralProjectId` is unchanged in behavior — still defaulted to `(1 << 48) | DEFIFA_PROJECT_ID` in the constructor and owner-settable via `setReferralProjectId`.
-
-## 0.0.41 — Owner-settable referral target on `DefifaDeployer`
-
-- `DefifaDeployer` now inherits OpenZeppelin `Ownable`. New constructor arg `address initialOwner` is passed straight to `Ownable(initialOwner)`. **This is a breaking constructor signature change** — `script/Deploy.s.sol` and every test that instantiates `DefifaDeployer` directly was updated to pass `initialOwner` (typically `safeAddress()` in the deploy script; `address(this)` in tests).
-- New `referralProjectId()` view returning the packed `(chainId << 48) | projectId` reference credited as the referrer on every fee-payout `sendPayoutsOf` call from `fulfillCommitmentsOf`.
-- New `setReferralProjectId(uint256 projectId, uint256 chainId)` (`onlyOwner`): takes the two fields unpacked, packs and stores them. Bounded so the pack is lossless — `projectId <= type(uint48).max`, `chainId <= type(uint208).max`. Reverts with `DefifaDeployer_ReferralProjectIdTooLarge` / `DefifaDeployer_ReferralChainIdTooLarge` otherwise. Emits `SetReferralProjectId(referralChainId, referralProjectId, caller)`.
-- Default at construction: `(chainId = 1, projectId = DEFIFA_PROJECT_ID)` — fee-volume credit still lands on the Defifa project on Ethereum mainnet regardless of which chain a game runs on. Owner can repoint this or pass `(0, 0)` to disable referral credit entirely.
-- The inline `(uint256(1) << 48) | DEFIFA_PROJECT_ID` pack inside `fulfillCommitmentsOf` is replaced by a read of the new storage slot. No external behavior change for default deployments.
-
 ## 0.0.35 — Bump v6 deps to nana-core-v6 0.0.53 cohort
 
 - `@bananapus/core-v6`: `^0.0.48 → ^0.0.53` ([PR #145](https://github.com/Bananapus/nana-core-v6/pull/145)).

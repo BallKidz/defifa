@@ -95,7 +95,6 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
         _hookImpl = new DefifaHook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
         _governorImpl = new DefifaGovernor(jbController(), address(this));
         _deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(_hookImpl),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
             governor: _governorImpl,
@@ -163,7 +162,7 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
 
         vm.prank(holder);
         jbMultiTerminal()
-            .cashOutTokensOf(holder, projectId, 0, JBConstants.NATIVE_TOKEN, 0, payable(holder), cashOutMetadata, 0);
+            .cashOutTokensOf(holder, projectId, 0, JBConstants.NATIVE_TOKEN, 0, payable(holder), cashOutMetadata);
     }
 
     function _launchData() internal view returns (DefifaLaunchProjectData memory) {
