@@ -475,24 +475,15 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         // Reserve the game ID up front so permissionless project creations cannot invalidate hook deployment.
         gameId = CONTROLLER.PROJECTS().createFor{value: msg.value}(address(this));
 
-        {
-            // Store the timestamps that define the game phases.
-            _opsOf[gameId] = DefifaOpsData({
-                token: launchProjectData.token.token,
-                mintPeriodDuration: launchProjectData.mintPeriodDuration,
-                refundPeriodDuration: launchProjectData.refundPeriodDuration,
-                start: launchProjectData.start,
-                minParticipation: launchProjectData.minParticipation,
-                scorecardTimeout: launchProjectData.scorecardTimeout
-            });
-
-            // NOTE: commitment splits (organizer/community + DEFIFA + NANA fee) are applied on the GAME project by
-            // `_buildSplits` below (queued on the scoring ruleset, group `uint160(token)`). A duplicate copy was
-            // previously written here onto the shared DEFIFA fee project (group `SPLIT_GROUP`, rulesetId `gameId`),
-            // but it was never read by any payout / reserved-token / revnet path and required SET_SPLIT_GROUPS on the
-            // (revnet-owned) DEFIFA project that the deployer is never granted — so a splits game always reverted.
-            // The dead write was removed; commitment splits live solely on the game project.
-        }
+        // Store the timestamps that define the game phases.
+        _opsOf[gameId] = DefifaOpsData({
+            token: launchProjectData.token.token,
+            mintPeriodDuration: launchProjectData.mintPeriodDuration,
+            refundPeriodDuration: launchProjectData.refundPeriodDuration,
+            start: launchProjectData.start,
+            minParticipation: launchProjectData.minParticipation,
+            scorecardTimeout: launchProjectData.scorecardTimeout
+        });
 
         // Keep track of the number of tiers.
         uint256 numberOfTiers = launchProjectData.tiers.length;
