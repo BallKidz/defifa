@@ -1,6 +1,6 @@
 # Invariants of Defifa
 
-Scope: the Defifa game protocol (`@ballkidz/defifa`) — `DefifaDeployer`, `DefifaGovernor`, `DefifaHook`, `DefifaProjectOwner`, and `DefifaTokenUriResolver`. Each Defifa game is a standalone Juicebox V6 project owned by the `DefifaDeployer` contract, with a per-game `DefifaHook` clone owned by the singleton `DefifaGovernor`.
+Scope: the Defifa game protocol (`@ballkidz/defifa`) — `DefifaDeployer`, `DefifaGovernor`, `DefifaHook`, and `DefifaTokenUriResolver`. Each Defifa game is a standalone Juicebox V6 project owned by the `DefifaDeployer` contract, with a per-game `DefifaHook` clone owned by the singleton `DefifaGovernor`.
 
 For the cryptoeconomic model (pot formation, prize distribution formula, fee pipeline, parimutuel game theory, parameter design), see `CRYPTO_ECON.md`. This document covers only the **structural / authorization / lifecycle invariants** of the contracts.
 
@@ -77,11 +77,7 @@ No caller can retro-edit any existing game's rulesets, splits, fee divisors, or 
 
 The governor itself is the `owner` of every `DefifaHook` after launch (`DefifaDeployer.sol:629-630`). This means the governor — and only the governor — can call `DefifaHook.setTierCashOutWeightsTo`. The governor's `ratifyScorecardFrom` is the **only** path that exercises this owner power, and it requires `state == SUCCEEDED` (`DefifaGovernor.sol:220-229`). The governor's own `Ownable` `owner` is set at deploy; that owner has no further authority over individual games once `initializeGame` has been called.
 
-## B.3 DefifaProjectOwner
-
-- **Dead-end project NFT custodian.** If a project NFT is transferred to `DefifaProjectOwner`, `onERC721Received` (caller must equal `PROJECTS`) grants `SET_SPLIT_GROUPS` on that project to the `DEPLOYER`. There is no `transfer-out` function — the NFT is irrevocably stuck. Useful when a launcher wants to relinquish ownership while still letting the deployer manage splits. (`DefifaProjectOwner.sol:53-87`)
-
-## B.4 Liveness guarantees
+## B.3 Liveness guarantees
 
 - **Phase progression doesn't require any privileged action.** Phase transitions are pure functions of `block.timestamp` and ruleset cycle number (`DefifaDeployer.sol:232-274`). Anyone can call `fulfillCommitmentsOf` (after `cashOutWeightIsSet`), `triggerNoContestFor` (when conditions match), or `mintReservesFor`.
 - **Ratification triggers commitment fulfillment atomically.** `ratifyScorecardFrom` calls `IDefifaDeployer.fulfillCommitmentsOf(gameId)` after setting the cash-out weights, so the final ruleset is queued in the same tx that finalizes scoring (`DefifaGovernor.sol:231-233`). `fulfillCommitmentsOf` wraps `sendPayoutsOf` in try/catch and always queues the final ruleset (`DefifaDeployer.sol:357-372`).
@@ -168,14 +164,7 @@ Per-game clone, extends `JB721Hook`. Ownable; the deployer transfers ownership t
 
 **Views:** `firstOwnerOf`, `getPastTierAttestationUnitsOf`, `getPastTierTotalAttestationUnitsOf`, `getTierAttestationUnitsOf`, `getTierDelegateOf`, `getTierTotalAttestationUnitsOf`, `tierCashOutWeights`, `tierNameOf`, `cashOutWeightOf` (single + batch), `currentSupplyOfTier`, `adjustedPendingReservesFor`, `supportsInterface`, `tokenURI`, `tokensClaimableFor`, `totalCashOutWeight`, `TOTAL_CASHOUT_WEIGHT`, `CODE_ORIGIN`, `DEFIFA_TOKEN`, `BASE_PROTOCOL_TOKEN`, `totalMintCost`, `amountRedeemed`, `baseURI`, `cashOutWeightIsSet`, `contractURI`, `defaultAttestationDelegate`, `gamePhaseReporter`, `gamePotReporter`, `isReserveMint`, `pricingCurrency`, `refundedBurnsFrom`, `rulesets`, `store`, `tokensRedeemedFrom`.
 
-## C.4 DefifaProjectOwner — `defifa/src/DefifaProjectOwner.sol`
-
-Dead-end JBProjects NFT custodian. No transfer-out path.
-
-- **`onERC721Received(operator, from, tokenId, data) → selector`** — only `JBProjects`. On receipt, grants `SET_SPLIT_GROUPS` for that project ID to the `DEPLOYER` via `PERMISSIONS.setPermissionsFor`. (`DefifaProjectOwner.sol:53-87`)
-  - **Invariant:** there is no transfer-out function — project ownership becomes permanent while the deployer can still rotate splits.
-
-## C.5 DefifaTokenUriResolver — `defifa/src/DefifaTokenUriResolver.sol`
+## C.4 DefifaTokenUriResolver — `defifa/src/DefifaTokenUriResolver.sol`
 
 Pure rendering surface — no privileged surface that affects game outcome or fund flow. Resolves tier-specific token URIs via `DefifaFontImporter` SVG composition. Reads from the hook's store + tier names; does not write any state that affects accounting.
 
@@ -246,6 +235,5 @@ These are NOT third-party attack vectors but are powers held by privileged addre
 - Hook overspend guard: `defifa/src/DefifaHook.sol:1075-1079`
 - Hook currency-lock guard: `defifa/src/DefifaHook.sol:1014-1018`
 - Hook payer ≠ beneficiary delegate guard: `defifa/src/DefifaHook.sol:1056-1061`
-- DefifaProjectOwner dead-end + permission grant: `defifa/src/DefifaProjectOwner.sol:53-87`
 
 For the game's economic model and rational-actor analysis, see `CRYPTO_ECON.md`.

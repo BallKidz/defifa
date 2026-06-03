@@ -26,7 +26,6 @@
 | `DefifaGovernor` | Scorecard submission, attestation weighting, quorum, grace periods, and ratification | Governance surface |
 | `DefifaHookLib` | Shared validation and weight math extracted from the hook | Bytecode-management helper |
 | `DefifaTokenUriResolver` | Dynamic token metadata and SVG rendering | Metadata layer |
-| `DefifaProjectOwner` | Irreversible project-owner sink that preserves selected operator permissions | Governance-sensitive helper |
 
 ## Trust Boundaries
 

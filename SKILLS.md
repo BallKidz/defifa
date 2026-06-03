@@ -13,7 +13,7 @@
 | Launch shape, phase queueing, and commitment fulfillment | [`src/DefifaDeployer.sol`](./src/DefifaDeployer.sol), [`script/Deploy.s.sol`](./script/Deploy.s.sol) |
 | Minting, delegation, game-state gating, and cash-out behavior | [`src/DefifaHook.sol`](./src/DefifaHook.sol), [`src/libraries/DefifaHookLib.sol`](./src/libraries/DefifaHookLib.sol) |
 | Scorecard submission, attestation power, quorum, and ratification | [`src/DefifaGovernor.sol`](./src/DefifaGovernor.sol) |
-| Token URI rendering and fee-project ownership helper | [`src/DefifaTokenUriResolver.sol`](./src/DefifaTokenUriResolver.sol), [`src/DefifaProjectOwner.sol`](./src/DefifaProjectOwner.sol) |
+| Token URI rendering | [`src/DefifaTokenUriResolver.sol`](./src/DefifaTokenUriResolver.sol) |
 | Runtime and operational invariants | [`references/runtime.md`](./references/runtime.md), [`references/operations.md`](./references/operations.md) |
 | Governance and lifecycle proofs | [`test/DefifaGovernor.t.sol`](./test/DefifaGovernor.t.sol), [`test/DefifaGovernanceHardening.t.sol`](./test/DefifaGovernanceHardening.t.sol), [`test/DefifaNoContest.t.sol`](./test/DefifaNoContest.t.sol) |
 | Fee and adversarial accounting coverage | [`test/DefifaFeeAccounting.t.sol`](./test/DefifaFeeAccounting.t.sol), [`test/DefifaMintCostInvariant.t.sol`](./test/DefifaMintCostInvariant.t.sol), [`test/DefifaSecurity.t.sol`](./test/DefifaSecurity.t.sol), [`test/DefifaAdversarialQuorum.t.sol`](./test/DefifaAdversarialQuorum.t.sol) |

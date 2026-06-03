@@ -66,7 +66,6 @@ Then read the upstream repos this package depends on:
 | `DefifaGovernor` | Scorecard governance surface that accepts submissions, attestations, quorum checks, grace periods, and ratification. |
 | `DefifaHookLib` | Shared validation and weight logic extracted from the hook. |
 | `DefifaTokenUriResolver` | Onchain metadata renderer for game cards. |
-| `DefifaProjectOwner` | Ownership sink used for the fee-project surface. |
 
 ## Lifecycle
 
@@ -116,7 +115,6 @@ src/
   DefifaDeployer.sol
   DefifaGovernor.sol
   DefifaHook.sol
-  DefifaProjectOwner.sol
   DefifaTokenUriResolver.sol
   enums/
   interfaces/

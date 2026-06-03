@@ -20,7 +20,6 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 
 - **Governor as hook owner.** The governor can set tier cash-out weights through ratification.
 - **Deployer as project owner.** The deployer owns game projects and controls ruleset queuing and commitment fulfillment.
-- **DefifaProjectOwner irrecoverability.** Once the project NFT is transferred there, it cannot be recovered.
 - **External dependencies.** Core protocol and shared 721-store behavior remain upstream trust boundaries.
 - **Terminal provenance is the launcher's responsibility.** The hook authenticates terminals via directory registration, not implementation identity. A game is only as trustworthy as the terminal its launcher chose. Users must verify a game's terminal before participating.
 - **Default attestation delegate.** If set, it can accumulate meaningful governance power across new minters.
@@ -103,14 +102,6 @@ This means **a single bad split cannot block the others from being paid**, and t
 
 `fulfilledCommitmentsOf[gameId]` always equals the requested commitment amount whenever any portion was attempted, regardless of whether every split succeeded. `currentGamePotOf(gameId, true)` adds this back to the remaining balance so the displayed pot represents the original pre-commitment value, but the actual on-terminal balance may be higher than the displayed pot when splits silently failed — by exactly the failed split amounts, which remain redeemable by game players. The bound therefore stays one-sided: real balance ≥ reported pot.
 
-### 8.8 `DefifaProjectOwner.onERC721Received` accepts any project NFT and grants `SET_SPLIT_GROUPS` on its ID
-
-`DefifaProjectOwner.onERC721Received` checks `msg.sender == address(PROJECTS)` but explicitly discards the `from` argument. It then calls `PERMISSIONS.setPermissionsFor` to grant `SET_SPLIT_GROUPS` to the deployer for the received `tokenId`, regardless of whether the transfer was a mint or a stray transfer of an existing project NFT.
-
-Anyone holding any project NFT can `safeTransferFrom` it to this contract and trigger a real on-chain permission grant: the DEPLOYER address gains `SET_SPLIT_GROUPS` authority on whatever projectId was transferred. The grant is dormant in current code because `DefifaDeployer` only invokes `SET_SPLIT_GROUPS` on its own `DEFIFA_PROJECT_ID` lifecycle, but it is a real grant and would activate if any future deployer code path acts on caller-supplied project IDs.
-
-Accepted because the grants are dormant against the current deployer surface and the receiving contract's project (the Defifa fee/governance project) is never the recipient of a hostile transfer in canonical flows. Anyone integrating `DefifaProjectOwner` into a deployer that operates on arbitrary projectIds must add the `require(from == address(0))` guard before relying on it.
-
-### 8.9 Reserve minting is blocked during NO_CONTEST
+### 8.8 Reserve minting is blocked during NO_CONTEST
 
 `DefifaHook.mintReservesFor` reverts with `DefifaHook_ReservedTokenMintingBlockedInNoContest` once `currentGamePhaseOf` reports `NO_CONTEST`. Reserve mints inflate `totalMintCost` so reserved recipients can claim a proportional share of fee tokens. Without this block, a game that failed `minParticipation` could be revived back into a SCORING-eligible state via free notional face value (reserves bump `totalMintCost` over the threshold) before `triggerNoContestFor()` latches the failure into a refund ruleset. The block tightens the §8.4 trust assumption that pending reserves are folded into governance and fee accounting: that remains true while the game is live, but once a game has already failed participation the reserve channel is closed so the no-contest outcome is final.

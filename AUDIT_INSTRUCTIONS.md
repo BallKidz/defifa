@@ -12,7 +12,7 @@ Suggestions of where to look:
 - break the game-phase lifecycle or allow actions in the wrong phase
 - corrupt scorecard submission, attestation, quorum, delegation, grace-period, or ratification logic
 - miscompute tier cash-out weights or fee-token distribution
-- leave a deployed game misconfigured through deployer or owner-helper mistakes
+- leave a deployed game misconfigured through deployer mistakes
 
 ## Scope
 
@@ -21,7 +21,6 @@ In scope:
 - `src/DefifaDeployer.sol`
 - `src/DefifaGovernor.sol`
 - `src/DefifaHook.sol`
-- `src/DefifaProjectOwner.sol`
 - `src/DefifaTokenUriResolver.sol`
 - `src/libraries/DefifaHookLib.sol`
 - enums, interfaces, structs, and deployment helpers
@@ -31,7 +30,6 @@ In scope:
 1. `src/DefifaGovernor.sol`
 2. `src/DefifaHook.sol`
 3. `src/DefifaDeployer.sol`
-4. `src/DefifaProjectOwner.sol`
 
 ## Security Model
 
@@ -49,17 +47,15 @@ The contracts split responsibility as follows:
 - `DefifaDeployer` launches the project and wires lifecycle configuration
 - `DefifaHook` handles minting, burning, fee accounting, and game-specific cash-out math
 - `DefifaGovernor` owns scorecard governance and ratification
-- `DefifaProjectOwner` acts as a project-owner helper where governance needs a stable admin surface
 - `DefifaTokenUriResolver` handles game NFT metadata
 
 ## Roles And Privileges
 
 | Role | Powers | How constrained |
 |------|--------|-----------------|
-| Game deployer or owner path | Configure a game's initial lifecycle and helper wiring | Must not retain hidden post-launch powers |
+| Game deployer or owner path | Configure a game's initial lifecycle wiring | Must not retain hidden post-launch powers |
 | Governor participants | Submit, attest to, and ratify scorecards | Must remain bounded by phase, quorum, and delegation rules |
 | `DefifaHook` | Determine mint and final redeem economics | Must not over-credit players or under-account fees |
-| Project owner helper | Stand in for project ownership where configured | Must not diverge from the intended governance authority |
 
 ## Integration Assumptions
 
@@ -67,7 +63,7 @@ The contracts split responsibility as follows:
 |------------|------------|----------------------|
 | `nana-core-v6` | Treasury accounting, rulesets, and cash-out surfaces stay coherent | Pot settlement and redeem math become unsound |
 | `nana-721-hook-v6` | Tier issuance and reserve behavior match Defifa's game logic | Voting power, supply, and cash-out weights drift |
-| Owner-helper and deployer patterns | Launch-time authority fully converges to the intended game authority | Games remain misconfigured or over-privileged |
+| Deployer launch patterns | Launch-time authority fully converges to the intended game authority | Games remain misconfigured or over-privileged |
 
 ## Critical Invariants
 
