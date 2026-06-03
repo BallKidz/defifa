@@ -1,6 +1,6 @@
 # Changelog
 
-## 0.0.54 — Remove the unused `DefifaProjectOwner` helper and the dead split-mirroring write
+## 0.0.55 — Remove the unused `DefifaProjectOwner` helper and the dead split-mirroring write
 
 - **Removed `DefifaProjectOwner`.** This "dead-end project NFT owner" helper existed only to auto-grant `SET_SPLIT_GROUPS` on a received project to the `DefifaDeployer` when a project NFT was transferred into it. Nothing in the canonical deployment relied on it — the DEFIFA fee project is owned by the DEFIFA revnet / `REVOwner`, not by this sink — so the contract is deleted.
 - **Removed the dead duplicate split-mirroring write in `DefifaDeployer.launchGameWith`.** The launch path used to write a second copy of the game's splits onto the shared DEFIFA fee project (`CONTROLLER.setSplitGroupsOf({projectId: DEFIFA_PROJECT_ID, ...})`, group `SPLIT_GROUP`). That data was never read by any payout or reserved-token path, and the write required a `SET_SPLIT_GROUPS` grant the deployer never held — so games launched with splits reverted. The real commitment splits (organizer/community cut + DEFIFA fee + base-protocol fee) are applied solely on the per-game project by `_buildSplits` (group `uint160(token)`), unchanged. The public immutable `SPLIT_GROUP` and its getter remain on `DefifaDeployer`; only the write that used it was removed.
