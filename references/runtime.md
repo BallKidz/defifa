@@ -8,7 +8,6 @@ Use this file when `defifa/SKILLS.md` has already routed you here and you need t
 - [`src/DefifaHook.sol`](../src/DefifaHook.sol) manages the NFT game pieces, delegation, and settlement-side cash-out behavior.
 - [`src/DefifaGovernor.sol`](../src/DefifaGovernor.sol) handles scorecard submission, attestation, quorum, and ratification.
 - [`src/DefifaTokenUriResolver.sol`](../src/DefifaTokenUriResolver.sol) renders game-card metadata.
-- [`src/DefifaProjectOwner.sol`](../src/DefifaProjectOwner.sol) is the ownership helper for the fee project.
 
 ## Lifecycle
 

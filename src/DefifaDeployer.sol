@@ -486,44 +486,12 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
                 scorecardTimeout: launchProjectData.scorecardTimeout
             });
 
-            // Keep a reference to the number of splits.
-            uint256 numberOfSplits = launchProjectData.splits.length;
-
-            // If there are splits being added, store the fee alongside. The fee will otherwise be added later.
-            if (numberOfSplits != 0) {
-                // Make a new splits where fees will be added to.
-                JBSplit[] memory splits = new JBSplit[](launchProjectData.splits.length + 1);
-
-                // Copy the splits over.
-                for (uint256 i; i < numberOfSplits;) {
-                    // Copy the split over.
-                    splits[i] = launchProjectData.splits[i];
-                    unchecked {
-                        ++i;
-                    }
-                }
-
-                // Add a split for the fee.
-                splits[numberOfSplits] = JBSplit({
-                    preferAddToBalance: false,
-                    // forge-lint: disable-next-line(unsafe-typecast)
-                    percent: uint32(JBConstants.SPLITS_TOTAL_PERCENT / DEFIFA_FEE_DIVISOR),
-                    // forge-lint: disable-next-line(unsafe-typecast)
-                    projectId: uint64(DEFIFA_PROJECT_ID),
-                    beneficiary: payable(address(this)),
-                    lockedUntil: 0,
-                    hook: IJBSplitHook(address(0))
-                });
-
-                // Store the splits.
-                JBSplitGroup[] memory groupedSplits = new JBSplitGroup[](1);
-                groupedSplits[0] = JBSplitGroup({groupId: SPLIT_GROUP, splits: splits});
-
-                // This contract must have SET_SPLIT_GROUPS permission from the defifa project owner.
-                CONTROLLER.setSplitGroupsOf({
-                    projectId: DEFIFA_PROJECT_ID, rulesetId: gameId, splitGroups: groupedSplits
-                });
-            }
+            // NOTE: commitment splits (organizer/community + DEFIFA + NANA fee) are applied on the GAME project by
+            // `_buildSplits` below (queued on the scoring ruleset, group `uint160(token)`). A duplicate copy was
+            // previously written here onto the shared DEFIFA fee project (group `SPLIT_GROUP`, rulesetId `gameId`),
+            // but it was never read by any payout / reserved-token / revnet path and required SET_SPLIT_GROUPS on the
+            // (revnet-owned) DEFIFA project that the deployer is never granted — so a splits game always reverted.
+            // The dead write was removed; commitment splits live solely on the game project.
         }
 
         // Keep track of the number of tiers.
