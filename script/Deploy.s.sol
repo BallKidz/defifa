@@ -113,7 +113,6 @@ contract DeployMainnet is Script, Sphinx {
         DefifaGovernor governor = new DefifaGovernor{salt: _salt}({controller: core.controller, owner: safeAddress()});
         JB721TiersHookStore hookStore = new JB721TiersHookStore{salt: _salt}();
         DefifaDeployer deployer = new DefifaDeployer{salt: _salt}({
-            initialOwner: safeAddress(),
             hookCodeOrigin: address(hook),
             tokenUriResolver: tokenUriResolver,
             governor: governor,

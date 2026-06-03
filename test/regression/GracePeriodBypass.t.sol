@@ -122,7 +122,6 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
         JBAddressRegistry _registry = new JBAddressRegistry();
         DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
         deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(hook),
             tokenUriResolver: _tokenUriResolver,
             governor: governor,

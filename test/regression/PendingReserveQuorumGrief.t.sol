@@ -111,7 +111,6 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         _hookImpl = new DefifaHook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
         _governorImpl = new DefifaGovernor(jbController(), address(this));
         _deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(_hookImpl),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
             governor: _governorImpl,
@@ -342,8 +341,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(user),
-            metadata: metadata,
-            referralProjectId: 0
+            metadata: metadata
         });
     }
 

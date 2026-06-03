@@ -131,7 +131,6 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         JBAddressRegistry _registry = new JBAddressRegistry();
         DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
         deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(hook),
             tokenUriResolver: _tokenUriResolver,
             governor: governor,
@@ -624,8 +623,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_user),
-            metadata: cashOutMetadata,
-            referralProjectId: 0
+            metadata: cashOutMetadata
         });
 
         assertEq(IERC20(_protocolFeeProjectTokenAccount).balanceOf(_user), _nanaBalance + _receiveNana);
@@ -696,8 +694,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_refundUser),
-            metadata: cashOutMetadata,
-            referralProjectId: 0
+            metadata: cashOutMetadata
         });
         vm.warp(block.timestamp + 1);
 
@@ -1304,8 +1301,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(_refundUser),
-            metadata: cashOutMetadata,
-            referralProjectId: 0
+            metadata: cashOutMetadata
         });
         // User should have their original funds again
         assertEq(_refundUser.balance, _cost);

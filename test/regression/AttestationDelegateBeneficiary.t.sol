@@ -99,7 +99,6 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
         hook = new DefifaHook(jbDirectory(), IERC20(_defifaToken), IERC20(_nanaToken));
         governor = new DefifaGovernor(jbController(), address(this));
         deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
             governor: governor,

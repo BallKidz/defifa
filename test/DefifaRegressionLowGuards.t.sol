@@ -107,7 +107,6 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
             new DefifaHook(jbDirectory(), IERC20(_defifaProjectTokenAccount), IERC20(_protocolFeeProjectTokenAccount));
         governor = new DefifaGovernor(jbController(), address(this));
         deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
             governor: governor,

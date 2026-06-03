@@ -128,7 +128,6 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
         JBAddressRegistry _registry = new JBAddressRegistry();
         DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
         deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(hook),
             tokenUriResolver: _tokenUriResolver,
             governor: governor,
@@ -238,8 +237,7 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
                 tokenToReclaim: JBConstants.NATIVE_TOKEN,
                 minTokensReclaimed: 0,
                 beneficiary: payable(_users[0]),
-                metadata: cashOutMetadata,
-                referralProjectId: 0
+                metadata: cashOutMetadata
             });
         }
         uint256 reclaimed = _users[0].balance - user0BalBefore;
@@ -408,7 +406,6 @@ contract TestQAGameIdPredictionRace is JBTest, TestBaseWorkflow {
         JBAddressRegistry _registry = new JBAddressRegistry();
         DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
         deployer = new DefifaDeployer({
-            initialOwner: address(this),
             hookCodeOrigin: address(hook),
             tokenUriResolver: _tokenUriResolver,
             governor: governor,
