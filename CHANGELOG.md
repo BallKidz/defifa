@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.56 — Comment cleanup
+
+- Removed a stale explanatory comment and a redundant local scope in `DefifaDeployer.launchGameWith`. No functional or bytecode change.
+
 ## 0.0.55 — Remove the unused `DefifaProjectOwner` helper and the dead split-mirroring write
 
 - **Removed `DefifaProjectOwner`.** This "dead-end project NFT owner" helper existed only to auto-grant `SET_SPLIT_GROUPS` on a received project to the `DefifaDeployer` when a project NFT was transferred into it. Nothing in the canonical deployment relied on it — the DEFIFA fee project is owned by the DEFIFA revnet / `REVOwner`, not by this sink — so the contract is deleted.
