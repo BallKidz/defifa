@@ -11,7 +11,6 @@ import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
-import {JBPermissionIds} from "@bananapus/permission-ids-v6/src/JBPermissionIds.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
@@ -32,7 +31,6 @@ import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 import {JBMultiTerminal} from "@bananapus/core-v6/src/JBMultiTerminal.sol";
-import {JBPermissionsData} from "@bananapus/core-v6/src/structs/JBPermissionsData.sol";
 
 /// @notice Mock USDC token with 6 decimals.
 contract DefifaMockUSDC is ERC20 {
@@ -146,20 +144,6 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
             baseProtocolProjectId: _protocolFeeProjectId,
             hookStore: new JB721TiersHookStore()
         });
-
-        uint8[] memory permissionIds = new uint8[](1);
-        permissionIds[0] = JBPermissionIds.SET_SPLIT_GROUPS;
-        vm.prank(projectOwner);
-        jbPermissions()
-            .setPermissionsFor(
-                projectOwner,
-                JBPermissionsData({
-                operator: address(deployer),
-                // forge-lint: disable-next-line(unsafe-typecast)
-                projectId: uint64(_defifaProjectId),
-                permissionIds: permissionIds
-            })
-            );
 
         hook.transferOwnership(address(deployer));
         governor.transferOwnership(address(deployer));

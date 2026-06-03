@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.0.57 — Remove the vestigial SPLIT_GROUP
+
+- Removed the now-unused `SPLIT_GROUP` immutable + getter from `DefifaDeployer` / `IDefifaDeployer`, dropped the related SET_SPLIT_GROUPS grants from tests, and corrected the `DEFIFA_PROJECT_ID` NatSpec. The deployer no longer stores splits on the DEFIFA fee project, so none of this is needed.
+
 ## 0.0.56 — Comment cleanup
 
 - Removed a stale explanatory comment and a redundant local scope in `DefifaDeployer.launchGameWith`. No functional or bytecode change.

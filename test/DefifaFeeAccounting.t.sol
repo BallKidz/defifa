@@ -13,7 +13,6 @@ import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRule
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
-import {JBPermissionIds} from "@bananapus/permission-ids-v6/src/JBPermissionIds.sol";
 import {DefifaLaunchProjectData} from "../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../src/structs/DefifaTierParams.sol";
 import {DefifaTierCashOutWeight} from "../src/structs/DefifaTierCashOutWeight.sol";
@@ -30,7 +29,6 @@ import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAcces
 import {JBRulesetConfig, JBTerminalConfig} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {JBMultiTerminal} from "@bananapus/core-v6/src/JBMultiTerminal.sol";
-import {JBPermissionsData} from "@bananapus/core-v6/src/interfaces/IJBPermissions.sol";
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
@@ -120,22 +118,6 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
             baseProtocolProjectId: _protocolFeeProjectId,
             hookStore: new JB721TiersHookStore()
         });
-
-        // Grant the deployer SET_SPLIT_GROUPS permission on the defifa fee project.
-        // This is needed so the deployer can set custom splits via controller.setSplitGroupsOf().
-        uint8[] memory permissionIds = new uint8[](1);
-        permissionIds[0] = JBPermissionIds.SET_SPLIT_GROUPS;
-        vm.prank(projectOwner);
-        jbPermissions()
-            .setPermissionsFor(
-                projectOwner,
-                JBPermissionsData({
-                operator: address(deployer),
-                // forge-lint: disable-next-line(unsafe-typecast)
-                projectId: uint64(_defifaProjectId),
-                permissionIds: permissionIds
-            })
-            );
 
         hook.transferOwnership(address(deployer));
         governor.transferOwnership(address(deployer));

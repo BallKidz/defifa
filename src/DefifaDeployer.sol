@@ -85,8 +85,7 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @notice The controller with which new projects should be deployed.
     IJBController public immutable override CONTROLLER;
 
-    /// @notice The project ID that will receive game fees, and relative to which splits are stored.
-    /// @dev The owner of this project ID must give this contract operator permissions over the SET_SPLITS operation.
+    /// @notice The project ID that receives Defifa game fees as commitments are fulfilled.
     uint256 public immutable override DEFIFA_PROJECT_ID;
 
     /// @notice The governance contract that ratifies scorecards for each game.
@@ -100,10 +99,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
 
     /// @notice The Juicebox 721 tiers hook registry used to register deployed games.
     IJBAddressRegistry public immutable override REGISTRY;
-
-    /// @notice The group relative to which splits are stored.
-    /// @dev This could be any fixed number.
-    uint256 public immutable override SPLIT_GROUP;
 
     /// @notice The default Defifa token URI resolver.
     IJB721TokenUriResolver public immutable override TOKEN_URI_RESOLVER;
@@ -303,9 +298,6 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
         DEFIFA_PROJECT_ID = defifaProjectId;
         BASE_PROTOCOL_PROJECT_ID = baseProtocolProjectId;
         HOOK_STORE = hookStore;
-
-        // Use this contract's address as group ID. Game scoring rulesets use uint160(token) as group ID.
-        SPLIT_GROUP = uint256(uint160(address(this)));
     }
 
     //*********************************************************************//
