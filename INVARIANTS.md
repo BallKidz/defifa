@@ -17,9 +17,9 @@ NO_CONTEST is reported by the view as soon as the condition is met; the on-chain
 
 ---
 
-# Section A — Guarantees to Users
+## Section A — Guarantees to users
 
-## A.1 Players (paying / cashing out)
+### A.1 Players (paying / cashing out)
 
 - **MINT phase issuance.** A `pay()` during MINT mints one NFT per tier ID in the metadata-encoded `tierIdsToMint` array, charging `tierPrice` per mint (uniform across tiers so attestation power is equal). Overspending (`leftoverAmount != 0`) reverts with `DefifaHook_Overspending` — payer cannot accidentally over-fund. (`DefifaHook.sol:1075-1079`)
 - **Currency lock-in.** Payment currency must equal the `pricingCurrency` baked into the hook at `initialize`; mismatched currency reverts `DefifaHook_WrongCurrency`. (`DefifaHook.sol:1014-1018`)
@@ -34,7 +34,7 @@ NO_CONTEST is reported by the view as soon as the condition is met; the on-chain
 - **Game configuration sanity.** `launchGameWith` reverts if start/mint/refund durations are inconsistent, if `tiers.length > 128`, if `scorecardTimeout == 0`, if ERC-20 games supply `currency=0`, or if `scorecardTimeout` is too short to ever allow ratification (`attestationDelay + gracePeriod + timelock`). (`DefifaDeployer.sol:417-478`)
 - **Frozen tier price.** All tiers launch with the same `tierPrice`, `discountPercent=0`, `cantIncreaseDiscountPercent=true`, `cantBeRemoved=true`, `allowOwnerMint=false`. Operator cannot drop in cheap tiers post-launch or admin-mint into a winning tier. (`DefifaDeployer.sol:550-568`)
 
-## A.2 Attesters (governance participants)
+### A.2 Attesters (governance participants)
 
 - **BWA snapshot one second before submission.** Voting power is read at `scorecard.snapshotTimestamp` = submission timestamp − 1. Checkpoints are `block.timestamp`-keyed and same-timestamp writes overwrite in place, so reading before the submission block excludes any mint or transfer that shares that block, in either order relative to submission — neither a post-submission `mintReservesFor` nor a same-block `transferFrom` can grant or move attestation power for that scorecard. `attestationsBegin` is still advanced to the next timestamp so the attestation window opens in a later block than submission (`DefifaGovernor.sol` `attestToScorecardFrom` and `submitScorecardFor`).
 - **Benefit-Weighted Attestation (BWA) reduces beneficiary power.** Each tier's attestation power is scaled by `(totalCashOutWeight - tierWeight) / totalCashOutWeight`. A tier with 100% of the scorecard weight receives 0 attestation power on that scorecard — beneficiaries **cannot self-attest at full power** (`DefifaGovernor.sol:705-709`). Zero-power attestations revert (`DefifaGovernor.sol:175-177`).
@@ -49,7 +49,7 @@ NO_CONTEST is reported by the view as soon as the condition is met; the on-chain
 - **Reserve-mint snapshots.** On submission, the governor snapshots each tier's pending reserves and minted-unit total. Because attestation reads at `snapshotTimestamp` (before the submission block), a reserve minted at or after submission gains no numerator. The minted-unit snapshot additionally clamps the denominator for reads at a later timestamp (e.g. delayed-attestation games, where the snapshot timestamp passed to the view is in the future relative to submission), and the snapshotted pending reserves are added back so unminted reserves dilute exactly once (`DefifaGovernor.sol` `getBWAAttestationWeight`).
 - **Quorum eligibility includes pending reserves.** A tier with all paid tokens burned during REFUND but with pending reserves still contributes to quorum, so a burner cannot erase another participant's quorum contribution (`DefifaGovernor.sol:744-753`).
 
-## A.3 Protections against external interference
+### A.3 Protections against external interference
 
 - **No third-party can change cash-out weights.** `setTierCashOutWeightsTo` is `onlyOwner` (the governor) AND gated on `gamePhase == SCORING` AND single-shot (`cashOutWeightIsSet`). Even the governor can't re-score a game once set. (`DefifaHook.sol:784-805`)
 - **No third-party can re-route fee splits.** Splits are written by the deployer once during `_buildSplits` for the scoring ruleset and never changed (`DefifaDeployer.sol:724-813`). The deployer permanently holds the game's `JBProjects` NFT (`DefifaDeployer.sol:480-481`).
@@ -63,21 +63,21 @@ NO_CONTEST is reported by the view as soon as the condition is met; the on-chain
 
 ---
 
-# Section B — Guarantees to Owners
+## Section B — Guarantees to owners
 
-## B.1 DefifaDeployer bindings
+### B.1 DefifaDeployer bindings
 
 - **Dependency bindings are constructor `immutable`s, not a runtime setter.** `HOOK_CODE_ORIGIN`, `TOKEN_URI_RESOLVER`, `GOVERNOR`, `CONTROLLER`, `REGISTRY`, `DEFIFA_PROJECT_ID`, `BASE_PROTOCOL_PROJECT_ID`, and `HOOK_STORE` are all fixed at construction (`DefifaDeployer.sol:288-308`). These dependencies share unified CREATE2 addresses / canonical project IDs across chains, so nothing chain-specific remains to wire post-deploy — no address can mutate them after deployment.
 
 No caller can retro-edit any existing game's rulesets, splits, fee divisors, or tier configuration. The protocol-fee divisor (`BASE_PROTOCOL_FEE_DIVISOR = 40` ⇒ 2.5%) and Defifa-fee divisor (`DEFIFA_FEE_DIVISOR = 20` ⇒ 5%) are `constant` (`DefifaDeployer.sol:72, 76`).
 
-## B.2 DefifaGovernor owner (singleton governor as DefifaHook owner)
+### B.2 DefifaGovernor owner (singleton governor as DefifaHook owner)
 
 - **`initializeGame(gameId, attestationStartTime, attestationGracePeriod, timelockDuration)`** — `onlyOwner` (the deployer, called from `launchGameWith`), one-time per game (`_packedScorecardInfoOf[gameId] != 0` reverts `AlreadyInitialized`). Enforces `attestationGracePeriod >= 1 day` and `uint48` bounds on each field (`DefifaGovernor.sol:484-538`).
 
 The governor itself is the `owner` of every `DefifaHook` after launch (`DefifaDeployer.sol:629-630`). This means the governor — and only the governor — can call `DefifaHook.setTierCashOutWeightsTo`. The governor's `ratifyScorecardFrom` is the **only** path that exercises this owner power, and it requires `state == SUCCEEDED` (`DefifaGovernor.sol:220-229`). The governor's own `Ownable` `owner` is set at deploy; that owner has no further authority over individual games once `initializeGame` has been called.
 
-## B.3 Liveness guarantees
+### B.3 Liveness guarantees
 
 - **Phase progression doesn't require any privileged action.** Phase transitions are pure functions of `block.timestamp` and ruleset cycle number (`DefifaDeployer.sol:232-274`). Anyone can call `fulfillCommitmentsOf` (after `cashOutWeightIsSet`), `triggerNoContestFor` (when conditions match), or `mintReservesFor`.
 - **Ratification triggers commitment fulfillment atomically.** `ratifyScorecardFrom` calls `IDefifaDeployer.fulfillCommitmentsOf(gameId)` after setting the cash-out weights, so the final ruleset is queued in the same tx that finalizes scoring (`DefifaGovernor.sol:231-233`). `fulfillCommitmentsOf` wraps `sendPayoutsOf` in try/catch and always queues the final ruleset (`DefifaDeployer.sol:357-372`).
@@ -85,9 +85,9 @@ The governor itself is the `owner` of every `DefifaHook` after launch (`DefifaDe
 
 ---
 
-# Section C — Per-Contract Operation Inventory
+## Section C — Per-contract operation inventory
 
-## C.1 DefifaDeployer — `defifa/src/DefifaDeployer.sol`
+### C.1 DefifaDeployer — `defifa/src/DefifaDeployer.sol`
 
 Owns every game's project NFT (`PROJECTS.createFor(this)` in `launchGameWith`).
 
@@ -113,7 +113,7 @@ Owns every game's project NFT (`PROJECTS.createFor(this)` in `launchGameWith`).
 
 **Views:** `currentGamePhaseOf`, `currentGamePotOf`, `nextPhaseNeedsQueueing`, `safetyParamsOf`, `timesFor`, `tokenOf`, `BASE_PROTOCOL_FEE_DIVISOR`, `DEFIFA_FEE_DIVISOR`, `SPLIT_GROUP`, `defifaProjectId`, `baseProtocolProjectId`, `hookCodeOrigin`, `tokenUriResolver`, `governor`, `controller`, `registry`, `hookStore`, `fulfilledCommitmentsOf`, `commitmentsFulfilledFor`, `noContestTriggeredFor`.
 
-## C.2 DefifaGovernor — `defifa/src/DefifaGovernor.sol`
+### C.2 DefifaGovernor — `defifa/src/DefifaGovernor.sol`
 
 Singleton. Owns every `DefifaHook` clone post-launch.
 
@@ -131,7 +131,7 @@ Singleton. Owns every `DefifaHook` clone post-launch.
 
 **Views:** `attestationCountOf`, `hasAttestedTo`, `scorecardIdOf`, `attestationGracePeriodOf`, `attestationStartTimeOf`, `getAttestationWeight`, `getBWAAttestationWeight`, `quorum`, `stateOf` (PENDING → ACTIVE → QUEUED/SUCCEEDED → RATIFIED/DEFEATED), `timelockDurationOf`, `MAX_ATTESTATION_POWER_TIER`, `MIN_ATTESTATION_GRACE_PERIOD`, `CONTROLLER`, `defaultAttestationDelegateProposalOf`, `ratifiedScorecardIdOf`.
 
-## C.3 DefifaHook — `defifa/src/DefifaHook.sol`
+### C.3 DefifaHook — `defifa/src/DefifaHook.sol`
 
 Per-game clone, extends `JB721Hook`. Ownable; the deployer transfers ownership to the governor immediately after `initialize`.
 
@@ -164,13 +164,13 @@ Per-game clone, extends `JB721Hook`. Ownable; the deployer transfers ownership t
 
 **Views:** `firstOwnerOf`, `getPastTierAttestationUnitsOf`, `getPastTierTotalAttestationUnitsOf`, `getTierAttestationUnitsOf`, `getTierDelegateOf`, `getTierTotalAttestationUnitsOf`, `tierCashOutWeights`, `tierNameOf`, `cashOutWeightOf` (single + batch), `currentSupplyOfTier`, `adjustedPendingReservesFor`, `supportsInterface`, `tokenURI`, `tokensClaimableFor`, `totalCashOutWeight`, `TOTAL_CASHOUT_WEIGHT`, `CODE_ORIGIN`, `DEFIFA_TOKEN`, `BASE_PROTOCOL_TOKEN`, `totalMintCost`, `amountRedeemed`, `baseURI`, `cashOutWeightIsSet`, `contractURI`, `defaultAttestationDelegate`, `gamePhaseReporter`, `gamePotReporter`, `isReserveMint`, `pricingCurrency`, `refundedBurnsFrom`, `rulesets`, `store`, `tokensRedeemedFrom`.
 
-## C.4 DefifaTokenUriResolver — `defifa/src/DefifaTokenUriResolver.sol`
+### C.4 DefifaTokenUriResolver — `defifa/src/DefifaTokenUriResolver.sol`
 
 Pure rendering surface — no privileged surface that affects game outcome or fund flow. Resolves tier-specific token URIs via `DefifaFontImporter` SVG composition. Reads from the hook's store + tier names; does not write any state that affects accounting.
 
 ---
 
-# Section D — Cross-Cutting Invariants
+## Section D — Cross-cutting invariants
 
 1. **Frozen game configuration.** Once `launchGameWith` returns, the per-game tier prices, reserve frequencies, fees, scorecard timeouts, and ruleset cadence (MINT → REFUND? → SCORING → COMPLETE/NO_CONTEST) are immutable.
 2. **Single ratification per game.** `DefifaGovernor.ratifiedScorecardIdOf[gameId] != 0` blocks further submissions and ratifications (`DefifaGovernor.sol:206, 285`). `DefifaHook.cashOutWeightIsSet` blocks repeated `setTierCashOutWeightsTo` (`DefifaHook.sol:795`).
@@ -193,7 +193,7 @@ For the underlying parimutuel game mechanics, pot-formation math, fee pipeline, 
 
 ---
 
-# Section E — Out-of-Scope Centralization Caveats
+## Section E — Out-of-scope centralization caveats
 
 These are NOT third-party attack vectors but are powers held by privileged addresses:
 
@@ -205,7 +205,7 @@ These are NOT third-party attack vectors but are powers held by privileged addre
 
 ---
 
-# Section F — Key Code References
+## Section F — Key code references
 
 - Phase view: `defifa/src/DefifaDeployer.sol:232-274`
 - Game configuration validation: `defifa/src/DefifaDeployer.sol:417-478`

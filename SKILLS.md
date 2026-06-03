@@ -1,11 +1,11 @@
 # Defifa
 
-## Use This File For
+## Use this file for
 
 - Use this file when the task involves Defifa game deployment, phase transitions, scorecards, attestations, governance thresholds, fee accounting, or Defifa token URI behavior.
 - Start here, then decide whether the issue is launch shape, hook runtime, governor ratification, or resolver output.
 
-## Read This Next
+## Read this next
 
 | If you need... | Open this next |
 |---|---|
@@ -18,7 +18,7 @@
 | Governance and lifecycle proofs | [`test/DefifaGovernor.t.sol`](./test/DefifaGovernor.t.sol), [`test/DefifaGovernanceHardening.t.sol`](./test/DefifaGovernanceHardening.t.sol), [`test/DefifaNoContest.t.sol`](./test/DefifaNoContest.t.sol) |
 | Fee and adversarial accounting coverage | [`test/DefifaFeeAccounting.t.sol`](./test/DefifaFeeAccounting.t.sol), [`test/DefifaMintCostInvariant.t.sol`](./test/DefifaMintCostInvariant.t.sol), [`test/DefifaSecurity.t.sol`](./test/DefifaSecurity.t.sol), [`test/DefifaAdversarialQuorum.t.sol`](./test/DefifaAdversarialQuorum.t.sol) |
 
-## Repo Map
+## Repo map
 
 | Area | Where to look |
 |---|---|
@@ -31,12 +31,12 @@
 
 Defifa is an onchain prediction game system built on Juicebox. This repo packages game launch, phased lifecycle control, scorecard governance, and NFT-based settlement into one game-specific deployment surface.
 
-## Reference Files
+## Reference files
 
 - Open [`references/runtime.md`](./references/runtime.md) for the game lifecycle, contract roles, settlement path, and the main economic and governance invariants.
 - Open [`references/operations.md`](./references/operations.md) for deployment and phase-queueing behavior, test breadcrumbs, and common stale operational assumptions.
 
-## Working Rules
+## Working rules
 
 - Start in [`src/DefifaDeployer.sol`](./src/DefifaDeployer.sol) for phase shape and commitment fulfillment, [`src/DefifaHook.sol`](./src/DefifaHook.sol) for NFT runtime and settlement behavior, and [`src/DefifaGovernor.sol`](./src/DefifaGovernor.sol) for scorecards, attestation, and ratification.
 - Treat phase transitions, scorecard ratification, no-contest behavior, and fee accounting as one economic system.

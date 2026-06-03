@@ -21,14 +21,25 @@ library DefifaHookLib {
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
+    /// @notice Thrown when tier IDs are not provided in strict ascending order.
     error DefifaHook_BadTierOrder(uint256 previousTierId, uint256 tierId);
+
+    /// @notice Thrown when a tier ID does not match a stored tier, exceeds the maximum tier ID, or is not in category
+    /// 0.
     error DefifaHook_InvalidTierId(uint256 tierId, uint256 actualTierId, uint256 maxTierId, uint256 category);
+
+    /// @notice Thrown when the cumulative cash-out weights do not sum to the expected total.
     error DefifaHook_InvalidCashoutWeights(uint256 totalWeight, uint256 expectedWeight);
 
     //*********************************************************************//
     // ----------------------------- events ------------------------------ //
     //*********************************************************************//
 
+    /// @notice Emitted when claimable game tokens are claimed.
+    /// @param beneficiary The address receiving the claimed tokens.
+    /// @param defifaTokenAmount The amount of Defifa tokens claimed.
+    /// @param baseProtocolTokenAmount The amount of base protocol tokens claimed.
+    /// @param caller The address that triggered the claim.
     event ClaimedTokens(
         address indexed beneficiary, uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount, address caller
     );

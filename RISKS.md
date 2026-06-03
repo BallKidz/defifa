@@ -16,7 +16,7 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 | P1 | Shared 721-hook store blast radius | Defifa inherits the same shared `JB721TiersHookStore` surface as the general 721-hook ecosystem. | Reuse of 721-hook invariants, store-focused testing, and ecosystem-level monitoring. |
 | P1 | Supply and reserve accounting drift | Game fairness depends on attestation power, fee-token dilution, and cash-out weights tracking real mint and reserve state. | Explicit invariants on supply, reserve inclusion, and tier-weight arithmetic. |
 
-## 1. Trust Assumptions
+## 1. Trust assumptions
 
 - **Governor as hook owner.** The governor can set tier cash-out weights through ratification.
 - **Deployer as project owner.** The deployer owns game projects and controls ruleset queuing and commitment fulfillment.
@@ -24,7 +24,7 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 - **Terminal provenance is the launcher's responsibility.** The hook authenticates terminals via directory registration, not implementation identity. A game is only as trustworthy as the terminal its launcher chose. Users must verify a game's terminal before participating.
 - **Default attestation delegate.** If set, it can accumulate meaningful governance power across new minters.
 
-## 2. Economic Risks
+## 2. Economic risks
 
 - **Scorecard manipulation via quorum.** Enough attestation power can redirect the whole pot. Once a coalition reaches the BWA (best winning attestation) quorum threshold, they can lock in a scorecard that favors their tiers. The grace period is the primary defense window for other participants to revoke attestations.
 - **BWA quorum lockout.** If a scorecard reaches quorum and the grace period elapses before opponents can revoke, the scorecard becomes ratifiable. In games with concentrated attestation power (few large holders), quorum may be reached quickly, leaving little time for the grace period defense to be effective.
@@ -34,7 +34,7 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 - **Fee-token dilution from reserved mints.** Reserved mints can dilute fee-token shares even though no ETH was paid for them.
 - **128-tier settlement ceiling.** Games that rely on more than 128 scored tiers can fail settlement.
 
-## 3. Governance Risks
+## 3. Governance risks
 
 - **Single governor instance across games.** A bug in the governor affects every game that uses it.
 - **Scorecard timeout can block legitimate ratification.** Once timeout is reached, the game may have to fall into no-contest even if a scorecard was close to success.
@@ -42,24 +42,24 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 - **No-contest requires an explicit trigger.** The fallback path does not activate itself just because the timeout happened.
 - **No-contest trigger is not the same as active refund state.** Integrators must distinguish queued recovery from currently active refund rules.
 
-## 4. Reentrancy Surface
+## 4. Reentrancy surface
 
 - **`afterCashOutRecordedWith`.** Burns happen before external fee-token transfers, which narrows the surface, but transfer compatibility still matters.
 - **Ratification uses a low-level call into the hook.** Double-set protections must hold.
 
-## 5. DoS Vectors
+## 5. DoS vectors
 
 - **Tier iteration in governance.** Quorum and attestation-weight calculations scale with tier count.
 - **Large split arrays.** User-provided split arrays can increase gas and complexity even if practical counts stay bounded.
 
-## 6. Integration Risks
+## 6. Integration risks
 
 - **Immutable phase timing.** Once deployed, the game timeline cannot be edited.
 - **Permanent cash-out weights.** A ratified scorecard is final.
 - **No deployer upgrade path.** Bugs require a new deployer, not an in-place fix.
 - **Clone initialization assumptions matter.** Per-game clone setup must stay correct.
 
-## 7. Invariants to Verify
+## 7. Invariants to verify
 
 - `_totalMintCost` stays consistent with live tier state and burns.
 - Total cash-outs plus remaining surplus match the pre-fulfillment pot minus intended fees.
@@ -68,7 +68,7 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 - `fulfilledCommitmentsOf[gameId]` is set at most once.
 - Per-tier supply never exceeds `initialSupply`.
 
-## 8. Accepted Behaviors
+## 8. Accepted behaviors
 
 ### 8.1 Scorecard timeout is intentionally irreversible
 

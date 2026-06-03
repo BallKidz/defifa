@@ -17,7 +17,7 @@ Use this repo when the question is about game lifecycle, scorecard ratification,
 - [STYLE_GUIDE.md](./STYLE_GUIDE.md) — repo conventions.
 - [CHANGELOG.md](./CHANGELOG.md) — notable changes.
 
-## What This Repo Owns
+## What this repo owns
 
 Defifa adds game-specific behavior on top of Juicebox and the 721 hook stack:
 
@@ -32,7 +32,7 @@ This repo does not own:
 - generic 721 tier storage and most shared NFT-hook machinery
 - generic Juicebox permission, project, or ruleset semantics
 
-## Mental Model
+## Mental model
 
 Defifa is easiest to read as one state machine split across three contracts:
 
@@ -42,7 +42,7 @@ Defifa is easiest to read as one state machine split across three contracts:
 
 Most real issues live at the seams between those contracts.
 
-## Read These Files First
+## Read these files first
 
 1. [`src/DefifaDeployer.sol`](./src/DefifaDeployer.sol)
 2. [`src/DefifaHook.sol`](./src/DefifaHook.sol)
@@ -57,7 +57,7 @@ Then read the upstream repos this package depends on:
 - [`../nana-721-hook-v6/README.md`](../nana-721-hook-v6/README.md)
 - [`../nana-core-v6/README.md`](../nana-core-v6/README.md)
 
-## Key Contracts
+## Key contracts
 
 | Contract | Role |
 | --- | --- |
@@ -108,7 +108,7 @@ Useful scripts:
 - `npm run deploy:mainnets`
 - `npm run deploy:testnets`
 
-## Repository Layout
+## Repository layout
 
 ```text
 src/
@@ -130,7 +130,7 @@ references/
   runtime.md
 ```
 
-## Integration Traps
+## Integration traps
 
 - Defifa is not a generic tournament payout primitive
 - `DefifaGovernor` and `DefifaHook` must be read together
@@ -138,7 +138,7 @@ references/
 - a timeout into `NO_CONTEST` is a real terminal state
 - the shared `JB721TiersHookStore` surface is an upstream ecosystem dependency, not a Defifa-only detail
 
-## High-Signal Tests
+## High-signal tests
 
 - [`test/DefifaGovernor.t.sol`](./test/DefifaGovernor.t.sol)
 - [`test/DefifaGovernanceHardening.t.sol`](./test/DefifaGovernanceHardening.t.sol)
@@ -149,11 +149,11 @@ references/
 - [`test/regression/AttestationDoubleCount.t.sol`](./test/regression/AttestationDoubleCount.t.sol)
 - [`test/regression/GracePeriodBypass.t.sol`](./test/regression/GracePeriodBypass.t.sol)
 
-## Deployment Notes
+## Deployment notes
 
 Deployments are handled through Sphinx. The deployer composes Juicebox core, the 721 hook stack, Defifa-specific governance, and metadata rendering into one game-launch surface.
 
-## Where State Lives
+## Where state lives
 
 - game lifecycle config and post-game fulfillment bookkeeping: `DefifaDeployer`
 - submitted scorecards, attestations, quorum state, and ratification timing: `DefifaGovernor`
@@ -161,7 +161,7 @@ Deployments are handled through Sphinx. The deployer composes Juicebox core, the
 - base project balance and terminal settlement: `nana-core-v6`
 - shared 721 tier store semantics: `nana-721-hook-v6`
 
-## For AI Agents
+## For AI agents
 
 - Treat Defifa as a game-specific layer on top of `nana-core-v6` and `nana-721-hook-v6`, not as a standalone accounting system.
 - Use `DefifaDeployer`, `DefifaHook`, and `DefifaGovernor` as the primary execution surfaces.
