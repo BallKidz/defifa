@@ -82,10 +82,6 @@ interface IDefifaDeployer {
     /// @return The address registry contract.
     function REGISTRY() external view returns (IJBAddressRegistry);
 
-    /// @notice The split group ID used for distributing game pot funds.
-    /// @return The split group.
-    function SPLIT_GROUP() external view returns (uint256);
-
     /// @notice The token URI resolver used for game NFT metadata.
     /// @return The token URI resolver contract.
     function TOKEN_URI_RESOLVER() external view returns (IJB721TokenUriResolver);

@@ -11,7 +11,6 @@ import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
-import {JBPermissionIds} from "@bananapus/permission-ids-v6/src/JBPermissionIds.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
@@ -35,7 +34,6 @@ import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 import {JBMultiTerminal} from "@bananapus/core-v6/src/JBMultiTerminal.sol";
-import {JBPermissionsData} from "@bananapus/core-v6/src/structs/JBPermissionsData.sol";
 import {IJBSplitHook} from "@bananapus/core-v6/src/interfaces/IJBSplitHook.sol";
 import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
 
@@ -139,21 +137,6 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             baseProtocolProjectId: _protocolFeeProjectId,
             hookStore: new JB721TiersHookStore()
         });
-
-        // Grant deployer SET_SPLIT_GROUPS permission on the defifa fee project.
-        uint8[] memory permissionIds = new uint8[](1);
-        permissionIds[0] = JBPermissionIds.SET_SPLIT_GROUPS;
-        vm.prank(projectOwner);
-        jbPermissions()
-            .setPermissionsFor(
-                projectOwner,
-                JBPermissionsData({
-                operator: address(deployer),
-                // forge-lint: disable-next-line(unsafe-typecast)
-                projectId: uint64(_defifaProjectId),
-                permissionIds: permissionIds
-            })
-            );
 
         hook.transferOwnership(address(deployer));
         governor.transferOwnership(address(deployer));
