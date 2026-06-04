@@ -146,8 +146,7 @@ interface IDefifaGovernor {
     /// @return The scorecard ID.
     function scorecardIdOf(address gameHook, DefifaTierCashOutWeight[] calldata tierWeights) external returns (uint256);
 
-    /// @notice The governance state of a submitted scorecard (PENDING, ACTIVE, DEFEATED, SUCCEEDED, QUEUED, or
-    /// RATIFIED).
+    /// @notice The governance state of a submitted scorecard.
     /// @param gameId The ID of the game.
     /// @param scorecardId The ID of the scorecard.
     /// @return The scorecard state.
@@ -164,8 +163,7 @@ interface IDefifaGovernor {
     /// @return weight The attestation weight applied.
     function attestToScorecardFrom(uint256 gameId, uint256 scorecardId) external returns (uint256 weight);
 
-    /// @notice Initialize governance parameters for a game — sets when attestation begins, the grace period, and
-    /// timelock duration.
+    /// @notice Initialize governance parameters for a game: attestation start, grace period, and timelock duration.
     /// @param gameId The ID of the game.
     /// @param attestationStartTime The timestamp when attestation begins.
     /// @param attestationGracePeriod The grace period duration in seconds.

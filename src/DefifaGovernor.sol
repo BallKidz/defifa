@@ -586,8 +586,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         return uint256(uint48(_packedScorecardInfoOf[gameId] >> 48));
     }
 
-    /// @notice The amount of time between a scorecard submission and attestations becoming enabled, measured in
-    /// seconds.
+    /// @notice The delay, in seconds, between scorecard submission and enabled attestations.
     /// @dev This can be increased to leave time for users to acquire attestation power, or delegate it, before
     /// a scorecard becomes live.
     /// @param gameId The ID of the game to get the attestation delay of.
