@@ -15,7 +15,7 @@ Use this repo when the question is about game lifecycle, scorecard ratification,
 - [AUDIT_INSTRUCTIONS.md](./AUDIT_INSTRUCTIONS.md) — guidance for auditors entering the codebase.
 - [SKILLS.md](./SKILLS.md) — reusable patterns and gotchas captured during development.
 - [STYLE_GUIDE.md](./STYLE_GUIDE.md) — repo conventions.
-- [CHANGELOG.md](./CHANGELOG.md) — notable changes.
+- [CHANGELOG.md](./CHANGELOG.md) - V5 to V6 migration changelog.
 
 ## What this repo owns
 
