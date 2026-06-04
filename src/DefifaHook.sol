@@ -47,19 +47,44 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
+    /// @notice Thrown when the Defifa token and base protocol token addresses are the same at construction.
     error DefifaHook_IdenticalTokens(address defifaToken, address baseProtocolToken);
+
+    /// @notice Thrown when a tier delegation specifies the zero address as the delegate.
     error DefifaHook_DelegateAddressZero(uint256 tierId);
+
+    /// @notice Thrown when attempting to change a tier delegation outside of the MINT phase.
     error DefifaHook_DelegateChangesUnavailableInThisPhase(uint256 projectId, DefifaGamePhase phase);
+
+    /// @notice Thrown when setting cash-out weights while the game is not yet in its SCORING phase.
     error DefifaHook_GameIsntScoringYet(uint256 projectId, DefifaGamePhase phase);
+
+    /// @notice Thrown when a cash-out reclaims nothing and the beneficiary received no fee tokens.
     error DefifaHook_NothingToClaim(uint256 reclaimedAmount, bool beneficiaryReceivedTokens);
+
+    /// @notice Thrown when a payment carries no mint metadata or specifies no tiers to mint.
     error DefifaHook_NothingToMint(bool metadataFound, uint256 tierCount);
+
+    /// @notice Thrown when a payment's currency does not match the game's pricing currency.
     error DefifaHook_WrongCurrency(uint256 expectedCurrency, uint256 actualCurrency);
+
+    /// @notice Thrown when a payment leaves an unspent amount after minting the requested tiers.
     error DefifaHook_Overspending(uint256 leftoverAmount);
+
+    /// @notice Thrown when setting cash-out weights for a game whose weights have already been set.
     error DefifaHook_CashoutWeightsAlreadySet(uint256 projectId);
+
+    /// @notice Thrown when minting reserved tokens while reserve minting is paused for the game.
     error DefifaHook_ReservedTokenMintingPaused(uint256 projectId, uint256 tierId);
+
+    /// @notice Thrown when minting reserved tokens while the game is in its NO_CONTEST phase.
     error DefifaHook_ReservedTokenMintingBlockedInNoContest(uint256 projectId, uint256 tierId);
+
+    /// @notice Thrown when transferring an NFT whose tier has transfers paused.
     error DefifaHook_TransfersPaused(uint256 projectId, uint256 tokenId, address from, address to);
-    error DefifaHook_Unauthorized(uint256 tokenId, address owner, address caller);
+
+    /// @notice Thrown when cashing out a token whose owner is not the cash-out holder.
+    error DefifaHook_Unauthorized(uint256 tokenId, address owner, address holder);
 
     //*********************************************************************//
     // --------------------- public constant properties ------------------ //
@@ -73,7 +98,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     //*********************************************************************//
 
     /// @notice The cash-out weight for each tier.
-    /// @dev Tiers are limited to ID 128
+    /// @dev Tiers are limited to ID 128.
     uint256[128] internal _tierCashOutWeights;
 
     /// @notice The delegation status for each address and for each tier.
@@ -142,6 +167,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
     /// @notice Whether a token was minted through reserves (free) rather than paid for.
     /// @dev Reserve-minted tokens are excluded from refund calculations since no funds were contributed for them.
+    /// @custom:param tokenId The ID of the token whose reserve-mint status is stored.
     mapping(uint256 tokenId => bool) public override isReserveMint;
 
     /// @notice The currency that is accepted when minting tier NFTs.
@@ -150,6 +176,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @notice The number of tokens burned from a tier during non-COMPLETE phases (refund, no-contest).
     /// @dev Used to adjust pending reserve counts so reserves that correspond to refunded mints
     /// are excluded from the cash-out denominator.
+    /// @custom:param tierId The ID of the tier whose non-COMPLETE-phase burn count is stored.
     mapping(uint256 => uint256) public refundedBurnsFrom;
 
     /// @notice The contract storing all funding cycle configurations.
@@ -700,7 +727,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
             // Make sure the token's owner is correct.
             address tokenOwner = _ownerOf(tokenId);
             if (tokenOwner != context.holder) {
-                revert DefifaHook_Unauthorized({tokenId: tokenId, owner: tokenOwner, caller: context.holder});
+                revert DefifaHook_Unauthorized({tokenId: tokenId, owner: tokenOwner, holder: context.holder});
             }
 
             // Burn the token.

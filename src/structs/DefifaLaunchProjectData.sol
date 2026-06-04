@@ -19,22 +19,25 @@ import {DefifaTierParams} from "./DefifaTierParams.sol";
 /// power is equal across tiers.
 /// @custom:member token The token configuration the game is played with.
 /// @custom:member mintPeriodDuration The duration of the game's mint phase, measured in seconds.
-/// @custom:member refundPeriodDuration The time between the mint phase and the start time when mint's are no longer
-/// open but refunds are still allowed, measured in seconds. @custom:member start The time at which the game should
-/// start, measured in seconds.
+/// @custom:member refundPeriodDuration The time between the mint phase and the start time when mints are no longer open
+/// but refunds are still allowed, measured in seconds.
+/// @custom:member start The time at which the game should start, measured in seconds since the Unix epoch.
 /// @custom:member splits Splits to distribute funds between during the game's scoring phase.
 /// @custom:member attestationStartTime The time the attestations will start for all submitted scorecards, measured in
-/// seconds. If in the past, scorecards will start accepting attestations right away. @custom:member
-/// attestationGracePeriod The time period the attestations must be active for once it has started even if it has
-/// already reached quorum, measured in seconds.
+/// seconds. If in the past, scorecards will start accepting attestations right away.
+/// @custom:member attestationGracePeriod The time period the attestations must be active for once it has started even
+/// if it has already reached quorum, measured in seconds.
 /// @custom:member defaultAttestationDelegate The address that will be set as the attestation delegate by default.
 /// @custom:member defaultTokenUriResolver The contract used to resolve token URIs if not provided by a tier
-/// specifically. @custom:member terminal The payment terminal where the project will accept funds through.
+/// specifically, serving as the fallback resolver for the game.
+/// @custom:member terminal The payment terminal that the project will accept funds through.
 /// @custom:member minParticipation The minimum cumulative NFT mint cost required for the game to proceed to scoring.
 /// Compared against the hook's `totalMintCost` (immune to `addToBalanceOf` inflation). If below this when scoring
-/// would begin, the game enters NO_CONTEST. Set to 0 to disable. @custom:member
-/// scorecardTimeout The maximum time (in seconds) after the scoring phase begins for a scorecard to be ratified. If
-/// exceeded, the game enters NO_CONTEST. Set to 0 to disable.
+/// would begin, the game enters NO_CONTEST. Set to 0 to disable.
+/// @custom:member scorecardTimeout The maximum time (in seconds) after the scoring phase begins for a scorecard to be
+/// ratified. If exceeded, the game enters NO_CONTEST. Set to 0 to disable.
+/// @custom:member timelockDuration The cooling period (in seconds) that must elapse after a scorecard reaches quorum
+/// (anchored to the later of quorum being met or the grace period ending) before that scorecard can be ratified.
 struct DefifaLaunchProjectData {
     string name;
     string projectUri;

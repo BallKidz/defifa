@@ -29,23 +29,45 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
+    /// @notice Thrown when an account tries to attest to a scorecard it has already attested to.
     error DefifaGovernor_AlreadyAttested(uint256 gameId, uint256 scorecardId, address account);
+
+    /// @notice Thrown when initializing a game whose scorecard info has already been set.
     error DefifaGovernor_AlreadyInitialized(uint256 gameId);
+
+    /// @notice Thrown when submitting or ratifying a scorecard for a game that has already ratified one.
     error DefifaGovernor_AlreadyRatified(uint256 gameId, uint256 scorecardId);
+
+    /// @notice Thrown when submitting a scorecard that has already been submitted for the game.
     error DefifaGovernor_DuplicateScorecard(uint256 gameId, uint256 scorecardId);
+
+    /// @notice Thrown when submitting a scorecard for a game that has not been initialized.
     error DefifaGovernor_GameNotFound(uint256 gameId);
+
+    /// @notice Thrown when initializing a game with an attestation grace period shorter than the minimum allowed.
     error DefifaGovernor_GracePeriodTooShort(uint256 gracePeriod, uint256 minGracePeriod);
+
+    /// @notice Thrown when the action is not allowed: the game is not in its scoring phase, the scorecard is not in an
+    /// eligible state, or the caller's attestation weight is zero.
     error DefifaGovernor_NotAllowed(uint256 gameId, uint256 scorecardId, address caller);
+
+    /// @notice Thrown when revoking an attestation that the account never made for the scorecard.
     error DefifaGovernor_NotAttested(uint256 gameId, uint256 scorecardId, address account);
+
+    /// @notice Thrown when a timestamp or duration value exceeds the maximum that fits in a uint48.
     error DefifaGovernor_Uint48Overflow(uint256 value, uint256 max);
+
+    /// @notice Thrown when querying the state of a scorecard that has never been submitted.
     error DefifaGovernor_UnknownProposal(uint256 gameId, uint256 scorecardId);
+
+    /// @notice Thrown when a submitted scorecard assigns a nonzero cash-out weight to a tier that has no live supply.
     error DefifaGovernor_UnownedProposedCashoutValue(uint256 gameId, uint256 tierId, uint256 cashOutWeight);
 
     //*********************************************************************//
     // ------------------------- public constants ------------------------ //
     //*********************************************************************//
 
-    /// @notice The max attestation power each tier has if every token within the tier attestations.
+    /// @notice The max attestation power each tier has if every token within the tier attests.
     uint256 public constant override MAX_ATTESTATION_POWER_TIER = 1_000_000_000;
 
     /// @notice The minimum attestation grace period enforced during game initialization.
@@ -80,12 +102,12 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     mapping(uint256 => uint256) internal _packedScorecardInfoOf;
 
     /// @notice The scorecards.
-    /// @custom:param gameId The ID of the game for which the scorecard affects.
+    /// @custom:param gameId The ID of the game the scorecard affects.
     /// @custom:param scorecardId The ID of the scorecard to retrieve.
     mapping(uint256 => mapping(uint256 => DefifaScorecard)) internal _scorecardOf;
 
     /// @notice The attestations to a scorecard.
-    /// @custom:param gameId The ID of the game for which the scorecard affects.
+    /// @custom:param gameId The ID of the game the scorecard affects.
     /// @custom:param scorecardId The ID of the scorecard that has been attested to.
     mapping(uint256 => mapping(uint256 => DefifaAttestations)) internal _scorecardAttestationsOf;
 
@@ -558,14 +580,15 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
     /// @notice The amount of time that must go by before a scorecard can be ratified.
     /// @param gameId The ID of the game to get the attestation period of.
-    /// @return The attestation period in number of blocks.
+    /// @return The attestation grace period, in seconds.
     function attestationGracePeriodOf(uint256 gameId) public view override returns (uint256) {
         // attestation grace period in bits 48-95 (48 bits).
         return uint256(uint48(_packedScorecardInfoOf[gameId] >> 48));
     }
 
     /// @notice The amount of time between a scorecard submission and attestations becoming enabled, measured in
-    /// seconds. @dev This can be increased to leave time for users to acquire attestation power, or delegate it, before
+    /// seconds.
+    /// @dev This can be increased to leave time for users to acquire attestation power, or delegate it, before
     /// a scorecard becomes live.
     /// @param gameId The ID of the game to get the attestation delay of.
     /// @return The delay, in seconds.

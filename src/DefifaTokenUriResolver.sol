@@ -28,7 +28,10 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
+    /// @notice Thrown when configuring a resolver whose typeface has already been set.
     error DefifaTokenUriResolver_AlreadyConfigured();
+
+    /// @notice Thrown when the caller configuring the resolver is not the deployer.
     error DefifaTokenUriResolver_Unauthorized(address caller);
 
     //*********************************************************************//

@@ -2,7 +2,7 @@
 
 Defifa is a staged prediction-game system built on Juicebox and the tiered 721 stack. Audit it as a governance-and-settlement protocol, not only an NFT game.
 
-## Audit Objective
+## Audit objective
 
 There is a billion dollars of well-meaning projects' money in the Juicebox Money Engine, growing exponentially. Your job is to hack it before anyone else. Whoever hacks it first saves/steals the money, and you are obsessed with being this winner, while also being a steward of the protocol and wanting it to keep growing safely.
 
@@ -25,13 +25,13 @@ In scope:
 - `src/libraries/DefifaHookLib.sol`
 - enums, interfaces, structs, and deployment helpers
 
-## Start Here
+## Start here
 
 1. `src/DefifaGovernor.sol`
 2. `src/DefifaHook.sol`
 3. `src/DefifaDeployer.sol`
 
-## Security Model
+## Security model
 
 High-level lifecycle:
 
@@ -49,7 +49,7 @@ The contracts split responsibility as follows:
 - `DefifaGovernor` owns scorecard governance and ratification
 - `DefifaTokenUriResolver` handles game NFT metadata
 
-## Roles And Privileges
+## Roles and privileges
 
 | Role | Powers | How constrained |
 |------|--------|-----------------|
@@ -57,7 +57,7 @@ The contracts split responsibility as follows:
 | Governor participants | Submit, attest to, and ratify scorecards | Must remain bounded by phase, quorum, and delegation rules |
 | `DefifaHook` | Determine mint and final redeem economics | Must not over-credit players or under-account fees |
 
-## Integration Assumptions
+## Integration assumptions
 
 | Dependency | Assumption | What breaks if wrong |
 |------------|------------|----------------------|
@@ -65,7 +65,7 @@ The contracts split responsibility as follows:
 | `nana-721-hook-v6` | Tier issuance and reserve behavior match Defifa's game logic | Voting power, supply, and cash-out weights drift |
 | Deployer launch patterns | Launch-time authority fully converges to the intended game authority | Games remain misconfigured or over-privileged |
 
-## Critical Invariants
+## Critical invariants
 
 1. Pot conservation.
 2. Governance phase safety.
@@ -73,7 +73,7 @@ The contracts split responsibility as follows:
 4. Settlement determinism once a scorecard is final.
 5. Fee-token and reserve correctness.
 
-## Attack Surfaces
+## Attack surfaces
 
 - `DefifaGovernor` scorecard state transitions and ratification gating
 - delegation, attestation, and quorum calculations
@@ -81,7 +81,7 @@ The contracts split responsibility as follows:
 - reserve-related denominators during governance and settlement
 - deployer logic that queues or fulfills lifecycle rulesets
 
-## Accepted Risks Or Behaviors
+## Accepted risks or behaviors
 
 - Governance and settlement are intentionally phase-heavy, so timestamp and lifecycle transitions are core audit targets rather than edge cases.
 

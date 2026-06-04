@@ -1,10 +1,10 @@
 # User Journeys
 
-## Repo Purpose
+## Repo purpose
 
 This repo turns a Juicebox project into a prediction-game lifecycle with fixed phase timing, tiered outcome pieces, attestation-based scorecard governance, and final cash-out weights that decide how the pot settles. It owns Defifa's game-specific launch, scoring, no-contest, and settlement logic.
 
-## Primary Actors
+## Primary actors
 
 - game creators launching a new Defifa market with fixed timing, tiers, and fee routing
 - players minting outcome pieces during MINT and later redeeming or refunding them
@@ -12,7 +12,7 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 - auditors tracing where game fairness depends on shared 721-store behavior, governor state, and core terminal flows
 - operators handling no-contest recovery or optional fee-project ownership locking
 
-## Key Surfaces
+## Key surfaces
 
 - `DefifaDeployer.launchGameWith(...)`: launches a Defifa game as a JB project and wires hook, governor, splits, and lifecycle timing
 - `DefifaHook.afterPayRecordedWith(...)`: mints outcome NFTs when players pay during the mintable phase
@@ -20,7 +20,7 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 - `DefifaGovernor.submitScorecardFor(...)`, `attestToScorecardFrom(...)`, `revokeAttestationFrom(...)`, `ratifyScorecardFrom(...)`: scorecard governance lifecycle
 - `DefifaDeployer.fulfillCommitmentsOf(...)` and `triggerNoContestFor(...)`: finalize commitments after ratification or unlock refund-oriented no-contest recovery
 
-## Journey 1: Launch A Defifa Game
+## Journey 1: Launch a Defifa game
 
 **Actor:** game creator.
 
@@ -50,7 +50,7 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 
 - the game exists as a staged JB project with Defifa-specific lifecycle wiring
 
-## Journey 2: Mint Outcome Pieces During Open Play
+## Journey 2: Mint outcome pieces during open play
 
 **Actor:** player.
 
@@ -77,7 +77,7 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 
 - the player holds game pieces that later affect governance and settlement
 
-## Journey 3: Submit And Ratify A Scorecard
+## Journey 3: Submit and ratify a scorecard
 
 **Actor:** proposer, attestor, or delegate.
 
@@ -105,7 +105,7 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 
 - exactly one scorecard can become the game's final outcome, or the game moves toward no-contest handling
 
-## Journey 4: Fulfill Commitments And Settle The Game
+## Journey 4: Fulfill commitments and settle the game
 
 **Actor:** completion path caller.
 
@@ -132,7 +132,7 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 
 - the game enters its final redeemable state
 
-## Journey 5: Enter No-Contest And Unlock Refund Recovery
+## Journey 5: Enter no-contest and unlock refund recovery
 
 **Actor:** any caller when the no-contest conditions are met.
 
@@ -158,13 +158,13 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 
 - the game moves onto the documented no-contest recovery track
 
-## Trust Boundaries
+## Trust boundaries
 
 - this repo is trusted for game-specific phase logic, governance, and settlement weighting
 - terminal accounting still comes from `nana-core-v6`
 - shared tier-storage behavior still comes from `nana-721-hook-v6`
 
-## Hand-Offs
+## Hand-offs
 
 - Use [nana-core-v6](../nana-core-v6/USER_JOURNEYS.md) for underlying treasury and terminal behavior.
 - Use [nana-721-hook-v6](../nana-721-hook-v6/USER_JOURNEYS.md) for shared tier-store and reserve semantics that Defifa builds on.

@@ -1,6 +1,6 @@
 # Administration
 
-## At A Glance
+## At a glance
 
 | Item | Details |
 | --- | --- |
@@ -13,7 +13,7 @@
 
 `defifa` is unusual because game creation is permissionless but ongoing game control is intentionally narrow. The main administration job is understanding what is fixed at launch, what collective governance can still do, and what the deployer must do to finish settlement.
 
-## Control Model
+## Control model
 
 - `launchGameWith(...)` is the real governance commitment. Core game shape is fixed there.
 - `DefifaGovernor` controls scorecard submission, attestation, and ratification.
@@ -29,14 +29,14 @@
 | Ratification path caller | Any caller who meets the documented conditions | Per game | Finalizes a valid scorecard |
 | Fulfillment path caller | Any valid caller once ratified | Per game | Must run the completion commitment path |
 
-## Privileged Surfaces
+## Privileged surfaces
 
 - `launchGameWith(...)` fixes phase timing, tiers, fee routing, and governance shape
 - `submitScorecardFor(...)`, `attestToScorecardFrom(...)`, `revokeAttestationFrom(...)`, and `ratifyScorecardFrom(...)` govern outcome selection
 - `fulfillCommitmentsOf(...)` turns a ratified scorecard into real settlement
 - `triggerNoContestFor(...)` moves failed games into the documented recovery path
 
-## Immutable And One-Way
+## Immutable and one-way
 
 - Game phase timing is fixed at launch.
 - Scorecard timeout, minimum participation, and default delegation choices are fixed at launch.
@@ -44,7 +44,7 @@
 - `cashOutWeightIsSet` permanently closes the score-setting path after success.
 - `fulfillCommitmentsOf()` and `triggerNoContestFor()` are single-use style lifecycle paths.
 
-## Operational Notes
+## Operational notes
 
 - Validate game timings, tier setup, fee routing, and attestation settings before launch.
 - If `JBProjects` has a creation fee, include the exact native-token fee when calling `launchGameWith()`.
@@ -52,7 +52,7 @@
 - During scoring, follow the submission, attestation, and ratification flow rather than looking for discretionary overrides.
 - Use `triggerNoContestFor()` only when the game has actually entered the documented no-contest condition.
 
-## Machine Notes
+## Machine notes
 
 - Do not infer ongoing admin power for the game creator; launch is permissionless but not an ongoing authority grant.
 - Treat `DefifaDeployer`, `DefifaGovernor`, and `DefifaHook` as the minimum source-of-truth set for authority review.
@@ -65,7 +65,7 @@
 - If a game launched with wrong immutable economics, timing, fee routing, or tier design, recovery is usually a replacement deployment.
 - There is no broad owner override that can pause, cancel, or rewrite a live game after launch.
 
-## Admin Boundaries
+## Admin boundaries
 
 - No one can change tier prices, timing, payment token, fees, or split configuration after launch.
 - No one can unilaterally set scorecard weights without the documented governance path.

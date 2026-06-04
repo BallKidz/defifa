@@ -54,13 +54,25 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
+    /// @notice Thrown when fulfilling a game's commitments before its cash-out weights have been set.
     error DefifaDeployer_CantFulfillYet(uint256 gameId);
+
+    /// @notice Thrown when launching a game with non-sequential phase timestamps, no mint duration, more than 128
+    /// tiers, no scorecard timeout, or a scorecard timeout shorter than the full ratification window.
     error DefifaDeployer_InvalidGameConfiguration(
         uint256 start, uint256 mintPeriodDuration, uint256 refundPeriodDuration, uint256 tierCount
     );
+
+    /// @notice Thrown when launching an ERC-20 game with a zero base currency.
     error DefifaDeployer_InvalidCurrency(address token, uint256 currency);
+
+    /// @notice Thrown when triggering no-contest for a game that is not in its NO_CONTEST phase.
     error DefifaDeployer_NotNoContest(uint256 gameId, DefifaGamePhase phase);
+
+    /// @notice Thrown when triggering no-contest for a game where it has already been triggered.
     error DefifaDeployer_NoContestAlreadyTriggered(uint256 gameId);
+
+    /// @notice Thrown when the configured fee splits sum to more than 100%.
     error DefifaDeployer_SplitsDontAddUp(uint256 totalPercent, uint256 maxPercent);
 
     //*********************************************************************//
@@ -108,14 +120,16 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     //*********************************************************************//
 
     /// @notice The amount of commitments a game has fulfilled.
-    /// @dev The ID of the game to check.
+    /// @custom:param gameId The ID of the game to check.
     mapping(uint256 => uint256) public override fulfilledCommitmentsOf;
 
     /// @notice Whether commitments have been fulfilled for a game.
+    /// @custom:param gameId The ID of the game to check.
     mapping(uint256 => bool) public commitmentsFulfilledFor;
 
     /// @notice Whether the no-contest refund ruleset has been triggered for a game.
     /// @dev Once triggered, the game stays in NO_CONTEST and refunds are enabled.
+    /// @custom:param gameId The ID of the game to check.
     mapping(uint256 => bool) public noContestTriggeredFor;
 
     //*********************************************************************//
@@ -123,9 +137,11 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     //*********************************************************************//
 
     /// @notice The game's ops.
+    /// @custom:param gameId The ID of the game whose ops are stored.
     mapping(uint256 => DefifaOpsData) internal _opsOf;
 
     /// @notice The total absolute split percent for each game (out of SPLITS_TOTAL_PERCENT).
+    /// @custom:param gameId The ID of the game whose total absolute split percent is stored.
     mapping(uint256 => uint256) internal _commitmentPercentOf;
 
     /// @notice This contract's nonce for deterministic hook deployment and registry entries.
