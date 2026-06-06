@@ -56,7 +56,11 @@ contract DefifaFunctionalProperties is Test {
         );
         assert(
             DefifaHookLib.computeCashOutCount(
-                DefifaGamePhase.NO_CONTEST, cumulativeMintPrice, surplusValue, totalAmountRedeemed, cumulativeCashOutWeight
+                DefifaGamePhase.NO_CONTEST,
+                cumulativeMintPrice,
+                surplusValue,
+                totalAmountRedeemed,
+                cumulativeCashOutWeight
             ) == cumulativeMintPrice
         );
     }
@@ -153,8 +157,7 @@ contract DefifaFunctionalProperties is Test {
         );
         assertEq(outA, outB);
 
-        uint256 expected =
-            mulDiv(surplusValue + totalAmountRedeemed, cumulativeCashOutWeight, _TOTAL_CASHOUT_WEIGHT);
+        uint256 expected = mulDiv(surplusValue + totalAmountRedeemed, cumulativeCashOutWeight, _TOTAL_CASHOUT_WEIGHT);
         assertEq(outA, expected);
     }
 
@@ -357,14 +360,7 @@ contract DefifaFunctionalProperties is Test {
         assertEq(_bwaPower(rawPower, _TOTAL_CASHOUT_WEIGHT), 0);
     }
 
-    function testFuzz_bwaMonotoneNonIncreasing(
-        uint256 rawPower,
-        uint256 weightLow,
-        uint256 weightHigh
-    )
-        public
-        pure
-    {
+    function testFuzz_bwaMonotoneNonIncreasing(uint256 rawPower, uint256 weightLow, uint256 weightHigh) public pure {
         rawPower = bound(rawPower, 0, _MAX_ATTESTATION_POWER_TIER);
         weightLow = bound(weightLow, 0, _TOTAL_CASHOUT_WEIGHT);
         weightHigh = bound(weightHigh, weightLow, _TOTAL_CASHOUT_WEIGHT);
