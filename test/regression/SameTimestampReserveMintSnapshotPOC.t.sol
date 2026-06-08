@@ -9,13 +9,13 @@ import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData
 import {DefifaTierCashOutWeight} from "../../src/structs/DefifaTierCashOutWeight.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 
-/// @notice Regression test for the Nemesis NM-001 finding (same-timestamp reserve-mint snapshot injection).
+/// @notice Regression test for the same-timestamp reserve-mint snapshot-injection case.
 /// @dev A reserve beneficiary used to be able to call `mintReservesFor` in the SAME block as `submitScorecardFor`,
 /// after submission, and have the equally-keyed attestation checkpoint overwritten so the freshly minted units
 /// counted toward that scorecard's BWA power — manufacturing quorum for a self-serving cash-out scorecard. The fix
 /// freezes the BWA snapshot one second before submission, excluding the whole submission block. This test asserts
 /// the reserve beneficiary gains NO attestation power and the scorecard cannot reach quorum.
-contract CodexNemesisSnapshotReserveMintPOC is DefifaGovernorTest {
+contract SameTimestampReserveMintSnapshotPOC is DefifaGovernorTest {
     address internal constant LOSING_HOLDER = address(0x1001);
     address internal constant WINNING_HOLDER = address(0x1002);
     address internal constant RESERVE_BENEFICIARY = address(0x1003);
