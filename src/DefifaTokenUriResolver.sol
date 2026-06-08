@@ -405,8 +405,8 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
     /// @return The escaped string.
     function _escapeSvg(string memory input) internal pure returns (string memory) {
         bytes memory b = bytes(input);
-        // Worst case: each char becomes 5 chars (&amp;).
-        bytes memory out = new bytes(b.length * 5);
+        // Worst case: each char becomes 6 chars (&quot;).
+        bytes memory out = new bytes(b.length * 6);
         uint256 j;
         for (uint256 i; i < b.length;) {
             bytes1 c = b[i];
