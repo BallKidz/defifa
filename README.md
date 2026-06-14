@@ -133,9 +133,13 @@ references/
 ## Integration traps
 
 - Defifa is not a generic tournament payout primitive
+- canonical Defifa infrastructure does not make every terminal or game instance canonical; frontends should still curate
+  game addresses and scorecard parameters
 - `DefifaGovernor` and `DefifaHook` must be read together
 - fee accounting and prize accounting are coupled
 - a timeout into `NO_CONTEST` is a real terminal state
+- `NO_CONTEST` view state should not be shown as refund-ready until the relevant settlement path is actually available
+- games with many outcome tiers need curation around scorecard liveness and attestation overhead
 - the shared `JB721TiersHookStore` surface is an upstream ecosystem dependency, not a Defifa-only detail
 
 ## High-signal tests
@@ -166,4 +170,6 @@ Deployments are handled through Sphinx. The deployer composes Juicebox core, the
 - Treat Defifa as a game-specific layer on top of `nana-core-v6` and `nana-721-hook-v6`, not as a standalone accounting system.
 - Use `DefifaDeployer`, `DefifaHook`, and `DefifaGovernor` as the primary execution surfaces.
 - Treat `NO_CONTEST`, refund handling, and grace-period logic as normal product behavior.
+- Do not describe Defifa as an unlimited-outcome market deployer; game parameters should be curated for practical
+  settlement and scorecard review.
 - If the question is about generic tier storage, terminal settlement, or project accounting, hand off to upstream repos first.
