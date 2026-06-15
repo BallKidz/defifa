@@ -5,6 +5,9 @@ import {IJBAddressRegistry} from "@bananapus/address-registry-v6/src/interfaces/
 import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
+import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
+import {IJBRulesets} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
 import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 
 import {DefifaLaunchProjectData} from "../structs/DefifaLaunchProjectData.sol";
@@ -66,6 +69,10 @@ interface IDefifaDeployer {
     /// @return The project ID.
     function DEFIFA_PROJECT_ID() external view returns (uint256);
 
+    /// @notice The directory of terminals and controllers for each project.
+    /// @return The directory contract.
+    function DIRECTORY() external view returns (IJBDirectory);
+
     /// @notice The governor contract responsible for scorecard submission and attestation-based ratification.
     /// @return The governor contract.
     function GOVERNOR() external view returns (IDefifaGovernor);
@@ -78,9 +85,17 @@ interface IDefifaDeployer {
     /// @return The hook store contract.
     function HOOK_STORE() external view returns (IJB721TiersHookStore);
 
+    /// @notice The contract which mints ERC-721s that represent project ownership and transfers.
+    /// @return The projects contract.
+    function PROJECTS() external view returns (IJBProjects);
+
     /// @notice The address registry used for content-addressable deployment lookups.
     /// @return The address registry contract.
     function REGISTRY() external view returns (IJBAddressRegistry);
+
+    /// @notice The contract storing and managing project rulesets.
+    /// @return The rulesets contract.
+    function RULESETS() external view returns (IJBRulesets);
 
     /// @notice The token URI resolver used for game NFT metadata.
     /// @return The token URI resolver contract.
