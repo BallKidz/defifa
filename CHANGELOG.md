@@ -103,3 +103,4 @@ Shared ABI artifacts checked with no ABI item changes:
 - Replace every `DefifaDelegate` reference with `DefifaHook` and regenerate ABI types.
 - Re-check any scorecard, attestation, or cash-out indexing code against the V6 events. V5 scorecard assumptions are not selector- or payload-stable.
 - Do not depend on `DefifaProjectOwner` in V6 deployments.
+- `DefifaDeployer` now implements `IJBPayerTracker`. While forwarding a project-creation fee to `JBProjects.createFor`, it advertises the resolved fee payer (the `launchGameWith` caller) through the transient `originalPayer` getter, so a `pay`-routing fee receiver credits the player who paid rather than the deployer. Regenerate ABI types to pick up the added `originalPayer()` getter.

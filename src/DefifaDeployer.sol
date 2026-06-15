@@ -11,10 +11,12 @@ import {JB721TierConfigFlags} from "@bananapus/721-hook-v6/src/structs/JB721Tier
 import {IJBAddressRegistry} from "@bananapus/address-registry-v6/src/interfaces/IJBAddressRegistry.sol";
 import {IJBController, JBRulesetConfig, JBTerminalConfig} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
+import {IJBPayerTracker} from "@bananapus/core-v6/src/interfaces/IJBPayerTracker.sol";
 import {IJBRulesetApprovalHook, JBRuleset} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
 import {IJBSplitHook} from "@bananapus/core-v6/src/interfaces/IJBSplitHook.sol";
 import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import {JBPayerTrackerLib} from "@bananapus/core-v6/src/libraries/JBPayerTrackerLib.sol";
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
 import {JBCurrencyAmount} from "@bananapus/core-v6/src/structs/JBCurrencyAmount.sol";
 import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
@@ -46,7 +48,13 @@ import {DefifaTierParams} from "./structs/DefifaTierParams.sol";
 /// the event concludes, a scorecard assigns cash-out weights to each tier. The treasury is distributed proportionally
 /// to winning NFT holders. Games progress through phases: COUNTDOWN → MINT → REFUND → SCORING → COMPLETE (or
 /// NO_CONTEST if minimum participation isn't met or scorecard ratification times out).
-contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGamePotReporter, IERC721Receiver {
+contract DefifaDeployer is
+    IDefifaDeployer,
+    IDefifaGamePhaseReporter,
+    IDefifaGamePotReporter,
+    IERC721Receiver,
+    IJBPayerTracker
+{
     using Strings for uint256;
     using SafeERC20 for IERC20;
 
@@ -131,6 +139,17 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
     /// @dev Once triggered, the game stays in NO_CONTEST and refunds are enabled.
     /// @custom:param gameId The ID of the game to check.
     mapping(uint256 => bool) public noContestTriggeredFor;
+
+    //*********************************************************************//
+    // ------------------- public transient properties ------------------- //
+    //*********************************************************************//
+
+    /// @notice The account that paid the creation fee for the game currently being launched.
+    /// @dev This contract owns the games it launches, so it advertises the resolved fee payer (the `launchGameWith`
+    /// caller, or that caller's upstream payer when the caller is itself an `IJBPayerTracker`) while
+    /// `JBProjects.createFor` runs, letting a `pay`-routing fee receiver credit the true payer instead of this
+    /// deployer. Cleared back to `address(0)` once the call returns.
+    address public transient override originalPayer;
 
     //*********************************************************************//
     // -------------------- internal stored properties ------------------- //
@@ -480,8 +499,15 @@ contract DefifaDeployer is IDefifaDeployer, IDefifaGamePhaseReporter, IDefifaGam
             }
         }
 
+        // Expose the resolved fee payer so a `pay`-routing fee receiver credits the true payer, not this deployer.
+        // This contract uses raw `msg.sender` (it is not an `ERC2771Context`), so the fee payer is the direct caller.
+        // Cleared immediately after.
+        originalPayer = JBPayerTrackerLib.resolve(msg.sender);
+
         // Reserve the game ID up front so permissionless project creations cannot invalidate hook deployment.
         gameId = CONTROLLER.PROJECTS().createFor{value: msg.value}(address(this));
+
+        originalPayer = address(0);
 
         // Store the timestamps that define the game phases.
         _opsOf[gameId] = DefifaOpsData({

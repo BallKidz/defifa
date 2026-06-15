@@ -43,6 +43,7 @@ creator
   -> deployer validates mint/refund/start timings
   -> deployer predicts the game project ID and clones a game hook deterministically
   -> deployer builds phased rulesets and optional fee splits
+  -> deployer advertises the resolved fee payer, then reserves the game project via createFor
   -> controller launches the project
   -> governor is initialized for the game
   -> hook ownership and project ownership are transferred into the intended long-term shape
