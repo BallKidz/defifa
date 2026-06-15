@@ -10,9 +10,12 @@ import {JB721TierConfig} from "@bananapus/721-hook-v6/src/structs/JB721TierConfi
 import {JB721TierConfigFlags} from "@bananapus/721-hook-v6/src/structs/JB721TierConfigFlags.sol";
 import {IJBAddressRegistry} from "@bananapus/address-registry-v6/src/interfaces/IJBAddressRegistry.sol";
 import {IJBController, JBRulesetConfig, JBTerminalConfig} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
+import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
 import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
 import {IJBPayerTracker} from "@bananapus/core-v6/src/interfaces/IJBPayerTracker.sol";
-import {IJBRulesetApprovalHook, JBRuleset} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
+import {IJBProjects} from "@bananapus/core-v6/src/interfaces/IJBProjects.sol";
+import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
+import {IJBRulesets} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
 import {IJBSplitHook} from "@bananapus/core-v6/src/interfaces/IJBSplitHook.sol";
 import {IJBTerminal} from "@bananapus/core-v6/src/interfaces/IJBTerminal.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
@@ -20,6 +23,7 @@ import {JBPayerTrackerLib} from "@bananapus/core-v6/src/libraries/JBPayerTracker
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
 import {JBCurrencyAmount} from "@bananapus/core-v6/src/structs/JBCurrencyAmount.sol";
 import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
+import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
@@ -108,6 +112,9 @@ contract DefifaDeployer is
     /// @notice The project ID that receives Defifa game fees as commitments are fulfilled.
     uint256 public immutable override DEFIFA_PROJECT_ID;
 
+    /// @notice The directory of terminals and controllers for each project.
+    IJBDirectory public immutable override DIRECTORY;
+
     /// @notice The governance contract that ratifies scorecards for each game.
     IDefifaGovernor public immutable override GOVERNOR;
 
@@ -117,8 +124,14 @@ contract DefifaDeployer is
     /// @notice The 721 tiers hook store used by all games.
     IJB721TiersHookStore public immutable override HOOK_STORE;
 
+    /// @notice The contract which mints ERC-721s that represent project ownership and transfers.
+    IJBProjects public immutable override PROJECTS;
+
     /// @notice The Juicebox 721 tiers hook registry used to register deployed games.
     IJBAddressRegistry public immutable override REGISTRY;
+
+    /// @notice The contract storing and managing project rulesets.
+    IJBRulesets public immutable override RULESETS;
 
     /// @notice The default Defifa token URI resolver.
     IJB721TokenUriResolver public immutable override TOKEN_URI_RESOLVER;
@@ -190,7 +203,7 @@ contract DefifaDeployer is
         address token = _opsOf[gameId].token;
 
         // Get a reference to the terminal via the directory.
-        IJBTerminal terminal = CONTROLLER.DIRECTORY().primaryTerminalOf({projectId: gameId, token: token});
+        IJBTerminal terminal = DIRECTORY.primaryTerminalOf({projectId: gameId, token: token});
 
         // Get the accounting context for the project.
         JBAccountingContext memory context = terminal.accountingContextForTokenOf({projectId: gameId, token: token});
@@ -210,9 +223,9 @@ contract DefifaDeployer is
     /// @return Whether or not the next phase still needs queuing.
     function nextPhaseNeedsQueueing(uint256 gameId) external view override returns (bool) {
         // Get the game's current funding cycle along with its metadata.
-        JBRuleset memory currentRuleset = CONTROLLER.RULESETS().currentOf(gameId);
+        JBRuleset memory currentRuleset = RULESETS.currentOf(gameId);
         // Get the game's queued funding cycle along with its metadata.
-        (JBRuleset memory queuedRuleset,) = CONTROLLER.RULESETS().latestQueuedOf(gameId);
+        (JBRuleset memory queuedRuleset,) = RULESETS.latestQueuedOf(gameId);
 
         // If the configurations are the same and the game hasn't ended, queueing is still needed.
         return currentRuleset.duration != 0 && currentRuleset.id == queuedRuleset.id;
@@ -329,6 +342,9 @@ contract DefifaDeployer is
         TOKEN_URI_RESOLVER = tokenUriResolver;
         GOVERNOR = governor;
         CONTROLLER = controller;
+        DIRECTORY = controller.DIRECTORY();
+        PROJECTS = controller.PROJECTS();
+        RULESETS = controller.RULESETS();
         REGISTRY = registry;
         DEFIFA_PROJECT_ID = defifaProjectId;
         BASE_PROTOCOL_PROJECT_ID = baseProtocolProjectId;
@@ -357,7 +373,7 @@ contract DefifaDeployer is
         // Get the game token and the terminal.
         address token = _opsOf[gameId].token;
         IJBMultiTerminal terminal =
-            IJBMultiTerminal(address(CONTROLLER.DIRECTORY().primaryTerminalOf({projectId: gameId, token: token})));
+            IJBMultiTerminal(address(DIRECTORY.primaryTerminalOf({projectId: gameId, token: token})));
 
         // Get the current pot and store it. This also prevents re-entrance since the check above will return early.
         uint256 pot = terminal.STORE().balanceOf({terminal: address(terminal), projectId: gameId, token: token});
@@ -505,7 +521,7 @@ contract DefifaDeployer is
         originalPayer = JBPayerTrackerLib.resolve(msg.sender);
 
         // Reserve the game ID up front so permissionless project creations cannot invalidate hook deployment.
-        gameId = CONTROLLER.PROJECTS().createFor{value: msg.value}(address(this));
+        gameId = PROJECTS.createFor{value: msg.value}(address(this));
 
         originalPayer = address(0);
 
@@ -590,7 +606,7 @@ contract DefifaDeployer is
             _gameId: gameId,
             _name: launchProjectData.name,
             _symbol: string.concat("DEFIFA #", gameId.toString()),
-            _rulesets: CONTROLLER.RULESETS(),
+            _rulesets: RULESETS,
             _baseUri: launchProjectData.baseUri,
             _tokenUriResolver: uriResolver,
             _contractUri: launchProjectData.contractUri,
