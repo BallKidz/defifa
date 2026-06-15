@@ -61,7 +61,7 @@ Then read the upstream repos this package depends on:
 
 | Contract | Role |
 | --- | --- |
-| `DefifaDeployer` | Launches games, clones hooks, initializes governance, and fulfills post-game fee commitments. |
+| `DefifaDeployer` | Launches games, clones hooks, resolves ERC-2771 callers for launch attribution, initializes governance, and fulfills post-game fee commitments. |
 | `DefifaHook` | ERC-721 game-piece hook that tracks tiers, delegation, pending reserves, and cash-out weights for settlement. |
 | `DefifaGovernor` | Scorecard governance surface that accepts submissions, attestations, quorum checks, grace periods, and ratification. |
 | `DefifaHookLib` | Shared validation and weight logic extracted from the hook. |
@@ -155,7 +155,7 @@ references/
 
 ## Deployment notes
 
-Deployments are handled through Sphinx. The deployer composes Juicebox core, the 721 hook stack, Defifa-specific governance, and metadata rendering into one game-launch surface.
+Deployments are handled through Sphinx. The deployer composes Juicebox core, the 721 hook stack, Defifa-specific governance, metadata rendering, and the core trusted forwarder into one ERC-2771-aware game-launch surface.
 
 ## Where state lives
 

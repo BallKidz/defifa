@@ -135,7 +135,8 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
             registry: _registry,
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore()
+            hookStore: new JB721TiersHookStore(),
+            trustedForwarder: address(0)
         });
 
         hook.transferOwnership(address(deployer));
@@ -328,8 +329,8 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
 /// @dev The deployer predicts gameId = PROJECTS().count() + 1, then clones and initializes a hook with that ID.
 ///      If another project is created between the count() read and launchProjectFor(), the actual ID differs and
 ///      the transaction reverts with DefifaDeployer_InvalidGameConfiguration. Because the clone uses
-///      cloneDeterministic with msg.sender in the salt, a retry from the same caller succeeds with a new nonce.
-///      No orphaned state remains after the revert.
+///      cloneDeterministic with the resolved caller in the salt, a retry from the same caller succeeds with a new
+/// nonce. No orphaned state remains after the revert.
 contract TestQAGameIdPredictionRace is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
@@ -413,7 +414,8 @@ contract TestQAGameIdPredictionRace is JBTest, TestBaseWorkflow {
             registry: _registry,
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore()
+            hookStore: new JB721TiersHookStore(),
+            trustedForwarder: address(0)
         });
 
         hook.transferOwnership(address(deployer));

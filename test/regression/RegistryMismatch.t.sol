@@ -94,7 +94,8 @@ contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
             registry: registry,
             defifaProjectId: defifaProjectId,
             baseProtocolProjectId: protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore()
+            hookStore: new JB721TiersHookStore(),
+            trustedForwarder: address(0)
         });
 
         hookCodeOrigin.transferOwnership(address(deployer));

@@ -106,7 +106,8 @@ contract OneTierZeroTimeoutLockTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: defifaProjectId,
             baseProtocolProjectId: protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore()
+            hookStore: new JB721TiersHookStore(),
+            trustedForwarder: address(0)
         });
 
         hook.transferOwnership(address(deployer));

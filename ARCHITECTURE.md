@@ -21,7 +21,7 @@
 
 | Module | Responsibility | Notes |
 | --- | --- | --- |
-| `DefifaDeployer` | Launches games, sets phased rulesets, clones hooks, initializes governance, and fulfills commitments | Launch-time and completion-time runtime surface |
+| `DefifaDeployer` | Launches games, sets phased rulesets, clones hooks, resolves ERC-2771 launch callers, initializes governance, and fulfills commitments | Launch-time and completion-time runtime surface |
 | `DefifaHook` | NFT minting, delegation, game-phase-aware cash-out behavior, and completion claims | Main game-facing runtime hook |
 | `DefifaGovernor` | Scorecard submission, attestation weighting, quorum, grace periods, and ratification | Governance surface |
 | `DefifaHookLib` | Shared validation and weight math extracted from the hook | Bytecode-management helper |
@@ -41,9 +41,10 @@
 ```text
 creator
   -> deployer validates mint/refund/start timings
+  -> deployer resolves the ERC-2771 caller and advertises that account as the creation-fee payer
   -> deployer predicts the game project ID and clones a game hook deterministically
   -> deployer builds phased rulesets and optional fee splits
-  -> deployer advertises the resolved fee payer, then reserves the game project via createFor
+  -> deployer reserves the game project via createFor
   -> controller launches the project
   -> governor is initialized for the game
   -> hook ownership and project ownership are transferred into the intended long-term shape

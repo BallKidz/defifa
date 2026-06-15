@@ -52,6 +52,7 @@ contract DefifaFeePayerTest is JBTest, TestBaseWorkflow {
     DefifaGovernor governor;
 
     address projectOwner = address(bytes20(keccak256("projectOwner")));
+    address _trustedForwarder = address(bytes20(keccak256("trustedForwarder")));
 
     function setUp() public virtual override {
         super.setUp();
@@ -76,7 +77,8 @@ contract DefifaFeePayerTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: protocolFeeProjectId,
             baseProtocolProjectId: defifaProjectId,
-            hookStore: new JB721TiersHookStore()
+            hookStore: new JB721TiersHookStore(),
+            trustedForwarder: _trustedForwarder
         });
         hook.transferOwnership(address(deployer));
         governor.transferOwnership(address(deployer));
@@ -105,6 +107,29 @@ contract DefifaFeePayerTest is JBTest, TestBaseWorkflow {
 
         // The receiver saw the EOA that paid the fee, and the deployer cleared its transient payer afterwards.
         assertEq(feeReceiver.recordedPayer(), player, "fee credited to deployer instead of payer");
+        assertEq(deployer.originalPayer(), address(0), "transient payer not cleared");
+    }
+
+    /// @notice Launching through the trusted forwarder advertises the ERC-2771 signer, not the forwarder.
+    function testAdvertisesForwardedFeePayerDuringLaunch() external {
+        PayerRecordingFeeReceiver feeReceiver = new PayerRecordingFeeReceiver(IJBPayerTracker(address(jbProjects())));
+        uint256 fee = jbProjects().MAX_CREATION_FEE();
+        vm.prank(multisig());
+        jbProjects().setCreationFee(fee, payable(address(feeReceiver)));
+
+        address player = address(bytes20(keccak256("forwardedPlayer")));
+        bytes memory data = abi.encodeCall(DefifaDeployer.launchGameWith, (_launchData()));
+
+        vm.deal(_trustedForwarder, fee);
+        vm.prank(_trustedForwarder);
+        (bool success, bytes memory reason) = address(deployer).call{value: fee}(abi.encodePacked(data, player));
+        if (!success) {
+            assembly ("memory-safe") {
+                revert(add(reason, 32), mload(reason))
+            }
+        }
+
+        assertEq(feeReceiver.recordedPayer(), player, "fee credited to forwarder instead of signer");
         assertEq(deployer.originalPayer(), address(0), "transient payer not cleared");
     }
 
