@@ -107,7 +107,8 @@ contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore()
+            hookStore: new JB721TiersHookStore(),
+            trustedForwarder: address(0)
         });
 
         _hookImpl.transferOwnership(address(_deployer));

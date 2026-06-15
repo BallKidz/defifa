@@ -27,6 +27,7 @@ import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
+import {ERC2771Context} from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
 import {Clones} from "@openzeppelin/contracts/proxy/Clones.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {SafeERC20} from "@openzeppelin/contracts/token/ERC20/utils/SafeERC20.sol";
@@ -53,6 +54,7 @@ import {DefifaTierParams} from "./structs/DefifaTierParams.sol";
 /// to winning NFT holders. Games progress through phases: COUNTDOWN → MINT → REFUND → SCORING → COMPLETE (or
 /// NO_CONTEST if minimum participation isn't met or scorecard ratification times out).
 contract DefifaDeployer is
+    ERC2771Context,
     IDefifaDeployer,
     IDefifaGamePhaseReporter,
     IDefifaGamePotReporter,
@@ -159,7 +161,7 @@ contract DefifaDeployer is
 
     /// @notice The account that paid the creation fee for the game currently being launched.
     /// @dev This contract owns the games it launches, so it advertises the resolved fee payer (the `launchGameWith`
-    /// caller, or that caller's upstream payer when the caller is itself an `IJBPayerTracker`) while
+    /// ERC-2771 caller, or that caller's upstream payer when the caller is itself an `IJBPayerTracker`) while
     /// `JBProjects.createFor` runs, letting a `pay`-routing fee receiver credit the true payer instead of this
     /// deployer. Cleared back to `address(0)` once the call returns.
     address public transient override originalPayer;
@@ -328,6 +330,7 @@ contract DefifaDeployer is
     /// @param defifaProjectId The ID of the project that should take the fee from the games.
     /// @param baseProtocolProjectId The ID of the protocol project that will receive fees from fulfilling commitments.
     /// @param hookStore The store used by Defifa hooks.
+    /// @param trustedForwarder The trusted forwarder for the ERC2771Context.
     constructor(
         address hookCodeOrigin,
         IJB721TokenUriResolver tokenUriResolver,
@@ -336,8 +339,11 @@ contract DefifaDeployer is
         IJBAddressRegistry registry,
         uint256 defifaProjectId,
         uint256 baseProtocolProjectId,
-        IJB721TiersHookStore hookStore
-    ) {
+        IJB721TiersHookStore hookStore,
+        address trustedForwarder
+    )
+        ERC2771Context(trustedForwarder)
+    {
         HOOK_CODE_ORIGIN = hookCodeOrigin;
         TOKEN_URI_RESOLVER = tokenUriResolver;
         GOVERNOR = governor;
@@ -381,7 +387,7 @@ contract DefifaDeployer is
         // If the pot is empty, queue the final ruleset without attempting payouts.
         if (pot == 0) {
             _queueFinalRuleset({gameId: gameId, metadata: metadata});
-            emit FulfilledCommitments({gameId: gameId, pot: 0, caller: msg.sender});
+            emit FulfilledCommitments({gameId: gameId, pot: 0, caller: _msgSender()});
             return;
         }
 
@@ -403,13 +409,13 @@ contract DefifaDeployer is
             // Payout failed — fee stays in pot. Reset to 0 so currentGamePotOf
             // doesn't double-count the fee.
             fulfilledCommitmentsOf[gameId] = 0;
-            emit CommitmentPayoutFailed({gameId: gameId, amount: feeAmount, reason: reason, caller: msg.sender});
+            emit CommitmentPayoutFailed({gameId: gameId, amount: feeAmount, reason: reason, caller: _msgSender()});
         }
 
         // Queue the final ruleset and emit.
         _queueFinalRuleset({gameId: gameId, metadata: metadata});
 
-        emit FulfilledCommitments({gameId: gameId, pot: pot, caller: msg.sender});
+        emit FulfilledCommitments({gameId: gameId, pot: pot, caller: _msgSender()});
     }
 
     /// @notice Launches a new game owned by this contract with a DefifaHook attached.
@@ -515,10 +521,11 @@ contract DefifaDeployer is
             }
         }
 
+        address caller = _msgSender();
+
         // Expose the resolved fee payer so a `pay`-routing fee receiver credits the true payer, not this deployer.
-        // This contract uses raw `msg.sender` (it is not an `ERC2771Context`), so the fee payer is the direct caller.
         // Cleared immediately after.
-        originalPayer = JBPayerTrackerLib.resolve(msg.sender);
+        originalPayer = JBPayerTrackerLib.resolve(caller);
 
         // Reserve the game ID up front so permissionless project creations cannot invalidate hook deployment.
         gameId = PROJECTS.createFor{value: msg.value}(address(this));
@@ -585,14 +592,14 @@ contract DefifaDeployer is
         // Increment the nonce for this deployment.
         uint256 currentNonce = ++_nonce;
 
-        // Clone deterministically using sender and nonce to prevent front-running.
+        // Clone deterministically using caller and nonce to prevent front-running.
         // Clones.clone() creates the proxy before initialize() is called, allowing an
         // attacker to front-run initialization and DOS the game deployment. Using
-        // cloneDeterministic with msg.sender in the salt prevents this since a different
+        // cloneDeterministic with the ERC-2771 caller in the salt prevents this since a different
         // caller produces a different address.
         DefifaHook hook = DefifaHook(
             Clones.cloneDeterministic({
-                implementation: HOOK_CODE_ORIGIN, salt: keccak256(abi.encodePacked(msg.sender, currentNonce))
+                implementation: HOOK_CODE_ORIGIN, salt: keccak256(abi.encodePacked(caller, currentNonce))
             })
         );
 
@@ -637,13 +644,11 @@ contract DefifaDeployer is
         // that produced the deployed hook.
         REGISTRY.registerAddress({
             deployer: address(this),
-            salt: keccak256(abi.encodePacked(msg.sender, currentNonce)),
+            salt: keccak256(abi.encodePacked(caller, currentNonce)),
             bytecode: _cloneCreationCodeFor(address(HOOK_CODE_ORIGIN))
         });
 
-        emit LaunchGame({
-            gameId: gameId, hook: hook, governor: GOVERNOR, tokenUriResolver: uriResolver, caller: msg.sender
-        });
+        emit LaunchGame({gameId: gameId, hook: hook, governor: GOVERNOR, tokenUriResolver: uriResolver, caller: caller});
     }
 
     /// @notice Allows this contract to receive 721s.
@@ -718,7 +723,7 @@ contract DefifaDeployer is
             projectId: gameId, rulesetConfigurations: rulesetConfigs, memo: "Defifa game: no contest."
         });
 
-        emit QueuedNoContest({gameId: gameId, caller: msg.sender});
+        emit QueuedNoContest({gameId: gameId, caller: _msgSender()});
     }
 
     //*********************************************************************//

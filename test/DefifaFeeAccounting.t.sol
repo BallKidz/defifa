@@ -116,7 +116,8 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
             registry: _registry,
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore()
+            hookStore: new JB721TiersHookStore(),
+            trustedForwarder: address(0)
         });
 
         hook.transferOwnership(address(deployer));
