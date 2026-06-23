@@ -322,6 +322,46 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         assertGt(playerWeight, 0, "pre-submission holder retains its frozen attestation power");
     }
 
+    /// @notice Documents the remaining same-block ordering gap: minting reserves before scorecard submission in the
+    /// same block removes the live pending-reserve count, while the scorecard's historical checkpoint excludes the
+    /// newly minted reserve. The paid holder's BWA denominator therefore omits the reserve.
+    function test_sameBlockReserveMintBeforeSubmissionRemovesPendingReserveDilution() external {
+        (_pid, _nft, _gov) = _launch(_launchData());
+
+        vm.warp(block.timestamp + 1 days + 1);
+        _mint(player, 1, 1 ether);
+        _delegateSelf(player, 1);
+        vm.warp(block.timestamp + 1);
+        _mint(disinterested1, 2, 1 ether);
+        _delegateSelf(disinterested1, 2);
+        vm.warp(block.timestamp + 1);
+        _mint(disinterested2, 3, 1 ether);
+        _delegateSelf(disinterested2, 3);
+        vm.warp(block.timestamp + 1);
+        _mint(disinterested3, 4, 1 ether);
+        _delegateSelf(disinterested3, 4);
+
+        assertEq(_nft.store().numberOfPendingReservesFor(address(_nft), 1), 1, "tier 1 starts with a pending reserve");
+
+        vm.warp(block.timestamp + 2 days + 1);
+
+        JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
+        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
+        _nft.mintReservesFor(reserveConfigs);
+
+        DefifaTierCashOutWeight[] memory sc = new DefifaTierCashOutWeight[](4);
+        uint256 perTier = _nft.TOTAL_CASHOUT_WEIGHT() / 4;
+        sc[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: perTier});
+        sc[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: perTier});
+        sc[2] = DefifaTierCashOutWeight({id: 3, cashOutWeight: perTier});
+        sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT() - perTier * 3});
+
+        uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 playerBwa = _gov.getBWAAttestationWeight(_gameId, proposalId, player, uint48(block.timestamp - 1));
+
+        assertEq(playerBwa, 750_000_000, "same-block reserve mint removed pending-reserve denominator dilution");
+    }
+
     // ---- helpers ----
 
     function _launchData() internal view returns (DefifaLaunchProjectData memory) {
