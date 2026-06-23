@@ -341,6 +341,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
         // Cache the hook store to avoid repeated external calls.
         IDefifaHook hook = IDefifaHook(metadata.dataHook);
+        // forge-lint: disable-next-line(block-timestamp)
         if (hook.lastReserveMintTimestamp() == block.timestamp) {
             revert DefifaGovernor_ReserveMintedInSubmissionBlock({gameId: gameId, timestamp: block.timestamp});
         }
