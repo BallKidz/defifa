@@ -170,6 +170,9 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     /// @custom:param tokenId The ID of the token whose reserve-mint status is stored.
     mapping(uint256 tokenId => bool) public override isReserveMint;
 
+    /// @notice The timestamp when reserves were last minted.
+    uint256 public override lastReserveMintTimestamp;
+
     /// @notice The currency that is accepted when minting tier NFTs.
     uint256 public override pricingCurrency;
 
@@ -632,6 +635,7 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Record the minted reserves for the tier.
         uint256[] memory tokenIds = hookStore.recordMintReservesFor({tierId: tierId, count: count});
+        if (count != 0) lastReserveMintTimestamp = block.timestamp;
 
         // Keep a reference to the token ID being iterated on.
         uint256 tokenId;

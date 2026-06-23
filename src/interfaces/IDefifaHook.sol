@@ -180,6 +180,10 @@ interface IDefifaHook is IJB721Hook {
     /// @return True if the token was minted as a reserve.
     function isReserveMint(uint256 tokenId) external view returns (bool);
 
+    /// @notice The timestamp when reserves were last minted.
+    /// @return The last reserve mint timestamp, or 0 if no reserves have been minted.
+    function lastReserveMintTimestamp() external view returns (uint256);
+
     /// @notice The pricing currency used by this hook.
     /// @return The currency identifier.
     function pricingCurrency() external view returns (uint256);
