@@ -54,6 +54,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @notice Thrown when revoking an attestation that the account never made for the scorecard.
     error DefifaGovernor_NotAttested(uint256 gameId, uint256 scorecardId, address account);
 
+    /// @notice Thrown when a scorecard is submitted in the same block timestamp as a reserve mint.
+    error DefifaGovernor_ReserveMintedInSubmissionBlock(uint256 gameId, uint256 timestamp);
+
     /// @notice Thrown when a timestamp or duration value exceeds the maximum that fits in a uint48.
     error DefifaGovernor_Uint48Overflow(uint256 value, uint256 max);
 
@@ -337,7 +340,13 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         }
 
         // Cache the hook store to avoid repeated external calls.
-        IJB721TiersHookStore hookStore = IDefifaHook(metadata.dataHook).store();
+        IDefifaHook hook = IDefifaHook(metadata.dataHook);
+        // forge-lint: disable-next-line(block-timestamp)
+        if (hook.lastReserveMintTimestamp() == block.timestamp) {
+            revert DefifaGovernor_ReserveMintedInSubmissionBlock({gameId: gameId, timestamp: block.timestamp});
+        }
+
+        IJB721TiersHookStore hookStore = hook.store();
 
         // Run the same structural validation the hook will apply at ratification time so malformed
         // scorecards fail on submission instead of reaching a misleading SUCCEEDED state first.

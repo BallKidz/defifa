@@ -269,11 +269,9 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         );
     }
 
-    /// @notice A reserve minted in the SAME block as submission is excluded from the scorecard's attestation
-    /// snapshot. The BWA snapshot is frozen one second before submission, so a same-block `mintReservesFor` (which
-    /// shares the submission timestamp and would otherwise overwrite the equally-keyed checkpoint) grants the
-    /// reserve beneficiary no attestation power. To attest, a reserve must be minted in a block before submission.
-    function test_sameTimestampReserveMintCannotAttestAfterImmediateSubmission() external {
+    /// @notice A reserve minted in the same timestamp as submission blocks immediate submission. Submitting in the next
+    /// timestamp lets the reserve beneficiary participate normally.
+    function test_sameTimestampReserveMintBlocksImmediateSubmission() external {
         (_pid, _nft, _gov) = _launch(_launchData());
 
         // Mint phase: tier 1 creates one pending reserve, tier 2 gives the scorecard a live opposing tier.
@@ -295,6 +293,14 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         sc[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT()});
         sc[2] = DefifaTierCashOutWeight({id: 3, cashOutWeight: 0});
         sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: 0});
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DefifaGovernor.DefifaGovernor_ReserveMintedInSubmissionBlock.selector, _gameId, block.timestamp
+            )
+        );
+        _gov.submitScorecardFor(_gameId, sc);
+
+        vm.warp(block.timestamp + 1);
         uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
 
         assertEq(
@@ -304,22 +310,70 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         );
 
         vm.warp(block.timestamp + 1);
-
-        // The reserve was minted in the submission block, so the frozen snapshot gives it zero power and attesting
-        // reverts on the zero-weight guard.
-        vm.prank(reserveBeneficiary);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                DefifaGovernor.DefifaGovernor_NotAllowed.selector, _gameId, proposalId, reserveBeneficiary
-            )
+        assertEq(
+            uint256(_gov.stateOf(_gameId, proposalId)),
+            uint256(DefifaScorecardState.ACTIVE),
+            "delayed scorecard should be attestable after attestations begin"
         );
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+
+        // The reserve was minted before the submission timestamp, so it keeps normal attestation power.
+        vm.prank(reserveBeneficiary);
+        uint256 reserveWeight = _gov.attestToScorecardFrom(_gameId, proposalId);
+        assertGt(reserveWeight, 0, "previous-timestamp reserve holder can attest");
 
         // A holder that minted in an earlier block (tier-1 paid holder, on the 0-weight tier so BWA leaves it full
         // power) keeps its pre-submission attestation power — only same-block activity is excluded.
         vm.prank(player);
         uint256 playerWeight = _gov.attestToScorecardFrom(_gameId, proposalId);
         assertGt(playerWeight, 0, "pre-submission holder retains its frozen attestation power");
+    }
+
+    /// @notice Documents the remaining same-block ordering gap: minting reserves before scorecard submission in the
+    /// same block removes the live pending-reserve count, while the scorecard's historical checkpoint excludes the
+    /// newly minted reserve. The paid holder's BWA denominator therefore omits the reserve.
+    function test_sameBlockReserveMintBeforeSubmissionIsRejected() external {
+        (_pid, _nft, _gov) = _launch(_launchData());
+
+        vm.warp(block.timestamp + 1 days + 1);
+        _mint(player, 1, 1 ether);
+        _delegateSelf(player, 1);
+        vm.warp(block.timestamp + 1);
+        _mint(disinterested1, 2, 1 ether);
+        _delegateSelf(disinterested1, 2);
+        vm.warp(block.timestamp + 1);
+        _mint(disinterested2, 3, 1 ether);
+        _delegateSelf(disinterested2, 3);
+        vm.warp(block.timestamp + 1);
+        _mint(disinterested3, 4, 1 ether);
+        _delegateSelf(disinterested3, 4);
+
+        assertEq(_nft.store().numberOfPendingReservesFor(address(_nft), 1), 1, "tier 1 starts with a pending reserve");
+
+        vm.warp(block.timestamp + 2 days + 1);
+
+        JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
+        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
+        _nft.mintReservesFor(reserveConfigs);
+
+        DefifaTierCashOutWeight[] memory sc = new DefifaTierCashOutWeight[](4);
+        uint256 perTier = _nft.TOTAL_CASHOUT_WEIGHT() / 4;
+        sc[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: perTier});
+        sc[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: perTier});
+        sc[2] = DefifaTierCashOutWeight({id: 3, cashOutWeight: perTier});
+        sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT() - perTier * 3});
+
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                DefifaGovernor.DefifaGovernor_ReserveMintedInSubmissionBlock.selector, _gameId, block.timestamp
+            )
+        );
+        _gov.submitScorecardFor(_gameId, sc);
+
+        vm.warp(block.timestamp + 1);
+        uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 playerBwa = _gov.getBWAAttestationWeight(_gameId, proposalId, player, uint48(block.timestamp - 1));
+
+        assertEq(playerBwa, 375_000_000, "next-block submission preserves pending-reserve denominator dilution");
     }
 
     // ---- helpers ----
