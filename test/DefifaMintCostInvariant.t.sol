@@ -53,7 +53,6 @@ contract MintCostHandler is Test {
     struct TokenInfo {
         address holder;
         uint256 tierId;
-        uint256 tokenNumber;
     }
 
     TokenInfo[] public liveTokens;
@@ -77,7 +76,7 @@ contract MintCostHandler is Test {
         store = _nft.store();
     }
 
-    /// @notice Mint a new NFT for a random tier.
+    /// @notice Mint a new position for a random tier.
     function mint(uint256 tierSeed) external {
         uint256 tierId = bound(tierSeed, 1, nTiers);
 
@@ -91,39 +90,41 @@ contract MintCostHandler is Test {
         uint16[] memory m = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tierId);
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, m);
+        data[0] = abi.encode(user, m, counts);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metaHelper.getId("pay", hookCodeOrigin);
+        // Build metadata before vm.prank so the external call to createMetadata doesn't consume the prank.
+        bytes memory metadata = metaHelper.createMetadata(ids, data);
 
         vm.prank(user);
-        terminal.pay{value: tierPrice}(
-            pid, JBConstants.NATIVE_TOKEN, tierPrice, user, 0, "", metaHelper.createMetadata(ids, data)
-        );
+        terminal.pay{value: tierPrice}(pid, JBConstants.NATIVE_TOKEN, tierPrice, user, 0, "", metadata);
 
-        uint256 nb = store.numberOfBurnedFor(address(nft), tierId);
-        uint256 tokenNumber = tier.initialSupply - tier.remainingSupply + 1 + nb;
+        assertEq(nft.balanceOf(user, tierId), 1, "minted position held");
 
-        liveTokens.push(TokenInfo({holder: user, tierId: tierId, tokenNumber: tokenNumber}));
+        liveTokens.push(TokenInfo({holder: user, tierId: tierId}));
 
         expectedMintCost += tierPrice;
         mintCount++;
     }
 
-    /// @notice Refund (cash-out during mint phase) — burns the NFT and returns exact price.
+    /// @notice Refund (cash-out during mint phase) — burns the position and returns exact price.
     function refund(uint256 indexSeed) external {
         if (liveTokens.length == 0) return;
         uint256 idx = bound(indexSeed, 0, liveTokens.length - 1);
 
         TokenInfo memory info = liveTokens[idx];
-        uint256 tokenId = (info.tierId * 1_000_000_000) + info.tokenNumber;
-
         uint256[] memory cid = new uint256[](1);
-        cid[0] = tokenId;
+        cid[0] = info.tierId;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(cid);
+        data[0] = abi.encode(cid, amounts);
         bytes4[] memory bids = new bytes4[](1);
         bids[0] = metaHelper.getId("cashOut", hookCodeOrigin);
+        bytes memory metadata = metaHelper.createMetadata(bids, data);
 
         vm.prank(info.holder);
         JBMultiTerminal(address(terminal))
@@ -134,8 +135,11 @@ contract MintCostHandler is Test {
             tokenToReclaim: JBConstants.NATIVE_TOKEN,
             minTokensReclaimed: 0,
             beneficiary: payable(info.holder),
-            metadata: metaHelper.createMetadata(bids, data)
+            metadata: metadata
         });
+
+        assertEq(nft.balanceOf(info.holder, info.tierId), 0, "refunded position burned");
+        assertEq(info.holder.balance, tierPrice, "exact refund");
 
         expectedMintCost -= tierPrice;
         burnCount++;
@@ -155,7 +159,7 @@ contract MintCostHandler is Test {
 }
 
 /// @title DefifaMintCostInvariantTest
-/// @notice Invariant: _totalMintCost == sum of tier prices of all live (non-burned) NFTs.
+/// @notice Invariant: totalMintCost == sum of tier prices of all live (non-burned) positions.
 contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
@@ -167,9 +171,6 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
     DefifaHook hookImpl;
     DefifaGovernor governor;
     DefifaHook nft;
-
-    /// @dev Storage slot of _totalMintCost in DefifaHook (from `forge inspect DefifaHook storage-layout`).
-    uint256 constant TOTAL_MINT_COST_SLOT = 141;
 
     uint8 constant N_TIERS = 4;
     uint256 constant TIER_PRICE = 1 ether;
@@ -296,9 +297,9 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
     }
 
-    /// @notice Read _totalMintCost directly from storage.
+    /// @notice Read totalMintCost from the hook.
     function _readTotalMintCost() internal view returns (uint256) {
-        return uint256(vm.load(address(nft), bytes32(TOTAL_MINT_COST_SLOT)));
+        return nft.totalMintCost();
     }
 
     /// @notice INVARIANT: _totalMintCost always equals the handler's tracked expected value.

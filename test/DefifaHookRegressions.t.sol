@@ -131,7 +131,7 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
         governor.transferOwnership(address(deployer));
     }
 
-    /// @notice Attestation units must be preserved when transferring an NFT to an undelegated recipient.
+    /// @notice Attestation units must be preserved when transferring a position to an undelegated recipient.
     /// @dev A recipient with no delegate set auto-delegates to themselves, preserving total attestation power.
     function test_M5_attestationUnitsPreservedOnTransferToUndelegatedRecipient() public {
         uint8 nTiers = 4;
@@ -141,7 +141,7 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
         DefifaLaunchProjectData memory defifaData = _getBasicLaunchData(nTiers);
         (uint256 _projectId, DefifaHook _nft,) = _createProject(defifaData);
 
-        // Phase 1: Mint — both players buy tier 1 NFTs.
+        // Phase 1: Mint — both players buy tier 1 positions.
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
 
         // Player A mints tier 1.
@@ -149,13 +149,13 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
         {
             uint16[] memory rawMetadata = new uint16[](1);
             rawMetadata[0] = 1;
-            bytes memory metadata = _buildPayMetadata(abi.encode(playerA, rawMetadata));
+            bytes memory metadata = _buildPayMetadata(abi.encode(playerA, rawMetadata, _singleCount()));
             vm.prank(playerA);
             jbMultiTerminal().pay{value: 1 ether}(
                 _projectId, JBConstants.NATIVE_TOKEN, 1 ether, playerA, 0, "", metadata
             );
         }
-        assertEq(_nft.balanceOf(playerA), 1, "Player A should own 1 NFT");
+        assertEq(_nft.balanceOf(playerA, 1), 1, "Player A should own 1 position");
 
         // Player A explicitly sets delegation to self.
         {
@@ -170,28 +170,30 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
         {
             uint16[] memory rawMetadata = new uint16[](1);
             rawMetadata[0] = 1;
-            bytes memory metadata = _buildPayMetadata(abi.encode(playerB, rawMetadata));
+            bytes memory metadata = _buildPayMetadata(abi.encode(playerB, rawMetadata, _singleCount()));
             vm.prank(playerB);
             jbMultiTerminal().pay{value: 1 ether}(
                 _projectId, JBConstants.NATIVE_TOKEN, 1 ether, playerB, 0, "", metadata
             );
         }
-        assertEq(_nft.balanceOf(playerB), 1, "Player B should own 1 NFT");
+        assertEq(_nft.balanceOf(playerB, 1), 1, "Player B should own 1 position");
 
         // Advance 1 second so checkpoints are recorded.
         vm.warp(_tsReader.timestamp() + 1);
 
-        // Get the tier's voting units per NFT.
+        // Get the tier's voting units per position.
         uint256 votingUnitsPerNft = _nft.store().tierOf(address(_nft), 1, false).votingUnits;
         assertTrue(votingUnitsPerNft > 0, "Voting units should be non-zero");
 
         // Capture the total tier attestation supply before transfer.
         uint256 totalBefore = _nft.getTierTotalAttestationUnitsOf(1);
-        assertEq(totalBefore, votingUnitsPerNft * 2, "Total should be 2 NFTs worth of voting units");
+        assertEq(totalBefore, votingUnitsPerNft * 2, "Total should be 2 positions worth of voting units");
 
         // Verify Player A's delegate has attestation units.
         uint256 playerADelegateUnitsBefore = _nft.getTierAttestationUnitsOf(playerA, 1);
-        assertEq(playerADelegateUnitsBefore, votingUnitsPerNft, "Player A delegate should have 1 NFT of voting units");
+        assertEq(
+            playerADelegateUnitsBefore, votingUnitsPerNft, "Player A delegate should have 1 position of voting units"
+        );
 
         // Now create a NEW recipient (playerC) who has NEVER set delegation.
         address playerC = address(bytes20(keccak256("playerC")));
@@ -207,17 +209,18 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
             _nft.setTierDelegatesTo(delegations);
         }
 
-        // Player A transfers their NFT to playerC (who has no delegate set).
-        uint256 tokenId = _generateTokenId(1, 1); // Tier 1, token #1
+        // Player A transfers their position to playerC (who has no delegate set).
         vm.prank(playerA);
-        _nft.transferFrom(playerA, playerC, tokenId);
+        _nft.safeTransferFrom({from: playerA, to: playerC, id: 1, value: 1, data: ""});
+        assertEq(_nft.balanceOf(playerA, 1), 0, "Player A should no longer hold the position");
+        assertEq(_nft.balanceOf(playerC, 1), 1, "Player C should hold the position");
 
         // Advance 1 second so checkpoints are recorded.
         vm.warp(_tsReader.timestamp() + 1);
 
         // playerC should be auto-delegated to themselves.
         address playerCDelegate = _nft.getTierDelegateOf(playerC, 1);
-        assertEq(playerCDelegate, playerC, "Player C should be auto-delegated to self after receiving NFT");
+        assertEq(playerCDelegate, playerC, "Player C should be auto-delegated to self after receiving the position");
 
         // Player A's delegate should have lost the voting units.
         uint256 playerADelegateUnitsAfter = _nft.getTierAttestationUnitsOf(playerA, 1);
@@ -253,7 +256,7 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
         {
             uint16[] memory rawMetadata = new uint16[](1);
             rawMetadata[0] = 1;
-            bytes memory metadata = _buildPayMetadata(abi.encode(playerA, rawMetadata));
+            bytes memory metadata = _buildPayMetadata(abi.encode(playerA, rawMetadata, _singleCount()));
             vm.prank(playerA);
             jbMultiTerminal().pay{value: 1 ether}(
                 _projectId, JBConstants.NATIVE_TOKEN, 1 ether, playerA, 0, "", metadata
@@ -272,12 +275,10 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
 
         uint256 votingUnitsPerNft = _nft.store().tierOf(address(_nft), 1, false).votingUnits;
         uint256 totalBefore = _nft.getTierTotalAttestationUnitsOf(1);
-        assertEq(totalBefore, votingUnitsPerNft, "Total should be 1 NFT worth of voting units");
+        assertEq(totalBefore, votingUnitsPerNft, "Total should be 1 position worth of voting units");
 
         // Warp to REFUND phase.
         vm.warp(defifaData.start - defifaData.refundPeriodDuration);
-
-        uint256 tokenId = _generateTokenId(1, 1);
 
         // Transfer through 3 undelegated recipients sequentially.
         address currentHolder = playerA;
@@ -286,7 +287,9 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
             address nextRecipient = address(uint160(0xBEEF0000 + i));
 
             vm.prank(currentHolder);
-            _nft.transferFrom(currentHolder, nextRecipient, tokenId);
+            _nft.safeTransferFrom({from: currentHolder, to: nextRecipient, id: 1, value: 1, data: ""});
+            assertEq(_nft.balanceOf(currentHolder, 1), 0, "sender should no longer hold the position");
+            assertEq(_nft.balanceOf(nextRecipient, 1), 1, "recipient should hold the position");
             vm.warp(_tsReader.timestamp() + 1);
 
             // Verify the recipient auto-delegated to self.
@@ -312,11 +315,11 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
         }
     }
 
-    /// @notice Paying for another account mints the NFT to the beneficiary and defaults attestation power to the
+    /// @notice Paying for another account mints the position to the beneficiary and defaults attestation power to the
     ///         beneficiary (not the payer) when no explicit delegate is provided.
     /// @dev When the metadata leaves the attestation delegate as address(0) and defaultAttestationDelegate is unset,
-    ///      the source code falls back to context.beneficiary. This proves that NFT ownership and attestation power
-    ///      both land on the beneficiary by default, and the payer retains neither.
+    ///      the source code falls back to context.beneficiary. This proves that position ownership and attestation
+    /// power both land on the beneficiary by default, and the payer retains neither.
     function test_attestationUnitsFollowBeneficiaryByDefault() public {
         DefifaLaunchProjectData memory defifaData = _getBasicLaunchData(2);
         (uint256 projectId, DefifaHook nft, DefifaGovernor _governor) = _createProject(defifaData);
@@ -331,15 +334,15 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
 
         uint16[] memory rawMetadata = new uint16[](1);
         rawMetadata[0] = 1;
-        bytes memory metadata = _buildPayMetadata(abi.encode(address(0), rawMetadata));
+        bytes memory metadata = _buildPayMetadata(abi.encode(address(0), rawMetadata, _singleCount()));
 
         vm.prank(payer);
         jbMultiTerminal().pay{value: 1 ether}(
             projectId, JBConstants.NATIVE_TOKEN, 1 ether, beneficiary, 0, "", metadata
         );
 
-        assertEq(nft.balanceOf(beneficiary), 1, "beneficiary should receive the NFT");
-        assertEq(nft.balanceOf(payer), 0, "payer should not receive the NFT");
+        assertEq(nft.balanceOf(beneficiary, 1), 1, "beneficiary should receive the position");
+        assertEq(nft.balanceOf(payer, 1), 0, "payer should not receive the position");
 
         vm.warp(_tsReader.timestamp() + 1);
 
@@ -400,8 +403,9 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
         nft = DefifaHook(_fc.dataHook());
     }
 
-    function _generateTokenId(uint256 _tierId, uint256 _tokenNumber) internal pure returns (uint256) {
-        return (_tierId * 1_000_000_000) + _tokenNumber;
+    function _singleCount() internal pure returns (uint256[] memory counts) {
+        counts = new uint256[](1);
+        counts[0] = 1;
     }
 
     function _buildPayMetadata(bytes memory metadata) internal view returns (bytes memory) {
