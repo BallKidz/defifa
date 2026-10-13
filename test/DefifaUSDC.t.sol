@@ -219,8 +219,10 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
         uint16[] memory m = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, m);
+        data[0] = abi.encode(user, m, counts);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(hook));
         vm.startPrank(user);
@@ -296,10 +298,6 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
         return jbMultiTerminal().currentSurplusOf(_pid, new address[](0), 6, uint32(uint160(address(usdc))));
     }
 
-    function _generateTokenId(uint256 tierId, uint256 tokenNumber) internal pure returns (uint256) {
-        return (tierId * 1_000_000_000) + tokenNumber;
-    }
-
     function _buildCashOutMetadata(bytes memory decodedData) internal view returns (bytes memory) {
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("cashOut", address(hook));
@@ -308,10 +306,12 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
         return metadataHelper().createMetadata(ids, datas);
     }
 
-    function _cashOutUsdc(address user, uint256 tid, uint256 tnum) internal {
+    function _cashOutUsdc(address user, uint256 tokenId, uint256 amount) internal {
         uint256[] memory cashOutIds = new uint256[](1);
-        cashOutIds[0] = _generateTokenId(tid, tnum);
-        bytes memory cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutIds));
+        cashOutIds[0] = tokenId;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = amount;
+        bytes memory cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutIds, amounts));
 
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
@@ -327,21 +327,7 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
     }
 
     function _refundUsdc(address user, uint256 tid) internal {
-        uint256[] memory cashOutIds = new uint256[](1);
-        cashOutIds[0] = _generateTokenId(tid, 1);
-        bytes memory cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutIds));
-
-        vm.prank(user);
-        JBMultiTerminal(address(jbMultiTerminal()))
-            .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: address(usdc),
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: cashOutMetadata
-        });
+        _cashOutUsdc(user, tid, 1);
     }
 
     // =========================================================================
@@ -356,9 +342,9 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
         // Verify MINT phase.
         assertEq(uint256(deployer.currentGamePhaseOf(_pid)), uint256(DefifaGamePhase.MINT));
 
-        // Verify all 4 users hold NFTs.
+        // Verify all 4 users hold one position in their tier.
         for (uint256 i; i < 4; i++) {
-            assertEq(_nft.balanceOf(_users[i]), 1, "each user holds 1 NFT");
+            assertEq(_nft.balanceOf(_users[i], i + 1), 1, "each user holds 1 position");
         }
 
         // Terminal should have 400 USDC.
@@ -368,7 +354,7 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
         uint256 balBefore = usdc.balanceOf(_users[0]);
         _refundUsdc(_users[0], 1);
         assertEq(usdc.balanceOf(_users[0]) - balBefore, 100e6, "refund = 100 USDC");
-        assertEq(_nft.balanceOf(_users[0]), 0, "NFT burned on refund");
+        assertEq(_nft.balanceOf(_users[0], 1), 0, "position burned on refund");
 
         // Remaining balance = 300 USDC.
         assertEq(_balance(), 300e6, "terminal balance = 300 USDC after refund");

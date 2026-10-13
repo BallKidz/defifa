@@ -172,7 +172,7 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         DefifaLaunchProjectData memory defifaData = _getBasicDefifaLaunchData(nTiers);
         (uint256 projectId, DefifaHook _nft, DefifaGovernor _governor) = _createDefifaProject(defifaData);
 
-        // Mint phase: each user buys 1 NFT for 1 ETH.
+        // Mint phase: each user buys 1 position for 1 ETH.
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
         address[] memory users = _mintAllTiers(_nft, _governor, projectId, nTiers);
 
@@ -230,14 +230,12 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         uint256 expectedFee = (potBefore * 75_000_000) / JBConstants.SPLITS_TOTAL_PERCENT;
         uint256 surplus = potBefore - expectedFee;
 
-        // Each user cashes out their NFT.
+        // Each user cashes out their position.
         uint256 totalCashedOut;
         for (uint256 i = 0; i < nTiers; i++) {
             uint256 balBefore = users[i].balance;
 
-            uint256[] memory cashOutIds = new uint256[](1);
-            cashOutIds[0] = _generateTokenId(i + 1, 1);
-            bytes memory cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutIds));
+            bytes memory cashOutMetadata = _buildCashOutMetadata(_cashOutData(i + 1, 1));
 
             vm.prank(users[i]);
             JBMultiTerminal(address(jbMultiTerminal()))
@@ -363,9 +361,7 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         for (uint256 i = 0; i < nTiers; i++) {
             uint256 balBefore = users[i].balance;
 
-            uint256[] memory cashOutIds = new uint256[](1);
-            cashOutIds[0] = _generateTokenId(i + 1, 1);
-            bytes memory cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutIds));
+            bytes memory cashOutMetadata = _buildCashOutMetadata(_cashOutData(i + 1, 1));
 
             vm.prank(users[i]);
             JBMultiTerminal(address(jbMultiTerminal()))
@@ -504,7 +500,7 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         nft = DefifaHook(_fc.dataHook());
     }
 
-    /// @notice Mint 1 NFT per tier, set delegation, return array of user addresses.
+    /// @notice Mint 1 position per tier, set delegation, return array of user addresses.
     function _mintAllTiers(
         DefifaHook _nft,
         DefifaGovernor,
@@ -519,10 +515,8 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
             users[i] = address(bytes20(keccak256(abi.encode("feeUser", i))));
             vm.deal(users[i], 1 ether);
 
-            uint16[] memory rawMetadata = new uint16[](1);
             // forge-lint: disable-next-line(unsafe-typecast)
-            rawMetadata[0] = uint16(i + 1);
-            bytes memory metadata = _buildPayMetadata(abi.encode(users[i], rawMetadata));
+            bytes memory metadata = _buildPayMetadata(_payData(users[i], uint16(i + 1)));
 
             vm.prank(users[i]);
             jbMultiTerminal().pay{value: 1 ether}(
@@ -582,8 +576,33 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         _governor.ratifyScorecardFrom(_gameId, scorecards);
     }
 
-    function _generateTokenId(uint256 _tierId, uint256 _tokenNumber) internal pure returns (uint256) {
-        return (_tierId * 1_000_000_000) + _tokenNumber;
+    /// @notice Pay metadata that mints one position in `tierId`, delegating attestations to `delegate`.
+    function _payData(address delegate, uint16 tierId) internal pure returns (bytes memory) {
+        uint16[] memory tierIds = new uint16[](1);
+        tierIds[0] = tierId;
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
+        return abi.encode(delegate, tierIds, counts);
+    }
+
+    /// @notice Cash-out metadata that burns `amount` positions of `tokenId`.
+    function _cashOutData(uint256 tokenId, uint256 amount) internal pure returns (bytes memory) {
+        (uint256[] memory tokenIds, uint256[] memory amounts) = _single(tokenId, amount);
+        return abi.encode(tokenIds, amounts);
+    }
+
+    function _single(
+        uint256 tokenId,
+        uint256 amount
+    )
+        internal
+        pure
+        returns (uint256[] memory tokenIds, uint256[] memory amounts)
+    {
+        tokenIds = new uint256[](1);
+        tokenIds[0] = tokenId;
+        amounts = new uint256[](1);
+        amounts[0] = amount;
     }
 
     function _buildPayMetadata(bytes memory metadata) internal view returns (bytes memory) {

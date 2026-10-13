@@ -15,7 +15,6 @@ import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressReg
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
-import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 import {DefifaDelegation} from "../src/structs/DefifaDelegation.sol";
 import {DefifaLaunchProjectData} from "../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../src/structs/DefifaTierParams.sol";
@@ -128,12 +127,12 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
 
     /// @notice Game with mint cost below minParticipation returns NO_CONTEST.
     function testMinParticipation_belowThreshold_noContest() external {
-        // Set threshold to 5 ETH, but only mint 1 NFT at 1 ETH → totalMintCost = 1 ETH < 5 ETH
+        // Set threshold to 5 ETH, but only mint 1 position at 1 ETH → totalMintCost = 1 ETH < 5 ETH
         DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 5 ether, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
-        // Mint 1 NFT at 1 ETH — totalMintCost = 1 ETH < 5 ETH threshold
+        // Mint 1 position at 1 ETH — totalMintCost = 1 ETH < 5 ETH threshold
         _users = new address[](1);
         _users[0] = _addr(0);
         _mint(_users[0], 1, 1 ether);
@@ -151,7 +150,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
 
     /// @notice Game with mint cost at or above minParticipation proceeds to SCORING.
     function testMinParticipation_atThreshold_scoring() external {
-        // Set threshold to 4 ETH, mint exactly 4 NFTs at 1 ETH each → totalMintCost = 4 ETH
+        // Set threshold to 4 ETH, mint exactly 4 positions at 1 ETH each → totalMintCost = 4 ETH
         DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 4 ether, type(uint32).max);
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
@@ -200,7 +199,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         _refund(_users[0], 1);
         uint256 received = _users[0].balance - balBefore;
         assertEq(received, 1 ether, "should receive exact mint price");
-        assertEq(_nft.balanceOf(_users[0]), 0, "NFT should be burned");
+        assertEq(_nft.balanceOf(_users[0], 1), 0, "position should be burned");
     }
 
     /// @notice Refunds during REFUND phase can push balance below threshold, triggering NO_CONTEST when SCORING starts.
@@ -357,7 +356,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
             _refund(_users[i], i + 1);
             uint256 received = _users[i].balance - balBefore;
             assertEq(received, 1 ether, "should receive exact mint price");
-            assertEq(_nft.balanceOf(_users[i]), 0, "NFT should be burned");
+            assertEq(_nft.balanceOf(_users[i], i + 1), 0, "position should be burned");
         }
     }
 
@@ -478,7 +477,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
 
     /// @notice When both set and mint cost is above threshold, timeout triggers eventually.
     function testBothMechanisms_timeoutTriggersIfThresholdMet() external {
-        // Threshold: 2 ETH, Timeout: 7 days — mint 4 NFTs at 1 ETH each → totalMintCost = 4 ETH
+        // Threshold: 2 ETH, Timeout: 7 days — mint 4 positions at 1 ETH each → totalMintCost = 4 ETH
         DefifaLaunchProjectData memory d = _launchDataWith(4, 1 ether, 2 ether, uint32(7 days));
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
@@ -688,16 +687,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         assertEq(uint256(deployer.currentGamePhaseOf(_pid)), uint256(DefifaGamePhase.NO_CONTEST));
 
         // Build the cash-out metadata inline so vm.expectRevert is right before the terminal call
-        uint256[] memory cid = new uint256[](1);
-        JB721Tier memory tier = _nft.store().tierOf(address(_nft), 1, false);
-        uint256 nb = _nft.store().numberOfBurnedFor(address(_nft), 1);
-        uint256 tnum = tier.initialSupply - tier.remainingSupply + nb;
-        cid[0] = 1_000_000_000 + tnum;
-        bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(cid);
-        bytes4[] memory ids = new bytes4[](1);
-        ids[0] = metadataHelper().getId("cashOut", address(hook));
-        bytes memory meta = metadataHelper().createMetadata(ids, data);
+        bytes memory meta = _cashOutMeta(1, 1);
 
         // Cash out should revert before trigger (surplus = 0 on SCORING ruleset)
         vm.prank(_users[0]);
@@ -844,8 +834,10 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         uint16[] memory m = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, m);
+        data[0] = abi.encode(user, m, counts);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(hook));
         vm.prank(user);
@@ -888,8 +880,8 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         return jbMultiTerminal().currentSurplusOf(_pid, new address[](0), 18, JBCurrencyIds.ETH);
     }
 
-    function _cashOut(address user, uint256 tid, uint256 tnum) internal {
-        bytes memory meta = _cashOutMeta(tid, tnum);
+    function _cashOut(address user, uint256 tokenId, uint256 amount) internal {
+        bytes memory meta = _cashOutMeta(tokenId, amount);
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
@@ -903,31 +895,19 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         });
     }
 
-    function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {
+    function _cashOutMeta(uint256 tokenId, uint256 amount) internal view returns (bytes memory) {
         uint256[] memory cid = new uint256[](1);
-        cid[0] = (tid * 1_000_000_000) + tnum;
+        cid[0] = tokenId;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = amount;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(cid);
+        data[0] = abi.encode(cid, amounts);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("cashOut", address(hook));
         return metadataHelper().createMetadata(ids, data);
     }
 
     function _refund(address user, uint256 tid) internal {
-        JB721Tier memory tier = _nft.store().tierOf(address(_nft), tid, false);
-        uint256 nb = _nft.store().numberOfBurnedFor(address(_nft), tid);
-        uint256 tnum = tier.initialSupply - tier.remainingSupply + nb;
-        bytes memory meta = _cashOutMeta(tid, tnum);
-        vm.prank(user);
-        JBMultiTerminal(address(jbMultiTerminal()))
-            .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: meta
-        });
+        _cashOut(user, tid, 1);
     }
 }

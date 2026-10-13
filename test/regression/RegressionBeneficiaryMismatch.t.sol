@@ -28,11 +28,10 @@ contract RegressionBeneficiaryMismatchTest is DefifaFeeAccountingTest {
         address holder = users[0];
         address payable beneficiary = payable(address(bytes20(keccak256("cash-out beneficiary"))));
 
-        uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = _generateTokenId(1, 1);
-        bytes memory cashOutMetadata = _buildCashOutMetadata(abi.encode(tokenIds));
+        (uint256[] memory tokenIds, uint256[] memory amounts) = _single(1, 1);
+        bytes memory cashOutMetadata = _buildCashOutMetadata(abi.encode(tokenIds, amounts));
 
-        (uint256 expectedDefifa, uint256 expectedNana) = nft.tokensClaimableFor(tokenIds);
+        (uint256 expectedDefifa, uint256 expectedNana) = nft.tokensClaimableFor(tokenIds, amounts);
         IERC20 defifaToken = IERC20(address(jbTokens().tokenOf(_defifaProjectId)));
         IERC20 nanaToken = IERC20(address(jbTokens().tokenOf(_protocolFeeProjectId)));
 
@@ -98,15 +97,15 @@ contract RegressionBeneficiaryMismatchTest is DefifaFeeAccountingTest {
 
         _ratifyEvenScorecard(users, nft, gov, projectId, 4);
 
-        uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = _generateTokenId(1, 2);
+        // One of the player's three tier 1 positions.
+        (uint256[] memory tokenIds, uint256[] memory amounts) = _single(1, 1);
 
         IERC20 defifaToken = IERC20(address(jbTokens().tokenOf(_defifaProjectId)));
         IERC20 nanaToken = IERC20(address(jbTokens().tokenOf(_protocolFeeProjectId)));
         uint256 defifaBalance = defifaToken.balanceOf(address(nft));
         uint256 nanaBalance = nanaToken.balanceOf(address(nft));
 
-        (uint256 previewDefifa, uint256 previewNana) = nft.tokensClaimableFor(tokenIds);
+        (uint256 previewDefifa, uint256 previewNana) = nft.tokensClaimableFor(tokenIds, amounts);
 
         assertEq(previewDefifa, defifaBalance / 9, "preview includes pending reserve cost");
         assertEq(previewNana, nanaBalance / 9, "preview includes pending reserve cost");
@@ -160,9 +159,7 @@ contract RegressionBeneficiaryMismatchTest is DefifaFeeAccountingTest {
 
     function _mintTier(uint256 projectId, address user, uint16 tierId) internal {
         vm.deal(user, user.balance + 1 ether);
-        uint16[] memory rawMetadata = new uint16[](1);
-        rawMetadata[0] = tierId;
-        bytes memory metadata = _buildPayMetadata(abi.encode(user, rawMetadata));
+        bytes memory metadata = _buildPayMetadata(_payData(user, tierId));
         vm.prank(user);
         jbMultiTerminal().pay{value: 1 ether}(projectId, JBConstants.NATIVE_TOKEN, 1 ether, user, 0, "", metadata);
     }
