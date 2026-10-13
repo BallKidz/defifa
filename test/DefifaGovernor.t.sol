@@ -163,12 +163,12 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         assertEq(_governor.getAttestationWeight(_gameId, _user, uint48(block.timestamp)), 0);
         // fund user
         vm.deal(_user, 1 ether);
-        // Build metadata to buy specific NFT
+        // Build metadata to buy a specific position
         uint16[] memory rawMetadata = new uint16[](1);
         vm.assume(tier != 0);
         rawMetadata[0] = uint16(tier); // reward tier
 
-        // Pay to the project and mint an NFT
+        // Pay to the project and mint a position
         vm.prank(_user);
         jbMultiTerminal().pay{value: 1 ether}(
             _projectId,
@@ -177,13 +177,13 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             _user,
             0,
             "",
-            _buildPayMetadata(abi.encode(_user, rawMetadata))
+            _buildPayMetadata(abi.encode(_user, rawMetadata, _ones(rawMetadata.length)))
         );
 
         // The user should now have a balance
-        assertEq(_nft.balanceOf(_user), 1);
+        assertEq(_nft.balanceOf(_user, tier), 1);
 
-        // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
+        // Forward 1 block, user should receive all the voting power of the tier, as it's the only position
         vm.warp(block.timestamp + 1);
 
         assertEq(_nft.store().tierOf(address(_nft), tier, false).votingUnits, 1 ether);
@@ -311,12 +311,12 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             _users[i] = address(bytes20(keccak256(abi.encode("user", Strings.toString(i)))));
             // fund user
             vm.deal(_users[i], 1 ether);
-            // Build metadata to buy specific NFT
+            // Build metadata to buy a specific position
             uint16[] memory rawMetadata = new uint16[](1);
             // forge-lint: disable-next-line(unsafe-typecast)
             rawMetadata[0] = uint16(i + 1); // reward tier, 1 indexed
-            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
-            // Pay to the project and mint an NFT
+            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, _ones(rawMetadata.length)));
+            // Pay to the project and mint a position
             vm.expectPartialRevert(JBTerminalStore.JBTerminalStore_RulesetPaymentPaused.selector);
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(
@@ -328,12 +328,12 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             _users[i] = address(bytes20(keccak256(abi.encode("user", Strings.toString(i)))));
             // fund user
             vm.deal(_users[i], 1 ether);
-            // Build metadata to buy specific NFT
+            // Build metadata to buy a specific position
             uint16[] memory rawMetadata = new uint16[](1);
             // forge-lint: disable-next-line(unsafe-typecast)
             rawMetadata[0] = uint16(i + 1); // reward tier, 1 indexed
-            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
-            // Pay to the project and mint an NFT
+            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, _ones(rawMetadata.length)));
+            // Pay to the project and mint a position
             vm.expectPartialRevert(JBTerminalStore.JBTerminalStore_RulesetPaymentPaused.selector);
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(
@@ -412,12 +412,12 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             _users[i] = address(bytes20(keccak256(abi.encode("user", Strings.toString(i)))));
             // fund user
             vm.deal(_users[i], 1 ether);
-            // Build metadata to buy specific NFT
+            // Build metadata to buy a specific position
             uint16[] memory rawMetadata = new uint16[](1);
             // forge-lint: disable-next-line(unsafe-typecast)
             rawMetadata[0] = uint16(i + 1); // reward tier, 1 indexed
-            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
-            // Pay to the project and mint an NFT
+            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, _ones(rawMetadata.length)));
+            // Pay to the project and mint a position
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(
                 _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
@@ -427,7 +427,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             tiered721SetDelegatesData[0] = DefifaDelegation({delegatee: _users[i], tierId: uint256(i + 1)});
             vm.prank(_users[i]);
             _nft.setTierDelegatesTo(tiered721SetDelegatesData);
-            // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
+            // Forward 1 block, user should receive all the voting power of the tier, as it's the only position
             vm.warp(_tsReader.timestamp() + 1);
             assertEq(
                 _governor.MAX_ATTESTATION_POWER_TIER(),
@@ -482,21 +482,21 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             // fund user
             vm.deal(_users[i], 1 ether);
 
-            // Build metadata to buy specific NFT
+            // Build metadata to buy a specific position
             bytes memory metadata;
             {
                 uint16[] memory rawMetadata = new uint16[](1);
                 // forge-lint: disable-next-line(unsafe-typecast)
                 rawMetadata[0] = uint16(i + 1); // reward tier, 1 indexed
-                metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
+                metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, _ones(rawMetadata.length)));
             }
 
-            // Pay to the project and mint an NFT
+            // Pay to the project and mint a position
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(
                 _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
             );
-            // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
+            // Forward 1 block, user should receive all the voting power of the tier, as it's the only position
             vm.warp(_tsReader.timestamp() + 1);
             assertEq(
                 _governor.MAX_ATTESTATION_POWER_TIER(),
@@ -578,7 +578,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         for (uint256 i = 0; i < scorecards.length; i++) {
             _verifySingleCashOut(_projectId, _nft, scorecards[i], _users[i], _pot, _sumDistribution, distribution, i);
         }
-        // All NFTs should have been redeemed, only some dust should be left
+        // All positions should have been redeemed, only some dust should be left
         uint256 remainingSurplus =
             jbMultiTerminal().currentSurplusOf(_projectId, new address[](0), 18, JBCurrencyIds.ETH);
         uint256 _expected = _pot * (_nft.TOTAL_CASHOUT_WEIGHT() - assignedCashOutWeight) / _nft.TOTAL_CASHOUT_WEIGHT();
@@ -608,9 +608,9 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         uint256 _receiveNana;
         {
             uint256[] memory cashOutId = new uint256[](1);
-            cashOutId[0] = _generateTokenId(i + 1, 1);
-            cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutId));
-            (_receiveDefifa, _receiveNana) = _nft.tokensClaimableFor(cashOutId);
+            cashOutId[0] = i + 1;
+            cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutId, _ones(1)));
+            (_receiveDefifa, _receiveNana) = _nft.tokensClaimableFor(cashOutId, _ones(1));
         }
         uint256 _nanaBalance = IERC20(_protocolFeeProjectTokenAccount).balanceOf(_user);
         uint256 _defifaBalance = IERC20(_defifaProjectTokenAccount).balanceOf(_user);
@@ -654,12 +654,12 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
 
         address _refundUser = address(bytes20(keccak256("refund_user")));
         // The user should have no balance
-        assertEq(_hook.balanceOf(_refundUser), 0);
-        // Build metadata to buy specific NFT
+        assertEq(_hook.balanceOf(_refundUser, 1), 0);
+        // Build metadata to buy a specific position
         uint16[] memory rawMetadata = new uint16[](1);
         rawMetadata[0] = uint16(1); // reward tier, 1 indexed
-        bytes memory metadata = _buildPayMetadata(abi.encode(_refundUser, rawMetadata));
-        // Pay to the project and mint an NFT
+        bytes memory metadata = _buildPayMetadata(abi.encode(_refundUser, rawMetadata, _ones(rawMetadata.length)));
+        // Pay to the project and mint a position
         vm.deal(_refundUser, _cost);
 
         vm.prank(_refundUser);
@@ -674,16 +674,15 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
 
         // User should no longer have any funds
         assertEq(_refundUser.balance, 0);
-        // The user should have have a token
-        assertEq(_hook.balanceOf(_refundUser), 1);
+        // The user should have exactly one tier 1 position
+        assertEq(_hook.balanceOf(_refundUser, 1), 1);
 
-        uint256 _numberBurned = _hook.store().numberOfBurnedFor(address(_hook), 1);
         // Craft the metadata: redeem the tokenId
         bytes memory cashOutMetadata;
         {
             uint256[] memory cashOutId = new uint256[](1);
-            cashOutId[0] = _generateTokenId(1, _tier.initialSupply - _tier.remainingSupply + 1 + _numberBurned);
-            cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutId));
+            cashOutId[0] = 1;
+            cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutId, _ones(1)));
         }
 
         vm.prank(_refundUser);
@@ -700,7 +699,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.warp(block.timestamp + 1);
 
         assertEq(_refundUser.balance, _cost);
-        assertEq(_hook.balanceOf(_refundUser), 0);
+        assertEq(_hook.balanceOf(_refundUser, 1), 0);
 
         assertEq(0, _governor.getAttestationWeight(_gameId, _refundUser, uint48(block.timestamp)));
     }
@@ -731,17 +730,17 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             // fund user
             vm.deal(_users[i], 1 ether);
             if (i < nOfOtherTiers) {
-                // Build metadata to buy specific NFT
+                // Build metadata to buy a specific position
                 uint16[] memory rawMetadata = new uint16[](1);
                 // forge-lint: disable-next-line(unsafe-typecast)
                 rawMetadata[0] = uint16(i + 1); // reward tier, 1 indexed
-                bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
-                // Pay to the project and mint an NFT
+                bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, _ones(rawMetadata.length)));
+                // Pay to the project and mint a position
                 vm.prank(_users[i]);
                 jbMultiTerminal().pay{value: 1 ether}(
                     _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
                 );
-                // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
+                // Forward 1 block, user should receive all the voting power of the tier, as it's the only position
                 vm.warp(block.timestamp + 1);
                 assertEq(
                     _governor.MAX_ATTESTATION_POWER_TIER(),
@@ -749,12 +748,12 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
                     _governor.getAttestationWeight(_gameId, _users[i], uint48(block.timestamp))
                 );
             } else {
-                // Build metadata to buy specific NFT
+                // Build metadata to buy a specific position
                 uint16[] memory rawMetadata = new uint16[](1);
                 // forge-lint: disable-next-line(unsafe-typecast)
                 rawMetadata[0] = uint16(nOfOtherTiers + 1); // reward tier, 1 indexed
-                bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
-                // Pay to the project and mint an NFT
+                bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, _ones(rawMetadata.length)));
+                // Pay to the project and mint a position
                 vm.prank(_users[i]);
                 jbMultiTerminal().pay{value: 1 ether}(
                     _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
@@ -804,17 +803,17 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             // fund user
             vm.deal(_users[i], 1 ether);
             if (i < nOfOtherTiers) {
-                // Build metadata to buy specific NFT
+                // Build metadata to buy a specific position
                 uint16[] memory rawMetadata = new uint16[](1);
                 // forge-lint: disable-next-line(unsafe-typecast)
                 rawMetadata[0] = uint16(i + 1); // reward tier, 1 indexed
-                bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
-                // Pay to the project and mint an NFT
+                bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, _ones(rawMetadata.length)));
+                // Pay to the project and mint a position
                 vm.prank(_users[i]);
                 jbMultiTerminal().pay{value: 1 ether}(
                     _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
                 );
-                // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
+                // Forward 1 block, user should receive all the voting power of the tier, as it's the only position
                 vm.warp(block.timestamp + 1);
                 assertEq(
                     _governor.MAX_ATTESTATION_POWER_TIER(),
@@ -822,12 +821,12 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
                     _governor.getAttestationWeight(_gameId, _users[i], uint48(block.timestamp))
                 );
             } else {
-                // Build metadata to buy specific NFT
+                // Build metadata to buy a specific position
                 uint16[] memory rawMetadata = new uint16[](1);
                 // forge-lint: disable-next-line(unsafe-typecast)
                 rawMetadata[0] = uint16(nOfOtherTiers + 1); // reward tier, 1 indexed
-                bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
-                // Pay to the project and mint an NFT
+                bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, _ones(rawMetadata.length)));
+                // Pay to the project and mint a position
                 vm.prank(_users[i]);
                 jbMultiTerminal().pay{value: 1 ether}(
                     _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
@@ -903,8 +902,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         for (uint256 i = 0; i < _users.length; i++) {
             uint256 _tier = i <= nOfOtherTiers ? i + 1 : nOfOtherTiers + 1;
             uint256[] memory cashOutId = new uint256[](1);
-            cashOutId[0] = _generateTokenId(_tier, _tier == nOfOtherTiers + 1 ? i - nOfOtherTiers + 1 : 1);
-            cashOutMetadatas[i] = _buildCashOutMetadata(abi.encode(cashOutId));
+            cashOutId[0] = _tier;
+            cashOutMetadatas[i] = _buildCashOutMetadata(abi.encode(cashOutId, _ones(1)));
         }
 
         singleTierVerifier.verify(
@@ -1066,12 +1065,12 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             _users[i] = address(bytes20(keccak256(abi.encode("user", Strings.toString(i)))));
             // fund user
             vm.deal(_users[i], 1 ether);
-            // Build metadata to buy specific NFT
+            // Build metadata to buy a specific position
             uint16[] memory rawMetadata = new uint16[](1);
             // forge-lint: disable-next-line(unsafe-typecast)
             rawMetadata[0] = uint16(i + 1); // reward tier, 1 indexed
-            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
-            // Pay to the project and mint an NFT
+            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, _ones(rawMetadata.length)));
+            // Pay to the project and mint a position
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(
                 _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
@@ -1081,7 +1080,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             tiered721SetDelegatesData[0] = DefifaDelegation({delegatee: _users[i], tierId: uint256(i + 1)});
             vm.prank(_users[i]);
             _nft.setTierDelegatesTo(tiered721SetDelegatesData);
-            // Forward 1 block, user should receive all the voting power of the tier, as its the only NFT
+            // Forward 1 block, user should receive all the voting power of the tier, as it's the only position
             vm.warp(_tsReader.timestamp() + 1);
             assertEq(
                 _governor.MAX_ATTESTATION_POWER_TIER(),
@@ -1141,7 +1140,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             uint16[] memory rawMetadata = new uint16[](1);
             // forge-lint: disable-next-line(unsafe-typecast)
             rawMetadata[0] = uint16(i + 1);
-            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
+            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, _ones(rawMetadata.length)));
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(
                 _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
@@ -1189,7 +1188,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             uint16[] memory rawMetadata = new uint16[](1);
             // forge-lint: disable-next-line(unsafe-typecast)
             rawMetadata[0] = uint16(i + 1);
-            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
+            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, _ones(rawMetadata.length)));
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(
                 _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
@@ -1272,26 +1271,26 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         uint256 _cost = _tier.price;
         address _refundUser = address(bytes20(keccak256("refund_user")));
         // The user should have no balance
-        assertEq(_hook.balanceOf(_refundUser), 0);
-        // Build metadata to buy specific NFT
+        assertEq(_hook.balanceOf(_refundUser, _tierId), 0);
+        // Build metadata to buy a specific position
         uint16[] memory rawMetadata = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         rawMetadata[0] = uint16(_tierId); // reward tier, 1 indexed
-        bytes memory metadata = _buildPayMetadata(abi.encode(_refundUser, rawMetadata));
-        // Pay to the project and mint an NFT
+        bytes memory metadata = _buildPayMetadata(abi.encode(_refundUser, rawMetadata, _ones(rawMetadata.length)));
+        // Pay to the project and mint a position
         vm.deal(_refundUser, _cost);
         vm.prank(_refundUser);
         jbMultiTerminal().pay{value: _cost}(_projectId, JBConstants.NATIVE_TOKEN, _cost, _refundUser, 0, "", metadata);
         // User should no longer have any funds
         assertEq(_refundUser.balance, 0);
-        // The user should have have a token
-        assertEq(_hook.balanceOf(_refundUser), 1);
+        // The user should have exactly one position in the tier
+        assertEq(_hook.balanceOf(_refundUser, _tierId), 1);
         // Craft the metadata: redeem the tokenId
         bytes memory cashOutMetadata;
         {
             uint256[] memory cashOutId = new uint256[](1);
-            cashOutId[0] = _generateTokenId(_tierId, _tier.initialSupply - --_tier.remainingSupply);
-            cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutId));
+            cashOutId[0] = _tierId;
+            cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutId, _ones(1)));
         }
         vm.prank(_refundUser);
         JBMultiTerminal(address(jbMultiTerminal()))
@@ -1306,8 +1305,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         });
         // User should have their original funds again
         assertEq(_refundUser.balance, _cost);
-        // User should no longer have the NFT
-        assertEq(_hook.balanceOf(_refundUser), 0);
+        // User should no longer have the position
+        assertEq(_hook.balanceOf(_refundUser, _tierId), 0);
     }
 
     // Create launchProjectFor(..) payload
@@ -1330,8 +1329,12 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         bytes32(0x7D5A99F603F231D53A4F39D1521F98D2E8BB279CF29BEBFD0687DC98458E7F89)
     ];
 
-    function _generateTokenId(uint256 _tierId, uint256 _tokenNumber) internal pure returns (uint256) {
-        return (_tierId * 1_000_000_000) + _tokenNumber;
+    /// @dev A count of one position for each of `n` token IDs.
+    function _ones(uint256 n) internal pure returns (uint256[] memory counts) {
+        counts = new uint256[](n);
+        for (uint256 i; i < n; i++) {
+            counts[i] = 1;
+        }
     }
 
     function _buildPayMetadata(bytes memory metadata) internal view returns (bytes memory) {
