@@ -122,8 +122,7 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
 
         {
             // Get a reference to the tier. An ERC-1155 game maps its paid and reserve token IDs to the tier itself.
-            JB721Tier memory tier = hook.store()
-                .tierOf({
+            JB721Tier memory tier = hook.store().tierOf({
                 hook: address(hook),
                 id: IERC165(address(hook)).supportsInterface(type(IERC1155).interfaceId)
                     ? IDefifa1155Hook(address(hook)).tierIdOf(tokenId)

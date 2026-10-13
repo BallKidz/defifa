@@ -602,14 +602,14 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: meta
-        });
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: meta
+            });
     }
 
     function _cashOutMeta(uint256 tid, uint256 amount) internal view returns (bytes memory) {

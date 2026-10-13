@@ -465,27 +465,27 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         vm.prank(_reserveAddr);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: _reserveAddr,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(_reserveAddr),
-            metadata: meta1
-        });
+                holder: _reserveAddr,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(_reserveAddr),
+                metadata: meta1
+            });
 
         bytes memory meta2 = _cashOutMeta(2 + _nft.RESERVE_TOKEN_ID_OFFSET(), 1);
         vm.prank(_reserveAddr);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: _reserveAddr,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(_reserveAddr),
-            metadata: meta2
-        });
+                holder: _reserveAddr,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(_reserveAddr),
+                metadata: meta2
+            });
 
         // Reserved minter should have gotten fee tokens from tiers 1+2 cash-outs
         uint256 reserveDefifa = IERC20(_defifaProjectTokenAccount).balanceOf(_reserveAddr);
@@ -513,14 +513,14 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         vm.prank(_users[0]);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: _users[0],
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(_users[0]),
-            metadata: meta
-        });
+                holder: _users[0],
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(_users[0]),
+                metadata: meta
+            });
         // The position should NOT have been burned (revert rolled it back)
         assertEq(_nft.balanceOf(_users[0], 1), 1, "position not burned on revert");
     }
@@ -705,14 +705,14 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: meta
-        });
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: meta
+            });
     }
 
     function _cashOutMeta(uint256 tokenId, uint256 amount) internal view returns (bytes memory) {
@@ -740,13 +740,13 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: meta
-        });
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: meta
+            });
     }
 }

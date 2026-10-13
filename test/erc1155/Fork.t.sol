@@ -454,14 +454,14 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.expectPartialRevert(Defifa1155Hook.Defifa1155Hook_NothingToClaim.selector);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: _users[0],
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(_users[0]),
-            metadata: meta
-        });
+                holder: _users[0],
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(_users[0]),
+                metadata: meta
+            });
 
         // Position not burned (revert rolled it back).
         assertEq(_nft.balanceOf(_users[0], 1), 1, "position intact after revert");
@@ -486,14 +486,14 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.expectRevert();
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: attacker,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(attacker),
-            metadata: meta
-        });
+                holder: attacker,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(attacker),
+                metadata: meta
+            });
     }
 
     // =========================================================================
@@ -1029,27 +1029,27 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.prank(reserveAddr);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: reserveAddr,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(reserveAddr),
-            metadata: meta1
-        });
+                holder: reserveAddr,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(reserveAddr),
+                metadata: meta1
+            });
 
         bytes memory meta2 = _cashOutMeta(2 + offset, 1);
         vm.prank(reserveAddr);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: reserveAddr,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(reserveAddr),
-            metadata: meta2
-        });
+                holder: reserveAddr,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(reserveAddr),
+                metadata: meta2
+            });
 
         uint256 reserveDefifa = IERC20(_defifaProjectTokenAccount).balanceOf(reserveAddr);
         assertGt(reserveDefifa, 0, "reserved minter got DEFIFA tokens");
@@ -1177,14 +1177,14 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.prank(recipient);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: recipient,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(recipient),
-            metadata: meta
-        });
+                holder: recipient,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(recipient),
+                metadata: meta
+            });
         assertGt(recipient.balance - bb, 0, "new owner received ETH");
         assertEq(_nft.balanceOf(recipient, 1), 0, "position burned on cash out");
     }
@@ -1282,14 +1282,14 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: meta
-        });
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: meta
+            });
         assertGt(user.balance - bb, 0, "batch cash out returned ETH");
         assertEq(_nft.balanceOf(user, 1), 0, "all 3 positions burned");
     }
@@ -1321,14 +1321,14 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.prank(_users[0]);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: _users[0],
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(_users[0]),
-            metadata: meta
-        });
+                holder: _users[0],
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(_users[0]),
+                metadata: meta
+            });
         assertGt(_users[0].balance - bb, 0, "cross-tier batch cash out returned ETH");
         assertEq(_nft.balanceOf(_users[0], 1), 0, "tier 1 position burned");
         assertEq(_nft.balanceOf(_users[0], 2), 0, "tier 2 position burned");
@@ -1434,14 +1434,14 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.expectPartialRevert(Defifa1155Hook.Defifa1155Hook_NothingToClaim.selector);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: _users[0],
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(_users[0]),
-            metadata: meta
-        });
+                holder: _users[0],
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(_users[0]),
+                metadata: meta
+            });
     }
 
     // =========================================================================
@@ -1792,14 +1792,14 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.expectRevert(abi.encodeWithSelector(Defifa1155Hook.Defifa1155Hook_Unauthorized.selector, 2, 1, 0, _users[0]));
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: _users[0],
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(_users[0]),
-            metadata: meta
-        });
+                holder: _users[0],
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(_users[0]),
+                metadata: meta
+            });
     }
 
     // =========================================================================
@@ -2332,14 +2332,14 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: meta
-        });
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: meta
+            });
     }
 
     function _cashOutMeta(uint256 tokenId, uint256 amount) internal view returns (bytes memory) {
@@ -2371,14 +2371,14 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: meta
-        });
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: meta
+            });
     }
 
     function _sumTierCashOutWeights() internal view returns (uint256 sum) {

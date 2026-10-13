@@ -411,8 +411,7 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
     function _cashOut(address user, uint256 tid, uint256 tnum) internal {
         bytes memory meta = _cashOutMeta(tid, tnum);
         vm.prank(user);
-        jbMultiTerminal()
-            .cashOutTokensOf({
+        jbMultiTerminal().cashOutTokensOf({
             holder: user,
             projectId: _pid,
             cashOutCount: 0,

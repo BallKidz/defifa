@@ -330,14 +330,14 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: address(token),
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: cashOutMetadata
-        });
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: address(token),
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: cashOutMetadata
+            });
     }
 
     /// @dev The total number of positions `user` holds across every paid and reserve token ID of `nft`.
@@ -756,14 +756,14 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: meta
-        });
+                holder: user,
+                projectId: pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: meta
+            });
     }
 
     /// @dev Deploy both games and mint positions for both. Game A has 4 tiers, Game B has 3 tiers.

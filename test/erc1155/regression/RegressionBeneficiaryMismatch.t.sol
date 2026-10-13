@@ -44,14 +44,14 @@ contract RegressionBeneficiaryMismatchTest is DefifaFeeAccountingTest {
         vm.prank(holder);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: holder,
-            projectId: projectId,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: beneficiary,
-            metadata: cashOutMetadata
-        });
+                holder: holder,
+                projectId: projectId,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: beneficiary,
+                metadata: cashOutMetadata
+            });
 
         assertGt(beneficiary.balance, beneficiaryEthBefore, "terminal reclaim goes to beneficiary");
         assertEq(defifaToken.balanceOf(holder), holderDefifaBefore, "holder receives no DEFIFA fee tokens");

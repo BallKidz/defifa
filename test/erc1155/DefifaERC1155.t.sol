@@ -235,14 +235,14 @@ abstract contract DefifaERC1155Harness is JBTest, TestBaseWorkflow {
         vm.prank(holder);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: holder,
-            projectId: gameId,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(holder),
-            metadata: metadata
-        });
+                holder: holder,
+                projectId: gameId,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(holder),
+                metadata: metadata
+            });
     }
 
     function _payMetadata(uint16[] memory tierIds, uint256[] memory counts) internal view returns (bytes memory) {

@@ -334,8 +334,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
     function _cashOut(address user, uint256 tierId, uint256 tokenNumber) internal {
         bytes memory metadata = _cashOutMetadata(tierId, tokenNumber);
         vm.prank(user);
-        jbMultiTerminal()
-            .cashOutTokensOf({
+        jbMultiTerminal().cashOutTokensOf({
             holder: user,
             projectId: _pid,
             cashOutCount: 0,
