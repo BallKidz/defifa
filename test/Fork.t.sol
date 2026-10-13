@@ -14,7 +14,6 @@ import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressReg
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
-import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 import {DefifaDelegation} from "../src/structs/DefifaDelegation.sol";
 import {DefifaLaunchProjectData} from "../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../src/structs/DefifaTierParams.sol";
@@ -153,9 +152,9 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         // Verify MINT phase.
         assertEq(uint256(deployer.currentGamePhaseOf(_pid)), uint256(DefifaGamePhase.MINT));
 
-        // Verify all users hold NFTs.
+        // Verify all users hold one position of their tier.
         for (uint256 i; i < 4; i++) {
-            assertEq(_nft.balanceOf(_users[i]), 1, "each user holds 1 NFT");
+            assertEq(_nft.balanceOf(_users[i], i + 1), 1, "each user holds 1 position");
         }
 
         // Record pot before fees.
@@ -207,7 +206,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             uint256 bb = _users[i].balance;
             _refund(_users[i], i + 1);
             assertEq(_users[i].balance - bb, 2 ether, "exact refund of mint price");
-            assertEq(_nft.balanceOf(_users[i]), 0, "NFT burned on refund");
+            assertEq(_nft.balanceOf(_users[i], i + 1), 0, "position burned on refund");
         }
 
         // Remaining pot = 4 users * 2 ETH = 8 ETH.
@@ -297,7 +296,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         uint256[] memory payouts = new uint256[](5);
         for (uint256 i; i < 5; i++) {
             uint256 bb = _users[i].balance;
-            _cashOut(_users[i], 1, i + 1);
+            _cashOut(_users[i], 1, 1);
             payouts[i] = _users[i].balance - bb;
             assertGt(payouts[i], 0, "winner receives ETH");
         }
@@ -463,12 +462,12 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             metadata: meta
         });
 
-        // NFT not burned (revert rolled it back).
-        assertEq(_nft.balanceOf(_users[0]), 1, "NFT intact after revert");
+        // Position not burned (revert rolled it back).
+        assertEq(_nft.balanceOf(_users[0], 1), 1, "position intact after revert");
     }
 
     // =========================================================================
-    // ADVERSARIAL: Non-holder tries to cash out someone else's NFT
+    // ADVERSARIAL: Non-holder tries to cash out someone else's position
     // =========================================================================
 
     function test_fork_nonHolderCashOutReverts() external {
@@ -559,16 +558,17 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // ADVERSARIAL: NFT transfer then try to double-vote
+    // ADVERSARIAL: Position transfer then try to double-vote
     // =========================================================================
 
     function test_fork_nftTransferDoesNotDoubleVote() external {
         _setupGame(4, 1 ether);
 
-        // user[0] transfers their NFT to user[1] (who already has tier 2)
-        uint256 tokenId = _generateTokenId(1, 1);
+        // user[0] transfers their tier 1 position to user[1] (who already has tier 2)
         vm.prank(_users[0]);
-        _nft.transferFrom(_users[0], _users[1], tokenId);
+        _nft.safeTransferFrom(_users[0], _users[1], 1, 1, "");
+        assertEq(_nft.balanceOf(_users[0], 1), 0, "sender holds no tier 1 position");
+        assertEq(_nft.balanceOf(_users[1], 1), 1, "recipient holds the tier 1 position");
 
         _toScoring();
 
@@ -983,7 +983,12 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         reserveConfigs[1] = JB721TiersMintReservesConfig({tierId: 2, count: 1});
         _nft.mintReservesFor(reserveConfigs);
 
-        assertEq(_nft.balanceOf(reserveAddr), 2, "reserve beneficiary holds 2 NFTs");
+        // Reserve mints land on the reserve IDs, one per tier, never on the paid IDs.
+        uint256 offset = _nft.RESERVE_TOKEN_ID_OFFSET();
+        assertEq(_nft.balanceOf(reserveAddr, 1 + offset), 1, "reserve beneficiary holds 1 tier 1 reserve position");
+        assertEq(_nft.balanceOf(reserveAddr, 2 + offset), 1, "reserve beneficiary holds 1 tier 2 reserve position");
+        assertEq(_nft.balanceOf(reserveAddr, 1), 0, "no paid tier 1 position");
+        assertEq(_nft.balanceOf(reserveAddr, 2), 0, "no paid tier 2 position");
 
         // Seed fee tokens into the hook.
         deal(address(IERC20(_defifaProjectTokenAccount)), address(_nft), 1000 ether);
@@ -1018,8 +1023,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         uint256 user0Defifa = IERC20(_defifaProjectTokenAccount).balanceOf(_users[0]);
         assertGt(user0Defifa, 0, "paid minter got DEFIFA tokens");
 
-        // Cash out reserved minter's tokens.
-        bytes memory meta1 = _cashOutMeta(1, 2);
+        // Cash out reserved minter's positions.
+        bytes memory meta1 = _cashOutMeta(1 + offset, 1);
         vm.prank(reserveAddr);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
@@ -1032,7 +1037,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             metadata: meta1
         });
 
-        bytes memory meta2 = _cashOutMeta(2, 2);
+        bytes memory meta2 = _cashOutMeta(2 + offset, 1);
         vm.prank(reserveAddr);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
@@ -1138,7 +1143,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // EDGE: NFT transfer → new owner cashes out, firstOwnerOf preserved
+    // EDGE: Position transfer → new holder cashes out, balances move with the transfer
     // =========================================================================
 
     function test_fork_nftTransfer_newOwnerCashesOut() external {
@@ -1153,17 +1158,17 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         address original = _users[0];
         address recipient = _addr(999);
 
-        uint256 tokenId = _generateTokenId(1, 1);
+        // Verify the minter holds the position before transfer.
+        assertEq(_nft.balanceOf(original, 1), 1, "minter holds the position before transfer");
+        assertEq(_nft.balanceOf(recipient, 1), 0, "recipient holds nothing before transfer");
 
-        // Verify firstOwnerOf before transfer.
-        assertEq(_nft.firstOwnerOf(tokenId), original, "firstOwner = minter before transfer");
-
-        // Transfer NFT.
+        // Transfer the position.
         vm.prank(original);
-        _nft.transferFrom(original, recipient, tokenId);
+        _nft.safeTransferFrom(original, recipient, 1, 1, "");
 
-        // firstOwnerOf should still be the original minter.
-        assertEq(_nft.firstOwnerOf(tokenId), original, "firstOwner = minter after transfer");
+        // The balance moved to the recipient.
+        assertEq(_nft.balanceOf(original, 1), 0, "minter holds nothing after transfer");
+        assertEq(_nft.balanceOf(recipient, 1), 1, "recipient holds the position after transfer");
 
         // New owner cashes out.
         uint256 bb = recipient.balance;
@@ -1180,6 +1185,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             metadata: meta
         });
         assertGt(recipient.balance - bb, 0, "new owner received ETH");
+        assertEq(_nft.balanceOf(recipient, 1), 0, "position burned on cash out");
     }
 
     // =========================================================================
@@ -1216,7 +1222,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         uint256[] memory received = new uint256[](5);
         for (uint256 i; i < 5; i++) {
             uint256 bb = _users[i].balance;
-            _cashOut(_users[i], 1, i + 1);
+            _cashOut(_users[i], 1, 1);
             received[i] = _users[i].balance - bb;
         }
 
@@ -1227,7 +1233,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // EDGE: Multi-token cash out — burn 3 NFTs from same tier in one tx
+    // EDGE: Multi-position cash out — burn 3 positions from the same tier in one tx
     // =========================================================================
 
     function test_fork_multiTokenCashOut_sameTier() external {
@@ -1236,7 +1242,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
 
         address user = _addr(0);
-        // Mint 3 tokens in tier 1.
+        // Mint 3 positions in tier 1, one payment each.
         for (uint256 i; i < 3; i++) {
             _mint(user, 1, 1 ether);
             vm.warp(_tsReader.timestamp() + 1);
@@ -1265,16 +1271,11 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         sc[0].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT();
         _attestAndRatify(sc);
 
-        // Build multi-token cash out metadata (3 tokens at once).
-        uint256[] memory tokenIds = new uint256[](3);
-        tokenIds[0] = _generateTokenId(1, 1);
-        tokenIds[1] = _generateTokenId(1, 2);
-        tokenIds[2] = _generateTokenId(1, 3);
-        bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(tokenIds);
-        bytes4[] memory ids = new bytes4[](1);
-        ids[0] = metadataHelper().getId("cashOut", address(hook));
-        bytes memory meta = metadataHelper().createMetadata(ids, data);
+        // The 3 positions accumulate on one token ID.
+        assertEq(_nft.balanceOf(user, 1), 3, "user holds 3 tier 1 positions");
+
+        // Build cash out metadata for all 3 positions at once.
+        bytes memory meta = _cashOutMeta(1, 3);
 
         uint256 bb = user.balance;
         vm.prank(user);
@@ -1289,7 +1290,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             metadata: meta
         });
         assertGt(user.balance - bb, 0, "batch cash out returned ETH");
-        assertEq(_nft.balanceOf(user), 0, "all 3 NFTs burned");
+        assertEq(_nft.balanceOf(user, 1), 0, "all 3 positions burned");
     }
 
     // =========================================================================
@@ -1304,17 +1305,16 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
         // User 0 holds tier 1, user 1 holds tier 2. Transfer tier 2 to user 0.
         vm.prank(_users[1]);
-        _nft.transferFrom(_users[1], _users[0], _generateTokenId(2, 1));
+        _nft.safeTransferFrom(_users[1], _users[0], 2, 1, "");
 
-        // User 0 now holds tier 1 token 1 and tier 2 token 1. Cash out both in one tx.
+        // User 0 now holds one tier 1 and one tier 2 position. Cash out both in one tx.
         uint256[] memory tokenIds = new uint256[](2);
-        tokenIds[0] = _generateTokenId(1, 1);
-        tokenIds[1] = _generateTokenId(2, 1);
-        bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(tokenIds);
-        bytes4[] memory ids = new bytes4[](1);
-        ids[0] = metadataHelper().getId("cashOut", address(hook));
-        bytes memory meta = metadataHelper().createMetadata(ids, data);
+        tokenIds[0] = 1;
+        tokenIds[1] = 2;
+        uint256[] memory amounts = new uint256[](2);
+        amounts[0] = 1;
+        amounts[1] = 1;
+        bytes memory meta = _cashOutMetaFor(tokenIds, amounts);
 
         uint256 bb = _users[0].balance;
         vm.prank(_users[0]);
@@ -1329,6 +1329,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             metadata: meta
         });
         assertGt(_users[0].balance - bb, 0, "cross-tier batch cash out returned ETH");
+        assertEq(_nft.balanceOf(_users[0], 1), 0, "tier 1 position burned");
+        assertEq(_nft.balanceOf(_users[0], 2), 0, "tier 2 position burned");
     }
 
     // =========================================================================
@@ -1442,7 +1444,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // EDGE: NFT transfer destroys delegation — new owner can't vote in SCORING
+    // EDGE: Position transfer — recipient re-delegates and gets attestation power
     // =========================================================================
 
     function test_fork_nftTransfer_recipientGetsAttestationPower() external {
@@ -1450,11 +1452,12 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
         address recipient = _addr(999);
 
-        // Transfer tier 1 NFT during MINT.
+        // Transfer the tier 1 position during MINT.
         vm.prank(_users[0]);
-        _nft.transferFrom(_users[0], recipient, _generateTokenId(1, 1));
+        _nft.safeTransferFrom(_users[0], recipient, 1, 1, "");
+        assertEq(_nft.balanceOf(recipient, 1), 1, "recipient holds the tier 1 position");
 
-        // Recipient has the NFT but delegation went to address(0) (recipient's default).
+        // Recipient has the position and its units auto-delegate to the recipient.
         // Recipient can re-delegate during MINT.
         DefifaDelegation[] memory dd = new DefifaDelegation[](1);
         dd[0] = DefifaDelegation({delegatee: recipient, tierId: 1});
@@ -1538,19 +1541,19 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         _setupGame(4, 1 ether);
 
         address user = _users[0];
-        uint256 tokenId1 = _generateTokenId(1, 1);
 
-        // Verify user holds token.
-        assertEq(_nft.ownerOf(tokenId1), user);
+        // Verify user holds the position.
+        assertEq(_nft.balanceOf(user, 1), 1, "user holds 1 tier 1 position");
 
         // Refund.
         _refund(user, 1);
-        assertEq(_nft.balanceOf(user), 0, "NFT burned after refund");
+        assertEq(_nft.balanceOf(user, 1), 0, "position burned after refund");
+        assertEq(_nft.currentSupplyOfTier(1), 0, "tier 1 supply is 0 after refund");
 
-        // Re-mint same tier. Token number should be 2 now (first was burned).
+        // Re-mint same tier. The position lands on the same token ID.
         _mint(user, 1, 1 ether);
-        uint256 tokenId2 = _generateTokenId(1, 2);
-        assertEq(_nft.ownerOf(tokenId2), user, "user re-minted tier 1 with new token number");
+        assertEq(_nft.balanceOf(user, 1), 1, "user re-minted tier 1");
+        assertEq(_nft.currentSupplyOfTier(1), 1, "tier 1 supply is 1 after re-mint");
     }
 
     // =========================================================================
@@ -1773,7 +1776,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // EDGE: Cash out non-owned token ID → Unauthorized
+    // EDGE: Cash out an unheld token ID → Unauthorized
     // =========================================================================
 
     function test_fork_cashOut_wrongTokenId_reverts() external {
@@ -1781,21 +1784,11 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         _toScoring();
         _attestAndRatify(_evenScorecard(4));
 
-        // User 0 tries to cash out user 1's token.
-        uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = _generateTokenId(2, 1); // tier 2, token 1 — belongs to user 1
-        bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(tokenIds);
-        bytes4[] memory ids = new bytes4[](1);
-        ids[0] = metadataHelper().getId("cashOut", address(hook));
-        bytes memory meta = metadataHelper().createMetadata(ids, data);
+        // User 0 tries to cash out a tier 2 position, which only user 1 holds.
+        bytes memory meta = _cashOutMeta(2, 1);
 
         vm.prank(_users[0]);
-        vm.expectRevert(
-            abi.encodeWithSelector(
-                DefifaHook.DefifaHook_Unauthorized.selector, _generateTokenId(2, 1), _users[1], _users[0]
-            )
-        );
+        vm.expectRevert(abi.encodeWithSelector(DefifaHook.DefifaHook_Unauthorized.selector, 2, 1, 0, _users[0]));
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
             holder: _users[0],
@@ -1882,9 +1875,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         uint256 total;
         for (uint256 i; i < _users.length; i++) {
             uint256 bb = _users[i].balance;
-            uint256 tid = (i / nPpt) + 1;
-            uint256 tnum = (i % nPpt) + 1;
-            _cashOut(_users[i], tid, tnum);
+            _cashOut(_users[i], (i / nPpt) + 1, 1);
             total += _users[i].balance - bb;
         }
 
@@ -1972,12 +1963,12 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
         // Tiers 1-3 get nothing.
         for (uint256 i; i < 3; i++) {
-            uint256 weight = _nft.cashOutWeightOf(_generateTokenId(i + 1, 1));
+            uint256 weight = _nft.cashOutWeightOf(i + 1);
             assertEq(weight, 0, "zero-weight tier has 0 cash out weight");
         }
 
         // Tier 4 gets everything.
-        uint256 weight4 = _nft.cashOutWeightOf(_generateTokenId(4, 1));
+        uint256 weight4 = _nft.cashOutWeightOf(4);
         assertGt(weight4, 0, "tier 4 has weight");
 
         uint256 bb = _users[3].balance;
@@ -2021,8 +2012,12 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         m[0] = 1;
         m[1] = 2;
         m[2] = 3;
+        uint256[] memory counts = new uint256[](3);
+        counts[0] = 1;
+        counts[1] = 1;
+        counts[2] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, m);
+        data[0] = abi.encode(user, m, counts);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(hook));
 
@@ -2031,7 +2026,10 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
             _pid, JBConstants.NATIVE_TOKEN, 3 ether, user, 0, "", metadataHelper().createMetadata(ids, data)
         );
 
-        assertEq(_nft.balanceOf(user), 3, "user holds 3 NFTs");
+        for (uint256 i = 1; i <= 3; i++) {
+            assertEq(_nft.balanceOf(user, i), 1, "user holds 1 position per minted tier");
+        }
+        assertEq(_nft.balanceOf(user, 4), 0, "no tier 4 position");
     }
 
     // =========================================================================
@@ -2066,20 +2064,20 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // CASH OUT WEIGHT: totalCashOutWeight() is constant
+    // CASH OUT WEIGHT: ratified tier weights sum to TOTAL_CASHOUT_WEIGHT
     // =========================================================================
 
     function test_fork_totalCashOutWeight_constant() external {
         _setupGame(4, 1 ether);
 
-        // Before scorecard.
-        assertEq(_nft.totalCashOutWeight(), _nft.TOTAL_CASHOUT_WEIGHT(), "constant before scorecard");
+        // Before scorecard: no tier carries weight.
+        assertEq(_sumTierCashOutWeights(), 0, "no weights before scorecard");
 
         _toScoring();
         _attestAndRatify(_evenScorecard(4));
 
-        // After scorecard.
-        assertEq(_nft.totalCashOutWeight(), _nft.TOTAL_CASHOUT_WEIGHT(), "constant after scorecard");
+        // After scorecard: the tier weights add up to the constant total.
+        assertEq(_sumTierCashOutWeights(), _nft.TOTAL_CASHOUT_WEIGHT(), "weights sum to total after scorecard");
     }
 
     // =========================================================================
@@ -2258,8 +2256,10 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         uint16[] memory m = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, m);
+        data[0] = abi.encode(user, m, counts);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(hook));
         vm.prank(user);
@@ -2323,8 +2323,8 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         return jbMultiTerminal().STORE().balanceOf(address(jbMultiTerminal()), _pid, JBConstants.NATIVE_TOKEN);
     }
 
-    function _cashOut(address user, uint256 tid, uint256 tnum) internal {
-        bytes memory meta = _cashOutMeta(tid, tnum);
+    function _cashOut(address user, uint256 tokenId, uint256 amount) internal {
+        bytes memory meta = _cashOutMeta(tokenId, amount);
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
@@ -2338,11 +2338,17 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         });
     }
 
-    function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {
-        uint256[] memory cid = new uint256[](1);
-        cid[0] = (tid * 1_000_000_000) + tnum;
+    function _cashOutMeta(uint256 tokenId, uint256 amount) internal view returns (bytes memory) {
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = tokenId;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = amount;
+        return _cashOutMetaFor(tokenIds, amounts);
+    }
+
+    function _cashOutMetaFor(uint256[] memory tokenIds, uint256[] memory amounts) internal view returns (bytes memory) {
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(cid);
+        data[0] = abi.encode(tokenIds, amounts);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("cashOut", address(hook));
         return metadataHelper().createMetadata(ids, data);
@@ -2357,10 +2363,7 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
     }
 
     function _refund(address user, uint256 tid) internal {
-        JB721Tier memory tier = _nft.store().tierOf(address(_nft), tid, false);
-        uint256 nb = _nft.store().numberOfBurnedFor(address(_nft), tid);
-        uint256 tnum = tier.initialSupply - tier.remainingSupply + nb;
-        bytes memory meta = _cashOutMeta(tid, tnum);
+        bytes memory meta = _cashOutMeta(tid, 1);
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
@@ -2374,8 +2377,11 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         });
     }
 
-    function _generateTokenId(uint256 _tierId, uint256 _tokenNumber) internal pure returns (uint256) {
-        return (_tierId * 1_000_000_000) + _tokenNumber;
+    function _sumTierCashOutWeights() internal view returns (uint256 sum) {
+        uint256[128] memory weights = _nft.tierCashOutWeights();
+        for (uint256 i; i < 128; i++) {
+            sum += weights[i];
+        }
     }
 
     /// @dev Mints fungible project tokens by pranking as the terminal. Defifa games use weight=0 so `pay` does not
