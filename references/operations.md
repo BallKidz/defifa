@@ -21,7 +21,7 @@ Use this file when the task is about launch config, phase timing, governance win
 - Game-state issue is blamed on the hook even though the deployer queued the wrong phase or timing.
 - Governance behavior looks wrong, but the real issue is stale launch configuration.
 - Settlement changes accidentally affect fee distribution or redemption accounting.
-- Resolver issues get misdiagnosed as hook or governor problems because they surface through NFTs.
+- Resolver issues get misdiagnosed as hook or governor problems because they surface through game-piece metadata.
 - Review-style failures around reserve dilution or attestation counting are treated as isolated math issues even though they cross deployer, hook, and governor boundaries.
 
 ## Useful proof points

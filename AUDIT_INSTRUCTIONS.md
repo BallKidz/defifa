@@ -1,6 +1,6 @@
 # Audit Instructions
 
-Defifa is a staged prediction-game system built on Juicebox and the tiered 721 stack. Audit it as a governance-and-settlement protocol, not only an NFT game.
+Defifa is a staged prediction-game system built on Juicebox and the tiered 721 store. Game pieces are ERC-1155 balances held by `DefifaHook`. Audit it as a governance-and-settlement protocol, not only a token game.
 
 ## Audit objective
 
@@ -36,7 +36,7 @@ In scope:
 High-level lifecycle:
 
 - deploy a game as a Juicebox project
-- sell outcome NFTs during the mint phase
+- sell outcome positions (ERC-1155 balances, one per tier) during the mint phase
 - optionally allow refunds or no-contest handling
 - run scorecard governance through submissions and attestations
 - ratify one scorecard
@@ -47,7 +47,7 @@ The contracts split responsibility as follows:
 - `DefifaDeployer` launches the project and wires lifecycle configuration
 - `DefifaHook` handles minting, burning, fee accounting, and game-specific cash-out math
 - `DefifaGovernor` owns scorecard governance and ratification
-- `DefifaTokenUriResolver` handles game NFT metadata
+- `DefifaTokenUriResolver` handles game-piece metadata (`uri(id)`)
 
 ## Roles and privileges
 
@@ -62,7 +62,7 @@ The contracts split responsibility as follows:
 | Dependency | Assumption | What breaks if wrong |
 |------------|------------|----------------------|
 | `nana-core-v6` | Treasury accounting, rulesets, and cash-out surfaces stay coherent | Pot settlement and redeem math become unsound |
-| `nana-721-hook-v6` | Tier issuance and reserve behavior match Defifa's game logic | Voting power, supply, and cash-out weights drift |
+| `nana-721-hook-v6` | `JB721TiersHookStore` tier config, supply, reserve, and burn accounting match Defifa's game logic when called once per position; its per-holder views are unused (they read 0 for Defifa hooks) | Voting power, supply, and cash-out weights drift |
 | Deployer launch patterns | Launch-time authority fully converges to the intended game authority | Games remain misconfigured or over-privileged |
 
 ## Critical invariants
@@ -79,6 +79,7 @@ The contracts split responsibility as follows:
 - delegation, attestation, and quorum calculations
 - `DefifaHook` cash-out weight and fee-token accounting
 - reserve-related denominators during governance and settlement
+- the ERC-1155 position layout: paid ID = tier ID vs reserve ID = `tierId + RESERVE_TOKEN_ID_OFFSET`, refund exclusion of reserve IDs after transfers, `(ids, amounts)` metadata decoding, duplicate IDs in cash-out metadata, and attestation movement in `_update`
 - deployer logic that queues or fulfills lifecycle rulesets
 
 ## Accepted risks or behaviors

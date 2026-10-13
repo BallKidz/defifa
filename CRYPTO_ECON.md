@@ -4,6 +4,8 @@
 
 *March 2026*
 
+> **Note (October 2026):** game positions are now ERC-1155 balances held by `DefifaHook` (one balance per tier, reserve-minted positions under `tierId + RESERVE_TOKEN_ID_OFFSET`), not individual ERC-721 NFTs. Read "NFT" and "token" below as one position unit; the economics are unchanged.
+
 ---
 
 ## Abstract

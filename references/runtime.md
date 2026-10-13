@@ -5,14 +5,14 @@ Use this file when `defifa/SKILLS.md` has already routed you here and you need t
 ## Contract roles
 
 - [`src/DefifaDeployer.sol`](../src/DefifaDeployer.sol) launches games, manages phase progression, fulfills commitments, and triggers safety exits such as no-contest.
-- [`src/DefifaHook.sol`](../src/DefifaHook.sol) manages the NFT game pieces, delegation, and settlement-side cash-out behavior.
+- [`src/DefifaHook.sol`](../src/DefifaHook.sol) manages the ERC-1155 game pieces (one balance per tier; reserve mints under `tierId + RESERVE_TOKEN_ID_OFFSET`), delegation, and settlement-side cash-out behavior.
 - [`src/DefifaGovernor.sol`](../src/DefifaGovernor.sol) handles scorecard submission, attestation, quorum, and ratification.
 - [`src/DefifaTokenUriResolver.sol`](../src/DefifaTokenUriResolver.sol) renders game-card metadata.
 
 ## Lifecycle
 
 1. Countdown before minting opens.
-2. Mint phase where players buy outcome NFTs and can delegate attestation power.
+2. Mint phase where players buy outcome positions and can delegate attestation power.
 3. Optional refund phase if the launch configuration allows it.
 4. Scoring phase where scorecards are submitted, attested, and ratified.
 5. Complete or no-contest settlement depending on governance outcome and safety checks.
@@ -30,7 +30,7 @@ Use this file when `defifa/SKILLS.md` has already routed you here and you need t
 
 - A settlement bug is blamed on [`src/DefifaHook.sol`](../src/DefifaHook.sol) even though the wrong phase or grace-period state was created in [`src/DefifaDeployer.sol`](../src/DefifaDeployer.sol) or [`src/DefifaGovernor.sol`](../src/DefifaGovernor.sol).
 - A governance bug is blamed on the governor even though attestation power or delegation semantics were wrong in the hook layer.
-- An NFT-facing bug is blamed on settlement code even though the problem is resolver output in [`src/DefifaTokenUriResolver.sol`](../src/DefifaTokenUriResolver.sol).
+- A game-piece metadata bug is blamed on settlement code even though the problem is resolver output in [`src/DefifaTokenUriResolver.sol`](../src/DefifaTokenUriResolver.sol).
 - A Defifa-specific payout result is patched in this repo when the real bug is shared 721 or core protocol behavior upstream.
 
 ## Tests to trust first

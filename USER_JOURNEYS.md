@@ -15,7 +15,7 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 ## Key surfaces
 
 - `DefifaDeployer.launchGameWith(...)`: launches a Defifa game as a JB project and wires hook, governor, splits, and lifecycle timing
-- `DefifaHook.afterPayRecordedWith(...)`: mints outcome NFTs when players pay during the mintable phase
+- `DefifaHook.afterPayRecordedWith(...)`: mints outcome positions (ERC-1155 balances, token ID = tier ID) when players pay during the mintable phase
 - `DefifaHook.beforeCashOutRecordedWith(...)` and `afterCashOutRecordedWith(...)`: define refund, winning-piece redemption, and fee-token claim behavior
 - `DefifaGovernor.submitScorecardFor(...)`, `attestToScorecardFrom(...)`, `revokeAttestationFrom(...)`, `ratifyScorecardFrom(...)`: scorecard governance lifecycle
 - `DefifaDeployer.fulfillCommitmentsOf(...)` and `triggerNoContestFor(...)`: finalize commitments after ratification or unlock refund-oriented no-contest recovery
@@ -63,19 +63,20 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 
 **Main Flow**
 
-1. Pay the game project during the mint window.
-2. `DefifaHook` mints the selected outcome NFT tier.
+1. Pay the game project during the mint window with pay metadata `(address attestationDelegate, uint16[] tierIds, uint256[] counts)`, tier IDs strictly ascending, one count per tier.
+2. `DefifaHook` records each position in the store and mints `counts[i]` of token ID `tierIds[i]` to the beneficiary in one ERC-1155 balance per tier (no receiver callback).
 3. Delegation and mint-cost accounting are updated.
 4. Reserved mints and pending reserves continue to matter for later governance and settlement.
 
 **Failure Modes**
 
 - mint is attempted in the wrong phase
+- pay metadata repeats a tier or is out of order (`DefifaHook_BadTierOrder`), has a zero count, or uses mismatched lengths
 - assumptions about attestation power ignore pending reserves or tier weighting
 
 **Postconditions**
 
-- the player holds game pieces that later affect governance and settlement
+- the player holds game pieces (`hook.balanceOf(player, tierId)`) that later affect governance and settlement; they can move them with `safeTransferFrom` / `safeBatchTransferFrom` or `setApprovalForAll`
 
 ## Journey 3: Submit and ratify a scorecard
 
@@ -121,7 +122,7 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 1. Read the ratified outcome.
 2. Call `fulfillCommitmentsOf(...)`.
 3. Queue the completion ruleset and finalize the promised commitment flow.
-4. Let winning-piece holders redeem under the installed cash-out weights.
+4. Let winning-piece holders redeem under the installed cash-out weights, passing cash-out metadata `(uint256[] tokenIds, uint256[] amounts)` (paid IDs and `tierId + RESERVE_TOKEN_ID_OFFSET` reserve IDs).
 
 **Failure Modes**
 

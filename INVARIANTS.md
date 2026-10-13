@@ -7,7 +7,7 @@ For the cryptoeconomic model (pot formation, prize distribution formula, fee pip
 | Phase | Source of truth | What's allowed |
 |-------|-----------------|----------------|
 | COUNTDOWN | `currentRuleset.cycleNumber == 0` | nothing yet — ruleset hasn't started |
-| MINT | `cycleNumber == 1` | `pay` mints tier NFTs at `tierPrice`; cash-outs at mint price; delegate changes |
+| MINT | `cycleNumber == 1` | `pay` mints tier positions (ERC-1155 balances) at `tierPrice`; cash-outs at mint price; delegate changes |
 | REFUND | `cycleNumber == 2 && refundPeriodDuration != 0` | `pausePay=true`, cash-outs at mint price |
 | SCORING | `cycleNumber >= 2/3` and not NO_CONTEST/COMPLETE | scorecard submission + attestation + ratification |
 | COMPLETE | `cashOutWeightIsSet == true` on hook | weighted reclaim by ratified tier weights |
@@ -21,22 +21,22 @@ NO_CONTEST is reported by the view as soon as the condition is met; the on-chain
 
 ### A.1 Players (paying / cashing out)
 
-- **MINT phase issuance.** A `pay()` during MINT mints one NFT per tier ID in the metadata-encoded `tierIdsToMint` array, charging `tierPrice` per mint (uniform across tiers so attestation power is equal). Overspending (`leftoverAmount != 0`) reverts with `DefifaHook_Overspending` — payer cannot accidentally over-fund. (`DefifaHook.sol:1075-1079`)
-- **Currency lock-in.** Payment currency must equal the `pricingCurrency` baked into the hook at `initialize`; mismatched currency reverts `DefifaHook_WrongCurrency`. (`DefifaHook.sol:1014-1018`)
+- **MINT phase issuance.** A `pay()` during MINT mints `counts[i]` positions of each tier in the metadata-encoded `(attestationDelegate, uint16[] tierIds, uint256[] counts)`, as one ERC-1155 balance per tier (token ID = tier ID), charging `tierPrice` per position (uniform across tiers so attestation power is equal). Tier IDs must be strictly ascending (`DefifaHook_BadTierOrder`), counts non-zero (`DefifaHook_ZeroAmount`), and lengths equal (`DefifaHook_LengthMismatch`) (`DefifaHookLib.expandMints`). Overspending (`leftoverAmount != 0`) reverts with `DefifaHook_Overspending` — payer cannot accidentally over-fund. (`DefifaHook.sol:1135`)
+- **Currency lock-in.** Payment currency must equal the `pricingCurrency` baked into the hook at `initialize`; mismatched currency reverts `DefifaHook_WrongCurrency`. (`DefifaHook.sol:1060-1064`)
 - **No mints outside MINT.** All non-MINT rulesets carry `pausePay=true` (`DefifaDeployer.sol:687`, `DefifaDeployer.sol:893`, `DefifaDeployer.sol:952`, `DefifaDeployer.sol:1008`). REFUND, SCORING, COMPLETE, and NO_CONTEST refund cycles all reject `pay`.
-- **REFUND-phase reclaim.** During REFUND, surplus equals balance (no payout limits), so cash-out at the prevailing cash-out tax (0% for non-COMPLETE phases per `setTierCashOutWeightsTo` gating) returns each holder their proportional share of the pot — effectively the mint price for paid NFTs. Reserve-minted NFTs are flagged `isReserveMint` and contribute 0 to the cumulative mint price during refund cash-outs (`DefifaHook.sol:307-314`).
+- **REFUND-phase reclaim.** During REFUND, surplus equals balance (no payout limits), so cash-out at the prevailing cash-out tax (0% for non-COMPLETE phases per `setTierCashOutWeightsTo` gating) returns each holder their proportional share of the pot — effectively the mint price for paid positions. Reserve-minted positions live under token ID `tierId + RESERVE_TOKEN_ID_OFFSET`, so they stay identifiable after transfers and contribute 0 to the cumulative mint price during MINT/REFUND/NO_CONTEST cash-outs (`DefifaHook.sol:372-380`, `DefifaHookLib.computeCumulativeMintPriceForCashOut`).
 - **NO_CONTEST refund.** Once `triggerNoContestFor` runs, the queued ruleset has no payout limits and `cashOutTaxRate=0`, enabling cash-out at mint price. Anyone can trigger this — players are not at the mercy of the deployer. (`DefifaDeployer.sol:655-717`)
-- **COMPLETE-phase weighted reclaim.** After scorecard ratification, the hook's `beforeCashOutRecordedWith` substitutes the ratified per-tier `cashOutWeight` for raw token count, so winning tiers reclaim more pot per NFT than losers. Total reclaim is bounded by `TOTAL_CASHOUT_WEIGHT = 1e18` for accounting precision (`DefifaHook.sol:69, 322-328`).
-- **Cash-out always burns first.** `JBMultiTerminal.cashOutTokensOf` burns the NFT before transferring reclaim. The hook's `afterCashOutRecordedWith` is invoked only after the burn, decrementing `totalMintCost` (`DefifaHook.sol:707, 759`).
-- **0-weight-tier protection against accidental burns.** Tokens whose tier received 0 cash-out weight (losing teams) revert with `DefifaHook_NothingToClaim` if neither reclaim nor fee tokens would be distributed — protecting holders from burning for nothing. (`DefifaHook.sol:752-756`)
-- **Fee-token (`$DEFIFA`/`$BASE_PROTOCOL`) claims.** On COMPLETE-phase cash-out, holders also receive their pro-rata share of the fee-project tokens delivered to the hook during `fulfillCommitmentsOf`. Share = `cumulativeMintPrice / (totalMintCost + pendingReserveMintCost)`. Reserves are accounted in the denominator so paid holders cannot claim a disproportionate share before reserves mint. (`DefifaHook.sol:741-745`)
-- **Reserve mints are permissionless and capped.** `mintReservesFor` mints to the pre-configured reserve beneficiary only, capped at `adjustedPendingReservesFor(tier)`. No caller can mint more than the tier's reserve frequency entitles. (`DefifaHook.sol:603-604, 607`)
+- **COMPLETE-phase weighted reclaim.** After scorecard ratification, the hook's `beforeCashOutRecordedWith` substitutes the ratified per-tier `cashOutWeight` for raw token count, so winning tiers reclaim more pot per position than losers. Total reclaim is bounded by `TOTAL_CASHOUT_WEIGHT = 1e18` for accounting precision (`DefifaHook.sol:112, 388-394`).
+- **Cash-out burns the positions.** The hook's `afterCashOutRecordedWith` checks the holder's ERC-1155 balance for each `(tokenId, amount)`, burns them with `_burnBatch`, records the burns in the store, and decrements `totalMintCost` (`DefifaHook.sol:750-763, 804`).
+- **0-weight-tier protection against accidental burns.** Positions whose tier received 0 cash-out weight (losing teams) revert with `DefifaHook_NothingToClaim` if neither reclaim nor fee tokens would be distributed — protecting holders from burning for nothing. (`DefifaHook.sol:797-801`)
+- **Fee-token (`$DEFIFA`/`$BASE_PROTOCOL`) claims.** On COMPLETE-phase cash-out, holders also receive their pro-rata share of the fee-project tokens delivered to the hook during `fulfillCommitmentsOf`. Share = `cumulativeMintPrice / (totalMintCost + pendingReserveMintCost)`. Reserves are accounted in the denominator so paid holders cannot claim a disproportionate share before reserves mint. (`DefifaHook.sol:786-790`)
+- **Reserve mints are permissionless and capped.** `mintReservesFor` mints to the pre-configured reserve beneficiary only, capped at `adjustedPendingReservesFor(tier)`. No caller can mint more than the tier's reserve frequency entitles. (`DefifaHook.sol:679-683`)
 - **Game configuration sanity.** `launchGameWith` reverts if start/mint/refund durations are inconsistent, if `tiers.length > 128`, if `scorecardTimeout == 0`, if ERC-20 games supply `currency=0`, or if `scorecardTimeout` is too short to ever allow ratification (`attestationDelay + gracePeriod + timelock`). (`DefifaDeployer.sol:417-478`)
 - **Frozen tier price.** All tiers launch with the same `tierPrice`, `discountPercent=0`, `cantIncreaseDiscountPercent=true`, `cantBeRemoved=true`, `allowOwnerMint=false`. Operator cannot drop in cheap tiers post-launch or admin-mint into a winning tier. (`DefifaDeployer.sol:550-568`)
 
 ### A.2 Attesters (governance participants)
 
-- **BWA snapshot one second before submission.** Voting power is read at `scorecard.snapshotTimestamp` = submission timestamp − 1. Checkpoints are `block.timestamp`-keyed and same-timestamp writes overwrite in place, so reading before the submission block excludes any mint or transfer that shares that block, in either order relative to submission — neither a post-submission `mintReservesFor` nor a same-block `transferFrom` can grant or move attestation power for that scorecard. `attestationsBegin` is still advanced to the next timestamp so the attestation window opens in a later block than submission (`DefifaGovernor.sol` `attestToScorecardFrom` and `submitScorecardFor`).
+- **BWA snapshot one second before submission.** Voting power is read at `scorecard.snapshotTimestamp` = submission timestamp − 1. Checkpoints are `block.timestamp`-keyed and same-timestamp writes overwrite in place, so reading before the submission block excludes any mint or transfer that shares that block, in either order relative to submission — neither a post-submission `mintReservesFor` nor a same-block `safeTransferFrom` can grant or move attestation power for that scorecard. `attestationsBegin` is still advanced to the next timestamp so the attestation window opens in a later block than submission (`DefifaGovernor.sol` `attestToScorecardFrom` and `submitScorecardFor`).
 - **Benefit-Weighted Attestation (BWA) reduces beneficiary power.** Each tier's attestation power is scaled by `(totalCashOutWeight - tierWeight) / totalCashOutWeight`. A tier with 100% of the scorecard weight receives 0 attestation power on that scorecard — beneficiaries **cannot self-attest at full power** (`DefifaGovernor.sol:705-709`). Zero-power attestations revert (`DefifaGovernor.sol:175-177`).
 - **Concentration-adjusted quorum.** Base quorum is 50% of `eligibleTierWeights × MAX_ATTESTATION_POWER_TIER`. When the scorecard concentrates weight on one tier, quorum is raised by `headroom × maxShare²`, but the penalty is capped so honest non-beneficiaries can always reach quorum (`DefifaGovernor.sol:387-418`).
 - **Minimum grace period (1 day).** Enforced at `initializeGame`; prevents instant-ratification attacks (`DefifaGovernor.sol:52, 502-506`).
@@ -51,11 +51,11 @@ NO_CONTEST is reported by the view as soon as the condition is met; the on-chain
 
 ### A.3 Protections against external interference
 
-- **No third-party can change cash-out weights.** `setTierCashOutWeightsTo` is `onlyOwner` (the governor) AND gated on `gamePhase == SCORING` AND single-shot (`cashOutWeightIsSet`). Even the governor can't re-score a game once set. (`DefifaHook.sol:784-805`)
+- **No third-party can change cash-out weights.** `setTierCashOutWeightsTo` is `onlyOwner` (the governor) AND gated on `gamePhase == SCORING` AND single-shot (`cashOutWeightIsSet`). Even the governor can't re-score a game once set. (`DefifaHook.sol:829-850`)
 - **No third-party can re-route fee splits.** Splits are written by the deployer once during `_buildSplits` for the scoring ruleset and never changed (`DefifaDeployer.sol:724-813`). The deployer permanently holds the game's `JBProjects` NFT (`DefifaDeployer.sol:480-481`).
-- **No third-party can mint admin NFTs.** `allowOwnerMint=false` on every tier (`DefifaDeployer.sol:561`); the controller's `allowOwnerMinting=false` on every ruleset.
-- **Reserve mints blocked in NO_CONTEST.** Prevents a malicious reserve mint from inflating `totalMintCost` past `minParticipation` after the game has already failed the participation check, which would otherwise revive the game from NO_CONTEST → SCORING (`DefifaHook.sol:577-579`).
-- **Delegate changes locked after MINT.** `setTierDelegateTo` / `setTierDelegatesTo` revert outside the MINT phase. This freezes voting power before scoring begins, so attestation can't be hot-swapped to a colluding delegate after scorecards drop (`DefifaHook.sol:817-819, 830-832`).
+- **No third-party can mint admin positions.** `allowOwnerMint=false` on every tier (`DefifaDeployer.sol:561`); the controller's `allowOwnerMinting=false` on every ruleset.
+- **Reserve mints blocked in NO_CONTEST.** Prevents a malicious reserve mint from inflating `totalMintCost` past `minParticipation` after the game has already failed the participation check, which would otherwise revive the game from NO_CONTEST → SCORING (`DefifaHook.sol:653-655`).
+- **Delegate changes locked after MINT.** `setTierDelegateTo` / `setTierDelegatesTo` revert outside the MINT phase. This freezes voting power before scoring begins, so attestation can't be hot-swapped to a colluding delegate after scorecards drop (`DefifaHook.sol:862-864, 875-877`).
 - **`addToBalanceOf` cannot inflate participation.** `minParticipation` is checked against `totalMintCost` (incremented only by paid mints and reserve mints), not terminal balance — donations to the terminal cannot artificially satisfy the participation threshold (`DefifaDeployer.sol:256-260`).
 - **Front-run-resistant hook clone.** `cloneDeterministic` salts on `keccak256(_msgSender(), nonce)` so a different resolved caller produces a different address; a watcher cannot front-run `launchGameWith` to deploy a hook at the predicted address and DoS initialization. For trusted-forwarder calls, `_msgSender()` is the ERC-2771 signer, not the forwarder (`DefifaDeployer.sol:582-591`).
 - **Commitment fulfillment is single-shot.** `commitmentsFulfilledFor[gameId]` set BEFORE external calls; a re-entrant call returns early (`DefifaDeployer.sol:319-321`).
@@ -109,7 +109,7 @@ Owns every game's project NFT (`PROJECTS.createFor(this)` in `launchGameWith`).
 
 **ERC-721 receipt:**
 
-- **`onERC721Received(...)`** — accepts any 721 (returns selector). Used during `createFor` and to receive transferred game NFTs. (`DefifaDeployer.sol:646-647`)
+- **`onERC721Received(...)`** — accepts any 721 (returns selector). Used during `createFor` to receive the game's `JBProjects` NFT. (`DefifaDeployer.sol:654-656`)
 
 **Views:** `currentGamePhaseOf`, `currentGamePotOf`, `nextPhaseNeedsQueueing`, `safetyParamsOf`, `timesFor`, `tokenOf`, `BASE_PROTOCOL_FEE_DIVISOR`, `DEFIFA_FEE_DIVISOR`, `defifaProjectId`, `baseProtocolProjectId`, `hookCodeOrigin`, `tokenUriResolver`, `governor`, `controller`, `registry`, `hookStore`, `fulfilledCommitmentsOf`, `commitmentsFulfilledFor`, `noContestTriggeredFor`.
 
@@ -133,36 +133,36 @@ Singleton. Owns every `DefifaHook` clone post-launch.
 
 ### C.3 DefifaHook — `defifa/src/DefifaHook.sol`
 
-Per-game clone, extends `JB721Hook`. Ownable; the deployer transfers ownership to the governor immediately after `initialize`.
+Per-game clone, an OpenZeppelin `ERC1155` game-piece hook (not `JB721Hook`/ERC-721) that implements the data, pay, and cash-out hook interfaces directly. Positions are balances: paid positions use token ID = tier ID, reserve-minted positions use `tierId + RESERVE_TOKEN_ID_OFFSET` (`1 << 16`). Tier config, supply, reserve, and burn accounting stay in `JB721TiersHookStore` (called once per position); attestation units are hook balances × `tier.votingUnits`, and the store's per-holder views read 0 for the hook. Mints skip the ERC-1155 receiver callback; transfers are standard safe transfers. Ownable; the deployer transfers ownership to the governor immediately after `initialize`.
 
 **Clone-factory one-shot:**
 
-- **`initialize(...)`** — anyone, exactly once per clone. Reverts on the code origin or when `store` already set. Records tiers via `_store.recordAddTiers`; stores per-tier names; sets `pricingCurrency`, `gamePhaseReporter`, `gamePotReporter`, `defaultAttestationDelegate`; transfers ownership back to `msg.sender` (the deployer). (`DefifaHook.sol:498-563`)
+- **`initialize(...)`** — anyone, exactly once per clone. Reverts on the code origin or when `store` already set. Records tiers via `_store.recordAddTiers`; stores per-tier names; sets `pricingCurrency`, `gamePhaseReporter`, `gamePotReporter`, `defaultAttestationDelegate`; transfers ownership back to `msg.sender` (the deployer). (`DefifaHook.sol:572-639`)
 
 **Governor-only (during SCORING, single-shot):**
 
-- **`setTierCashOutWeightsTo(DefifaTierCashOutWeight[])`** — `onlyOwner` (governor). Reverts if `gamePhase != SCORING` or `cashOutWeightIsSet`. Validates and stores `_tierCashOutWeights`; sets `cashOutWeightIsSet = true`. (`DefifaHook.sol:784-805`)
+- **`setTierCashOutWeightsTo(DefifaTierCashOutWeight[])`** — `onlyOwner` (governor). Reverts if `gamePhase != SCORING` or `cashOutWeightIsSet`. Validates and stores `_tierCashOutWeights`; sets `cashOutWeightIsSet = true`. (`DefifaHook.sol:829-850`)
   - **Invariant:** exactly one weight assignment per game; flips the phase view to COMPLETE.
 
 **Permissionless (gated by phase):**
 
-- **`mintReservesFor(uint256 tierId, uint256 count)`** — anyone, but blocked when `mintPendingReservesPaused` (set during MINT/REFUND) or `gamePhase == NO_CONTEST`. Caps `count` at `adjustedPendingReservesFor(tierId)`. Mints to the tier's reserve beneficiary; flags `isReserveMint[tokenId] = true`; increments `totalMintCost` by `tier.price * count`; auto-delegates reserve units. (`DefifaHook.sol:568-644`)
+- **`mintReservesFor(uint256 tierId, uint256 count)`** — anyone, but blocked when `mintPendingReservesPaused` (set during MINT/REFUND) or `gamePhase == NO_CONTEST`. Caps `count` at `adjustedPendingReservesFor(tierId)`. Mints `count` positions of token ID `tierId + RESERVE_TOKEN_ID_OFFSET` to the tier's reserve beneficiary in one balance; increments `totalMintCost` by `tier.price * count`; auto-delegates reserve units; emits `MintReservedToken(tierId, beneficiary, count, caller)`. (`DefifaHook.sol:644-709`)
   - **Invariant:** cannot inflate participation past `minParticipation` after the game has failed (NO_CONTEST gate); cannot mint more than the tier's reserve frequency entitles.
-- **`mintReservesFor(JB721TiersMintReservesConfig[])`** — batch variant. (`DefifaHook.sol:764-779`)
+- **`mintReservesFor(JB721TiersMintReservesConfig[])`** — batch variant. (`DefifaHook.sol:809-824`)
 
 **Holder-only (MINT-phase-gated):**
 
-- **`setTierDelegateTo(address delegatee, uint256 tierId)`** — caller (delegating own units). Reverts outside MINT. Zero-address delegate reverts. (`DefifaHook.sol:810-822`)
-- **`setTierDelegatesTo(DefifaDelegation[])`** — batch variant; same phase + non-zero checks per entry. (`DefifaHook.sol:826-853`)
+- **`setTierDelegateTo(address delegatee, uint256 tierId)`** — caller (delegating own units). Reverts outside MINT. Zero-address delegate reverts. (`DefifaHook.sol:855-867`)
+- **`setTierDelegatesTo(DefifaDelegation[])`** — batch variant; same phase + non-zero checks per entry. (`DefifaHook.sol:871-898`)
   - **Invariant:** voting power locked before scoring starts.
 
 **Terminal-only callbacks:**
 
-- **`afterPayRecordedWith(JBAfterPayRecordedContext) payable`** — only project terminal; reverts on `msg.value != 0` or wrong context. Decodes `(attestationDelegate, tierIdsToMint)` from metadata; mints via `_mintAll`; reverts `Overspending` on leftover. Third-party payer cannot overwrite the beneficiary's existing tier delegate via metadata (only payer=beneficiary may rewire). (`DefifaHook.sol:459-477, 1010-1080`)
-- **`afterCashOutRecordedWith(JBAfterCashOutRecordedContext) payable`** — only project terminal; verifies caller-supplied token IDs all belong to `context.holder`; burns each; tracks per-tier `tokensRedeemedFrom` (COMPLETE) or `refundedBurnsFrom` (REFUND/NO_CONTEST); decrements `totalMintCost`. Reverts `NothingToClaim` if reclaim is 0 AND no fee tokens distributed. (`DefifaHook.sol:654-760`)
-- **`beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext) view`** — `IJBRulesetDataHook`. Reverts if fungible tokens are being cashed out (NFTs only). Computes `cumulativeMintPrice` (excluding reserve mints in non-COMPLETE phases); returns this contract as the cash-out hook with the encoded cumulative mint price; uses surplus as totalSupply / effectiveSurplusValue. (`DefifaHook.sol:275-338`)
+- **`afterPayRecordedWith(JBAfterPayRecordedContext) payable`** — only project terminal; reverts on `msg.value != 0` or wrong context. Decodes `(attestationDelegate, uint16[] tierIds, uint256[] counts)` from metadata; records each position in the store and mints one balance per tier via `_mintAll` (emitting `Mint(tierId, beneficiary, count, totalAmountContributed, caller)`); reverts `Overspending` on leftover. Third-party payer cannot overwrite the beneficiary's existing tier delegate via metadata (only payer=beneficiary may rewire). (`DefifaHook.sol:522-535, 1058-1136`)
+- **`afterCashOutRecordedWith(JBAfterCashOutRecordedContext) payable`** — only project terminal; decodes `(uint256[] tokenIds, uint256[] amounts)` and reverts `DefifaHook_Unauthorized` if `context.holder`'s balance of any ID is below its amount; burns them in one `_burnBatch`; tracks per-tier `tokensRedeemedFrom` (COMPLETE) or `refundedBurnsFrom` (REFUND/NO_CONTEST); decrements `totalMintCost`. Reverts `NothingToClaim` if reclaim is 0 AND no fee tokens distributed. (`DefifaHook.sol:719-805`)
+- **`beforeCashOutRecordedWith(JBBeforeCashOutRecordedContext) view`** — `IJBRulesetDataHook`. Reverts if fungible tokens are being cashed out (positions only). Computes `cumulativeMintPrice` (excluding reserve IDs in MINT/REFUND/NO_CONTEST); returns this contract as the cash-out hook with the encoded cumulative mint price; uses surplus as totalSupply / effectiveSurplusValue. (`DefifaHook.sol:339-404`)
 
-**Views:** `firstOwnerOf`, `getPastTierAttestationUnitsOf`, `getPastTierTotalAttestationUnitsOf`, `getTierAttestationUnitsOf`, `getTierDelegateOf`, `getTierTotalAttestationUnitsOf`, `tierCashOutWeights`, `tierNameOf`, `cashOutWeightOf` (single + batch), `currentSupplyOfTier`, `adjustedPendingReservesFor`, `supportsInterface`, `tokenURI`, `tokensClaimableFor`, `totalCashOutWeight`, `TOTAL_CASHOUT_WEIGHT`, `CODE_ORIGIN`, `DEFIFA_TOKEN`, `BASE_PROTOCOL_TOKEN`, `totalMintCost`, `amountRedeemed`, `baseURI`, `cashOutWeightIsSet`, `contractURI`, `defaultAttestationDelegate`, `gamePhaseReporter`, `gamePotReporter`, `isReserveMint`, `pricingCurrency`, `refundedBurnsFrom`, `rulesets`, `store`, `tokensRedeemedFrom`.
+**Views:** ERC-1155 `balanceOf`/`balanceOfBatch`/`isApprovedForAll`, `uri`, `name`, `symbol`, `tierIdOf`, `RESERVE_TOKEN_ID_OFFSET`, `METADATA_ID_TARGET`, `getPastTierAttestationUnitsOf`, `getPastTierTotalAttestationUnitsOf`, `getTierAttestationUnitsOf`, `getTierDelegateOf`, `getTierTotalAttestationUnitsOf`, `tierCashOutWeights`, `tierNameOf`, `cashOutWeightOf` (one ID, or `(ids, amounts)`), `currentSupplyOfTier`, `adjustedPendingReservesFor`, `supportsInterface`, `tokensClaimableFor(ids, amounts)`, `TOTAL_CASHOUT_WEIGHT`, `CODE_ORIGIN`, `DEFIFA_TOKEN`, `BASE_PROTOCOL_TOKEN`, `totalMintCost`, `amountRedeemed`, `baseURI`, `cashOutWeightIsSet`, `contractURI`, `defaultAttestationDelegate`, `gamePhaseReporter`, `gamePotReporter`, `pricingCurrency`, `projectId`, `refundedBurnsFrom`, `rulesets`, `store`, `tokensRedeemedFrom`.
 
 ### C.4 DefifaTokenUriResolver — `defifa/src/DefifaTokenUriResolver.sol`
 
@@ -173,11 +173,11 @@ Pure rendering surface — no privileged surface that affects game outcome or fu
 ## Section D — Cross-cutting invariants
 
 1. **Frozen game configuration.** Once `launchGameWith` returns, the per-game tier prices, reserve frequencies, fees, scorecard timeouts, and ruleset cadence (MINT → REFUND? → SCORING → COMPLETE/NO_CONTEST) are immutable.
-2. **Single ratification per game.** `DefifaGovernor.ratifiedScorecardIdOf[gameId] != 0` blocks further submissions and ratifications (`DefifaGovernor.sol:206, 285`). `DefifaHook.cashOutWeightIsSet` blocks repeated `setTierCashOutWeightsTo` (`DefifaHook.sol:795`).
+2. **Single ratification per game.** `DefifaGovernor.ratifiedScorecardIdOf[gameId] != 0` blocks further submissions and ratifications (`DefifaGovernor.sol:206, 285`). `DefifaHook.cashOutWeightIsSet` blocks repeated `setTierCashOutWeightsTo` (`DefifaHook.sol:840`).
 3. **Single commitment fulfillment per game.** `commitmentsFulfilledFor[gameId]` is set before any external call (`DefifaDeployer.sol:321`); re-entry returns early.
 4. **Single NO_CONTEST trigger per game.** `noContestTriggeredFor[gameId]` set before queuing the refund ruleset; `NoContestAlreadyTriggered` on second call (`DefifaDeployer.sol:663, 670`).
-5. **Reserve mints blocked in NO_CONTEST.** Prevents reviving a failed `minParticipation` game by free-minting reserved face value (`DefifaHook.sol:577-579`).
-6. **Delegate changes restricted to MINT.** Locks voting power before scoring opens (`DefifaHook.sol:817-819, 830-832`).
+5. **Reserve mints blocked in NO_CONTEST.** Prevents reviving a failed `minParticipation` game by free-minting reserved face value (`DefifaHook.sol:653-655`).
+6. **Delegate changes restricted to MINT.** Locks voting power before scoring opens (`DefifaHook.sol:862-864, 875-877`).
 7. **BWA snapshot one second before submission.** Excludes the whole submission block, blocking same-block mint/transfer-and-attest injection in either order (`DefifaGovernor.sol` `attestToScorecardFrom` / `submitScorecardFor`).
 8. **Beneficiaries cannot self-attest at full power.** BWA reduces tier power by `tierWeight / totalCashOutWeight`; zero-power attestations revert (`DefifaGovernor.sol:705-709, 175-177`).
 9. **Revocation disabled once QUEUED.** Kills attest/revoke griefing (`DefifaGovernor.sol:243-247`).
@@ -187,7 +187,7 @@ Pure rendering surface — no privileged surface that affects game outcome or fu
 13. **One-shot bindings.** `DefifaHook.initialize`, `DefifaHook.setTierCashOutWeightsTo`, `DefifaGovernor.initializeGame` — all irreversible. `DefifaDeployer`'s own dependencies are constructor `immutable`s (no setter at all).
 14. **Front-run-resistant clone deployment.** `cloneDeterministic` salt includes `_msgSender()`; a different resolved caller produces a different address (`DefifaDeployer.sol:589-592`).
 15. **Participation immune to balance inflation.** `minParticipation` checks `hook.totalMintCost`, not terminal balance — `addToBalanceOf` donations cannot satisfy the threshold (`DefifaDeployer.sol:256-260`).
-16. **NFT-only cash-out path.** `beforeCashOutRecordedWith` reverts if fungible project tokens are cashed out (`DefifaHook.sol:289`). The hook is the sole cash-out surface for Defifa games.
+16. **Position-only cash-out path.** `beforeCashOutRecordedWith` reverts if fungible project tokens are cashed out (`DefifaHook.sol:353`). The hook is the sole cash-out surface for Defifa games.
 
 For the underlying parimutuel game mechanics, pot-formation math, fee pipeline, attacker economics on governance, and parameter design guidance, see **`CRYPTO_ECON.md`**.
 
@@ -225,15 +225,21 @@ These are NOT third-party attack vectors but are powers held by privileged addre
 - Concentration-adjusted quorum: `defifa/src/DefifaGovernor.sol:387-418`
 - Atomic ratify + fulfillCommitments: `defifa/src/DefifaGovernor.sol:231-233`
 - Submission rejects unrealizable weights: `defifa/src/DefifaGovernor.sol:306-311`
-- Hook `setTierCashOutWeightsTo` (governor-only, SCORING-only, single-shot): `defifa/src/DefifaHook.sol:784-805`
-- Hook `initialize` one-shot: `defifa/src/DefifaHook.sol:498-563`
-- Reserve mints blocked in NO_CONTEST: `defifa/src/DefifaHook.sol:577-579`
-- Reserve mint cap: `defifa/src/DefifaHook.sol:603-604`
-- Delegate changes MINT-only: `defifa/src/DefifaHook.sol:817-819, 830-832`
-- Hook cash-out path NFTs-only: `defifa/src/DefifaHook.sol:289`
-- Hook 0-weight tier `NothingToClaim` guard: `defifa/src/DefifaHook.sol:752-756`
-- Hook overspend guard: `defifa/src/DefifaHook.sol:1075-1079`
-- Hook currency-lock guard: `defifa/src/DefifaHook.sol:1014-1018`
-- Hook payer ≠ beneficiary delegate guard: `defifa/src/DefifaHook.sol:1056-1061`
+- Hook `setTierCashOutWeightsTo` (governor-only, SCORING-only, single-shot): `defifa/src/DefifaHook.sol:829-850`
+- Hook `initialize` one-shot: `defifa/src/DefifaHook.sol:572-639`
+- Reserve mints blocked in NO_CONTEST: `defifa/src/DefifaHook.sol:653-655`
+- Reserve mint cap: `defifa/src/DefifaHook.sol:679-680`
+- Delegate changes MINT-only: `defifa/src/DefifaHook.sol:862-864, 875-877`
+- Hook cash-out path positions-only: `defifa/src/DefifaHook.sol:353`
+- Hook 0-weight tier `NothingToClaim` guard: `defifa/src/DefifaHook.sol:797-801`
+- Hook overspend guard: `defifa/src/DefifaHook.sol:1135`
+- Hook currency-lock guard: `defifa/src/DefifaHook.sol:1060-1064`
+- Hook payer ≠ beneficiary delegate guard: `defifa/src/DefifaHook.sol:1107-1112`
+- Pay metadata validation (ascending tiers, non-zero counts, equal lengths): `defifa/src/libraries/DefifaHookLib.sol:137-176` (`expandMints`)
+- Cash-out holder balance check + batch burn: `defifa/src/DefifaHook.sol:750-763`
+- Reserve-ID exclusion from refunds: `defifa/src/DefifaHook.sol:372-380`, `defifa/src/libraries/DefifaHookLib.sol:318`
+- Token ID → tier mapping (`RESERVE_TOKEN_ID_OFFSET = 1 << 16`): `defifa/src/libraries/DefifaHookLib.sol:65, 78-81`
+- Mints without receiver callback: `defifa/src/DefifaHook.sol:995, 1002-1008`
+- Transfer pause + attestation movement on transfers/burns: `defifa/src/DefifaHook.sol:1194-1230`
 
 For the game's economic model and rational-actor analysis, see `CRYPTO_ECON.md`.

@@ -20,7 +20,7 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 
 - **Governor as hook owner.** The governor can set tier cash-out weights through ratification.
 - **Deployer as project owner.** The deployer owns game projects and controls ruleset queuing and commitment fulfillment.
-- **External dependencies.** Core protocol and shared 721-store behavior remain upstream trust boundaries.
+- **External dependencies.** Core protocol and shared 721-store behavior remain upstream trust boundaries. The store still owns tier config, supply, reserve, and burn accounting for Defifa hooks, but not position ownership: its per-holder views (`balanceOf`, `tierBalanceOf`, `votingUnitsOf`, `tierVotingUnitsOf`) read 0 for Defifa hooks. Integrators reading holdings or voting units from the store instead of `hook.balanceOf(account, id)` and the hook's attestation views will see zero.
 - **Terminal provenance is the launcher's responsibility.** The hook authenticates terminals via directory registration, not implementation identity. A game is only as trustworthy as the terminal its launcher chose. Users must verify a game's terminal before participating.
 - **Default attestation delegate.** If set, it can accumulate meaningful governance power across new minters.
 
@@ -45,11 +45,13 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 ## 4. Reentrancy surface
 
 - **`afterCashOutRecordedWith`.** Burns happen before external fee-token transfers, which narrows the surface, but transfer compatibility still matters.
+- **Mints and transfers.** Pay and reserve mints skip the ERC-1155 receiver callback (as the earlier 721 `_mint` did), so no external call runs inside pay or cash-out. Holder transfers (`safeTransferFrom`, `safeBatchTransferFrom`) are standard ERC-1155 safe transfers that call `onERC1155Received` / `onERC1155BatchReceived` on contract recipients after balances and attestation units move.
 - **Ratification uses a low-level call into the hook.** Double-set protections must hold.
 
 ## 5. DoS vectors
 
 - **Tier iteration in governance.** Quorum and attestation-weight calculations scale with tier count.
+- **Per-position store calls.** The store records mints and burns per position, so pay and cash-out gas still grows with the position count (the hook expands counts into one store entry per position), though the ERC-1155 balance write is per tier.
 - **Large split arrays.** User-provided split arrays can increase gas and complexity even if practical counts stay bounded.
 
 ## 6. Integration risks
@@ -58,13 +60,15 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 - **Permanent cash-out weights.** A ratified scorecard is final.
 - **No deployer upgrade path.** Bugs require a new deployer, not an in-place fix.
 - **Clone initialization assumptions matter.** Per-game clone setup must stay correct.
+- **ERC-721 and ERC-1155 games coexist.** Games deployed before the ERC-1155 change keep ERC-721 hooks with the old pay/cash-out metadata. The ERC-1155 layout needs a new hook implementation and deployer deployment, so integrators must detect the hook kind (for example via `supportsInterface`) before encoding metadata or reading holdings.
 
 ## 7. Invariants to verify
 
 - `_totalMintCost` stays consistent with live tier state and burns.
 - Total cash-outs plus remaining surplus match the pre-fulfillment pot minus intended fees.
 - Scorecard weights sum to `TOTAL_CASHOUT_WEIGHT`.
-- Attestation units are conserved across transfers and delegation.
+- Attestation units are conserved across transfers and delegation, and equal (paid + reserve-ID balance) × `tier.votingUnits` per holder and tier.
+- Reserve-ID positions (`tierId + RESERVE_TOKEN_ID_OFFSET`) never contribute to a MINT/REFUND/NO_CONTEST refund amount, including after transfer.
 - `fulfilledCommitmentsOf[gameId]` is set at most once.
 - Per-tier supply never exceeds `initialSupply`.
 

@@ -1,6 +1,6 @@
 # Defifa
 
-Defifa is an onchain prediction game system built on Juicebox. Each game is a Juicebox project with staged rulesets, tiered NFT game pieces, scorecard governance, and a final settlement path that turns the project's surplus into winner payouts.
+Defifa is an onchain prediction game system built on Juicebox. Each game is a Juicebox project with staged rulesets, tiered ERC-1155 game pieces, scorecard governance, and a final settlement path that turns the project's surplus into winner payouts.
 
 Use this repo when the question is about game lifecycle, scorecard ratification, attestation power, or Defifa-specific settlement behavior. Do not start here for generic project accounting, terminal behavior, or standard 721-tier mechanics.
 
@@ -19,7 +19,7 @@ Use this repo when the question is about game lifecycle, scorecard ratification,
 
 ## What this repo owns
 
-Defifa adds game-specific behavior on top of Juicebox and the 721 hook stack:
+Defifa adds game-specific behavior on top of Juicebox and the 721 tier store:
 
 - phased game launch and completion packaging in `DefifaDeployer`
 - game-piece behavior, delegation, and settlement weighting in `DefifaHook`
@@ -29,7 +29,7 @@ Defifa adds game-specific behavior on top of Juicebox and the 721 hook stack:
 This repo does not own:
 
 - canonical terminal accounting or surplus math
-- generic 721 tier storage and most shared NFT-hook machinery
+- generic 721 tier storage, supply, reserve, and burn accounting (`JB721TiersHookStore`)
 - generic Juicebox permission, project, or ruleset semantics
 
 ## Mental model
@@ -62,7 +62,7 @@ Then read the upstream repos this package depends on:
 | Contract | Role |
 | --- | --- |
 | `DefifaDeployer` | Launches games, clones hooks, resolves ERC-2771 callers for launch attribution, initializes governance, and fulfills post-game fee commitments. |
-| `DefifaHook` | ERC-721 game-piece hook that tracks tiers, delegation, pending reserves, and cash-out weights for settlement. |
+| `DefifaHook` | ERC-1155 game-piece hook (one balance per tier) that tracks delegation, pending reserves, and cash-out weights for settlement. |
 | `DefifaGovernor` | Scorecard governance surface that accepts submissions, attestations, quorum checks, grace periods, and ratification. |
 | `DefifaHookLib` | Shared validation and weight logic extracted from the hook. |
 | `DefifaTokenUriResolver` | Onchain metadata renderer for game cards. |
@@ -72,7 +72,7 @@ Then read the upstream repos this package depends on:
 Each Defifa game is a Juicebox project with a staged lifecycle:
 
 1. countdown before minting opens
-2. mint phase where players buy outcome NFTs
+2. mint phase where players buy outcome positions (ERC-1155 balances)
 3. optional refund or no-contest handling if the game cannot settle normally
 4. scoring phase where participants submit and attest to scorecards
 5. completion after a scorecard reaches quorum and survives its grace period
@@ -141,6 +141,11 @@ references/
 - `NO_CONTEST` view state should not be shown as refund-ready until the relevant settlement path is actually available
 - games with many outcome tiers need curation around scorecard liveness and attestation overhead
 - the shared `JB721TiersHookStore` surface is an upstream ecosystem dependency, not a Defifa-only detail
+- positions are ERC-1155 balances: paid positions use token ID = tier ID, reserve-minted positions use
+  `tierId + RESERVE_TOKEN_ID_OFFSET` (`1 << 16`); read holdings with `hook.balanceOf(account, id)`, because the
+  store's per-holder views (`balanceOf`, `tierBalanceOf`, `votingUnitsOf`, `tierVotingUnitsOf`) read 0 for Defifa hooks
+- games deployed before the ERC-1155 change remain ERC-721 hooks; the new layout needs a new hook implementation and
+  deployer deployment
 
 ## High-signal tests
 
@@ -161,7 +166,8 @@ Deployments are handled through Sphinx. The deployer composes Juicebox core, the
 
 - game lifecycle config and post-game fulfillment bookkeeping: `DefifaDeployer`
 - submitted scorecards, attestations, quorum state, and ratification timing: `DefifaGovernor`
-- tier state, delegation, pending reserve awareness, and final cash-out weights: `DefifaHook`
+- position balances (ERC-1155), delegation, pending reserve awareness, and final cash-out weights: `DefifaHook`
+- tier config, supply, reserve, and burn accounting: `JB721TiersHookStore`
 - base project balance and terminal settlement: `nana-core-v6`
 - shared 721 tier store semantics: `nana-721-hook-v6`
 
