@@ -137,6 +137,98 @@ contract DefifaTiersHookStoreTest is Test {
         assertEq(counted.balanceOf(address(this), bob), perPosition.balanceOf(address(this), bob), "bob balance");
     }
 
+    /// @notice Near the reserve-supply limit, a batched mint succeeds or reverts exactly when the per-position mint
+    /// does, through paid mint, reserve mint and paid mint again, with the same supply and cash-out weight.
+    function testFuzz_countMintMatchesAtReserveSupplyLimit(
+        uint8 rawSupply,
+        uint8 rawFrequency,
+        uint8 rawFirst,
+        uint8 rawReserves,
+        uint8 rawSecond
+    )
+        public
+    {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint32 supply = uint32(bound(rawSupply, 1, 40));
+        // forge-lint: disable-next-line(unsafe-typecast)
+        uint16 frequency = uint16(bound(rawFrequency, 0, 6));
+        JB721TiersHookStore p = new JB721TiersHookStore();
+        DefifaTiersHookStore c = new DefifaTiersHookStore();
+
+        // Some supply and frequency pairs are rejected at configuration (e.g. a supply of 1 with reserves).
+        try this.addLimitTier(p, supply, frequency) {}
+        catch {
+            return;
+        }
+        this.addLimitTier(c, supply, frequency);
+
+        uint256[3] memory steps = [bound(rawFirst, 1, 45), bound(rawReserves, 0, 10), bound(rawSecond, 1, 45)];
+        for (uint256 k; k < 3; k++) {
+            uint256 n = steps[k];
+            bool perPositionOk;
+            bool countedOk;
+            if (k == 1) {
+                if (n == 0) continue;
+                try p.recordMintReservesFor(1, n) {
+                    perPositionOk = true;
+                } catch {}
+                try c.recordMintReservesFor(1, n) {
+                    countedOk = true;
+                } catch {}
+            } else {
+                uint16[] memory expanded = new uint16[](n);
+                for (uint256 i; i < n; i++) {
+                    expanded[i] = 1;
+                }
+                uint16[] memory tierIds = new uint16[](1);
+                tierIds[0] = 1;
+                uint256[] memory counts = new uint256[](1);
+                counts[0] = n;
+                try p.recordMint(n * 10, expanded, false) {
+                    perPositionOk = true;
+                } catch {}
+                try c.recordMintCounts(n * 10, tierIds, counts) {
+                    countedOk = true;
+                } catch {}
+            }
+            assertEq(countedOk, perPositionOk, "same outcome");
+            assertEq(c.totalCashOutWeightOf(address(this)), p.totalCashOutWeightOf(address(this)), "weight");
+            assertEq(
+                c.tierOf(address(this), 1, false).remainingSupply,
+                p.tierOf(address(this), 1, false).remainingSupply,
+                "remaining supply"
+            );
+        }
+    }
+
+    /// @notice Adds one tier priced at 10 to `store` for this contract. External so configuration reverts can be
+    /// caught.
+    function addLimitTier(JB721TiersHookStore store, uint32 supply, uint16 frequency) external {
+        JB721TierConfig[] memory tiers = new JB721TierConfig[](1);
+        tiers[0] = JB721TierConfig({
+            price: 10,
+            initialSupply: supply,
+            votingUnits: 0,
+            reserveFrequency: frequency,
+            reserveBeneficiary: makeAddr("reserves"),
+            encodedIpfsUri: bytes32(0),
+            category: 0,
+            discountPercent: 0,
+            flags: JB721TierConfigFlags({
+                allowOwnerMint: false,
+                useReserveBeneficiaryAsDefault: false,
+                transfersPausable: false,
+                useVotingUnits: false,
+                cantBeRemoved: true,
+                cantIncreaseDiscountPercent: false,
+                cantBuyWithCredits: false
+            }),
+            splitPercent: 0,
+            splits: new JBSplit[](0)
+        });
+        store.recordAddTiers(tiers);
+    }
+
     function test_mintCountsRejectsUnderpaymentAndOversupply() public {
         uint16[] memory tierIds = new uint16[](1);
         tierIds[0] = 2;
