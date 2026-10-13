@@ -611,8 +611,8 @@ contract DefifaDeployer is
 
         hook.initialize({
             _gameId: gameId,
-            _name: launchProjectData.name,
-            _symbol: string.concat("DEFIFA #", gameId.toString()),
+            _gameName: launchProjectData.name,
+            _gameSymbol: string.concat("DEFIFA #", gameId.toString()),
             _rulesets: RULESETS,
             _baseUri: launchProjectData.baseUri,
             _tokenUriResolver: uriResolver,
