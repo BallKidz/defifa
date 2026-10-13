@@ -251,10 +251,13 @@ contract DefifaRegressionFixesTest is JBTest, TestBaseWorkflow {
             uint256(deployer.currentGamePhaseOf(_pid)), uint256(DefifaGamePhase.COMPLETE), "phase should be COMPLETE"
         );
 
-        // Query tokensClaimableFor for the player's second token (tier 1, token #2).
+        // Query tokensClaimableFor for one of the player's tier-1 positions.
+        assertEq(_nft.balanceOf(player, 1), 3, "player holds 3 tier-1 positions");
         uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = 1_000_000_002;
-        (uint256 defifaClaim, uint256 baseClaim) = _nft.tokensClaimableFor(tokenIds);
+        tokenIds[0] = 1;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = 1;
+        (uint256 defifaClaim, uint256 baseClaim) = _nft.tokensClaimableFor(tokenIds, amounts);
 
         // The preview uses (totalMintCost + pendingReserveMintCost) as denominator.
         // With 6 paid mints at 1 ETH each, tier 1 has 3 pending reserves at 1 ETH each.
@@ -388,8 +391,10 @@ contract DefifaRegressionFixesTest is JBTest, TestBaseWorkflow {
         uint16[] memory m = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, m);
+        data[0] = abi.encode(user, m, counts);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(hook));
         bytes memory metadata = metadataHelper().createMetadata(ids, data);

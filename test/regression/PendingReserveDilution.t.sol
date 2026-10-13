@@ -188,15 +188,19 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         );
         assertLt(playerReclaim, totalPot, "paid holder should NOT reclaim full surplus");
 
-        // Mint the reserve NFTs.
+        // Mint the reserve positions.
         JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
         reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
         _nft.mintReservesFor(reserveConfigs);
-        assertEq(_nft.balanceOf(reserveBeneficiary), 1, "reserve NFT minted successfully");
+        assertEq(
+            _nft.balanceOf(reserveBeneficiary, 1 + _nft.RESERVE_TOKEN_ID_OFFSET()),
+            1,
+            "reserve position minted successfully"
+        );
 
         // Reserve holder should now be able to cash out their share (not zero).
         uint256 beforeReserveBalance = reserveBeneficiary.balance;
-        _cashOut(reserveBeneficiary, 1, 2);
+        _cashOut(reserveBeneficiary, 1 + _nft.RESERVE_TOKEN_ID_OFFSET(), 1);
         uint256 reserveReclaim = reserveBeneficiary.balance - beforeReserveBalance;
         assertGt(reserveReclaim, 0, "reserve holder can reclaim their share");
     }
@@ -258,8 +262,10 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         uint16[] memory m = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, m);
+        data[0] = abi.encode(user, m, counts);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(hook));
         bytes memory metadata = metadataHelper().createMetadata(ids, data);
@@ -274,8 +280,8 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         _nft.setTierDelegatesTo(dd);
     }
 
-    function _cashOut(address user, uint256 tid, uint256 tnum) internal {
-        bytes memory meta = _cashOutMeta(tid, tnum);
+    function _cashOut(address user, uint256 tokenId, uint256 amount) internal {
+        bytes memory meta = _cashOutMeta(tokenId, amount);
         vm.prank(user);
         jbMultiTerminal()
             .cashOutTokensOf({
@@ -289,11 +295,13 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         });
     }
 
-    function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {
+    function _cashOutMeta(uint256 tokenId, uint256 amount) internal view returns (bytes memory) {
         uint256[] memory cid = new uint256[](1);
-        cid[0] = (tid * 1_000_000_000) + tnum;
+        cid[0] = tokenId;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = amount;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(cid);
+        data[0] = abi.encode(cid, amounts);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("cashOut", address(hook));
         return metadataHelper().createMetadata(ids, data);

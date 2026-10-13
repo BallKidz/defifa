@@ -125,7 +125,9 @@ contract AttestationDoubleCountTest is JBTest, TestBaseWorkflow {
         vm.deal(payer, 1 ether);
         uint16[] memory tierIds = new uint16[](1);
         tierIds[0] = 1;
-        bytes memory metadata = _buildPayMetadata(abi.encode(address(0), tierIds));
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
+        bytes memory metadata = _buildPayMetadata(abi.encode(address(0), tierIds, counts));
 
         vm.prank(payer);
         jbMultiTerminal().pay{value: 1 ether}({
@@ -143,9 +145,11 @@ contract AttestationDoubleCountTest is JBTest, TestBaseWorkflow {
         assertGt(totalUnitsBefore, 0, "tier should have nonzero attestation units");
         assertEq(beneficiaryUnitsBefore, totalUnitsBefore, "beneficiary receives delegated units after mint");
 
-        uint256 tokenId = 1_000_000_001;
+        assertEq(nft.balanceOf(beneficiary, 1), 1, "beneficiary holds the minted position");
         vm.prank(beneficiary);
-        nft.transferFrom(beneficiary, recipient, tokenId);
+        nft.safeTransferFrom(beneficiary, recipient, 1, 1, "");
+        assertEq(nft.balanceOf(beneficiary, 1), 0, "beneficiary no longer holds the position");
+        assertEq(nft.balanceOf(recipient, 1), 1, "recipient holds the position");
 
         uint256 beneficiaryUnitsAfter = nft.getTierAttestationUnitsOf(beneficiary, 1);
         uint256 recipientUnitsAfter = nft.getTierAttestationUnitsOf(recipient, 1);
@@ -154,7 +158,7 @@ contract AttestationDoubleCountTest is JBTest, TestBaseWorkflow {
         // Attestation units go to beneficiary on mint, then move to recipient on transfer.
         // Total units stay constant, beneficiary loses units, recipient gains them.
         assertEq(totalUnitsAfter, totalUnitsBefore, "total tier units stay constant");
-        assertEq(beneficiaryUnitsAfter, 0, "beneficiary loses attestation units after transferring NFT");
+        assertEq(beneficiaryUnitsAfter, 0, "beneficiary loses attestation units after transferring the position");
         assertEq(recipientUnitsAfter, totalUnitsAfter, "recipient receives full attestation units from transfer");
         // No double-counting: sum of individual units equals total.
         assertEq(

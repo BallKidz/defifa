@@ -148,23 +148,4 @@ contract TierCapMismatchTest is JBTest, TestBaseWorkflow {
             timelockDuration: 0
         });
     }
-
-    function _mintTier(uint256 gameId, uint16 tierId, uint256 amount) internal {
-        address buyer = address(bytes20(keccak256(abi.encodePacked("buyer", tierId))));
-        vm.deal(buyer, amount);
-
-        uint16[] memory tierIds = new uint16[](1);
-        tierIds[0] = tierId;
-
-        bytes[] memory payloads = new bytes[](1);
-        payloads[0] = abi.encode(address(0), tierIds);
-
-        bytes4[] memory ids = new bytes4[](1);
-        ids[0] = metadataHelper().getId("pay", address(hookCodeOrigin));
-
-        bytes memory metadata = metadataHelper().createMetadata(ids, payloads);
-
-        vm.prank(buyer);
-        jbMultiTerminal().pay{value: amount}(gameId, JBConstants.NATIVE_TOKEN, amount, buyer, 0, "", metadata);
-    }
 }

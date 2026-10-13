@@ -122,6 +122,8 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
 
         uint16[] memory tierIds = new uint16[](1);
         tierIds[0] = 1;
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
         vm.prank(_player);
         jbMultiTerminal().pay{value: 1 ether}(
             projectId,
@@ -130,7 +132,7 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
             _player,
             0,
             "",
-            _buildPayMetadata(abi.encode(_player, tierIds))
+            _buildPayMetadata(abi.encode(_player, tierIds, counts))
         );
 
         vm.warp(data.start + 1);
@@ -148,18 +150,20 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
         _deployer.triggerNoContestFor(projectId);
 
         // The paid player can still get their full refund through the no-contest path.
-        uint256 playerTokenId = _generateTokenId(1, 1);
+        assertEq(hook.balanceOf(_player, 1), 1, "player holds the paid position");
         uint256 balanceBefore = _player.balance;
-        _cashOut(projectId, _player, playerTokenId);
+        _cashOut(projectId, _player, 1, 1);
 
         assertTrue(_player.balance > balanceBefore, "player received refund");
-        assertEq(hook.balanceOf(_player), 0, "player NFT burned");
+        assertEq(hook.balanceOf(_player, 1), 0, "player position burned");
     }
 
-    function _cashOut(uint256 projectId, address holder, uint256 tokenId) internal {
+    function _cashOut(uint256 projectId, address holder, uint256 tokenId, uint256 amount) internal {
         uint256[] memory tokenIds = new uint256[](1);
         tokenIds[0] = tokenId;
-        bytes memory cashOutMetadata = _buildCashOutMetadata(tokenIds);
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = amount;
+        bytes memory cashOutMetadata = _buildCashOutMetadata(tokenIds, amounts);
 
         vm.prank(holder);
         jbMultiTerminal()
@@ -207,15 +211,18 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
         return metadataHelper().createMetadata(ids, datas);
     }
 
-    function _buildCashOutMetadata(uint256[] memory tokenIds) internal view returns (bytes memory) {
+    function _buildCashOutMetadata(
+        uint256[] memory tokenIds,
+        uint256[] memory amounts
+    )
+        internal
+        view
+        returns (bytes memory)
+    {
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("cashOut", address(_hookImpl));
         bytes[] memory datas = new bytes[](1);
-        datas[0] = abi.encode(tokenIds);
+        datas[0] = abi.encode(tokenIds, amounts);
         return metadataHelper().createMetadata(ids, datas);
-    }
-
-    function _generateTokenId(uint256 tierId, uint256 tokenNumber) internal pure returns (uint256) {
-        return (tierId * 1_000_000_000) + tokenNumber;
     }
 }

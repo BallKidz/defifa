@@ -32,7 +32,7 @@ import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRules
 
 /// @title AttestationDelegateBeneficiary
 /// @notice Regression test for when payer != beneficiary and no explicit delegate is set,
-///         attestation delegation should default to the beneficiary (NFT recipient), not the payer.
+///         attestation delegation should default to the beneficiary (position recipient), not the payer.
 contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
@@ -129,7 +129,9 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
         vm.deal(payer, 1 ether);
         uint16[] memory tierIds = new uint16[](1);
         tierIds[0] = 1;
-        bytes memory payMetadata = abi.encode(address(0), tierIds); // attestationDelegate = address(0)
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
+        bytes memory payMetadata = abi.encode(address(0), tierIds, counts); // attestationDelegate = address(0)
         bytes memory metadata = _buildPayMetadata(payMetadata);
 
         vm.prank(payer);
@@ -137,11 +139,14 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
             projectId: _projectId,
             token: JBConstants.NATIVE_TOKEN,
             amount: 1 ether,
-            beneficiary: beneficiary, // NFT goes to beneficiary, NOT payer
+            beneficiary: beneficiary, // position goes to beneficiary, NOT payer
             minReturnedTokens: 0,
             memo: "",
             metadata: metadata
         });
+
+        assertEq(_nft.balanceOf(beneficiary, 1), 1, "beneficiary holds the position");
+        assertEq(_nft.balanceOf(payer, 1), 0, "payer holds no position");
 
         // Delegation should be on the beneficiary's account, not the payer's.
         // The beneficiary's delegate is themselves (default when no explicit delegate is set).
@@ -162,7 +167,9 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
         vm.deal(user, 1 ether);
         uint16[] memory tierIds = new uint16[](1);
         tierIds[0] = 1;
-        bytes memory payMetadata = abi.encode(address(0), tierIds);
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
+        bytes memory payMetadata = abi.encode(address(0), tierIds, counts);
         bytes memory metadata = _buildPayMetadata(payMetadata);
 
         vm.prank(user);
@@ -192,7 +199,9 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
         vm.deal(payer, 1 ether);
         uint16[] memory tierIds = new uint16[](1);
         tierIds[0] = 1;
-        bytes memory payMetadata = abi.encode(explicitDelegate, tierIds);
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
+        bytes memory payMetadata = abi.encode(explicitDelegate, tierIds, counts);
         bytes memory metadata = _buildPayMetadata(payMetadata);
 
         vm.prank(payer);

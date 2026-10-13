@@ -155,7 +155,9 @@ contract FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
             uint16[] memory rawMetadata = new uint16[](1);
             // forge-lint: disable-next-line(unsafe-typecast)
             rawMetadata[0] = uint16(i + 1);
-            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
+            uint256[] memory counts = new uint256[](1);
+            counts[0] = 1;
+            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, counts));
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(
                 _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata

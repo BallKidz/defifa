@@ -136,7 +136,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
     function test_reserveMintDoesNotChangeQuorumWhenPendingReservesAlreadyCounted() external {
         (_pid, _nft, _gov) = _launch(_launchData());
 
-        // --- MINT phase --- players mint 1 NFT each into tiers 1-4
+        // --- MINT phase --- players mint 1 position each into tiers 1-4
         vm.warp(86_402);
         _mint(_player0, 1);
         _mint(_player1, 2);
@@ -314,8 +314,10 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         uint16[] memory tiers = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         tiers[0] = uint16(tierId);
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, tiers);
+        data[0] = abi.encode(user, tiers, counts);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(_hookImpl));
         bytes memory metadata = metadataHelper().createMetadata(ids, data);
@@ -329,30 +331,5 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         delegations[0] = DefifaDelegation({delegatee: user, tierId: tierId});
         vm.prank(user);
         _nft.setTierDelegatesTo(delegations);
-    }
-
-    function _cashOut(address user, uint256 tierId, uint256 tokenNumber) internal {
-        bytes memory metadata = _cashOutMetadata(tierId, tokenNumber);
-        vm.prank(user);
-        jbMultiTerminal()
-            .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: metadata
-        });
-    }
-
-    function _cashOutMetadata(uint256 tierId, uint256 tokenNumber) internal view returns (bytes memory) {
-        uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = (tierId * 1_000_000_000) + tokenNumber;
-        bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(tokenIds);
-        bytes4[] memory ids = new bytes4[](1);
-        ids[0] = metadataHelper().getId("cashOut", address(_hookImpl));
-        return metadataHelper().createMetadata(ids, data);
     }
 }

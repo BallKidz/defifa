@@ -178,24 +178,4 @@ contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
             timelockDuration: 0
         });
     }
-
-    function _buildPayMetadata(bytes memory decodedData) internal view returns (bytes memory) {
-        bytes4[] memory ids = new bytes4[](1);
-        ids[0] = metadataHelper().getId("pay", address(_hookImpl));
-        bytes[] memory datas = new bytes[](1);
-        datas[0] = decodedData;
-        return metadataHelper().createMetadata(ids, datas);
-    }
-
-    function _buildCashOutMetadata(uint256[] memory tokenIds) internal view returns (bytes memory) {
-        bytes4[] memory ids = new bytes4[](1);
-        ids[0] = metadataHelper().getId("cashOut", address(_hookImpl));
-        bytes[] memory datas = new bytes[](1);
-        datas[0] = abi.encode(tokenIds);
-        return metadataHelper().createMetadata(ids, datas);
-    }
-
-    function _generateTokenId(uint256 tierId, uint256 tokenNumber) internal pure returns (uint256) {
-        return (tierId * 1_000_000_000) + tokenNumber;
-    }
 }

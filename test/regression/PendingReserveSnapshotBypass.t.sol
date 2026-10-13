@@ -301,8 +301,10 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         uint16[] memory tiers = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         tiers[0] = uint16(tierId);
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, tiers);
+        data[0] = abi.encode(user, tiers, counts);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(_hookImpl));
         bytes memory metadata = metadataHelper().createMetadata(ids, data);

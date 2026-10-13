@@ -163,29 +163,4 @@ contract OneTierZeroTimeoutLockTest is JBTest, TestBaseWorkflow {
             timelockDuration: 0
         });
     }
-
-    function _mintSingleTier(address user, uint256 amount) internal {
-        vm.deal(user, amount);
-        uint16[] memory mintIds = new uint16[](1);
-        mintIds[0] = 1;
-        bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, mintIds);
-        bytes4[] memory ids = new bytes4[](1);
-        ids[0] = metadataHelper().getId("pay", address(hook));
-
-        vm.prank(user);
-        jbMultiTerminal().pay{value: amount}(
-            projectId, JBConstants.NATIVE_TOKEN, amount, user, 0, "", metadataHelper().createMetadata(ids, data)
-        );
-    }
-
-    function _cashOutMetadata() internal view returns (bytes memory) {
-        uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = 1_000_000_001;
-        bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(tokenIds);
-        bytes4[] memory ids = new bytes4[](1);
-        ids[0] = metadataHelper().getId("cashOut", address(hook));
-        return metadataHelper().createMetadata(ids, data);
-    }
 }
