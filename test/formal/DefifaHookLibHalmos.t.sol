@@ -43,10 +43,10 @@ contract DefifaHookLibHalmos {
     }
 
     /// @notice Proves refund-style phases return the cumulative mint price, independent of pot state.
-    /// @param cumulativeMintPrice The amount paid to mint the cashed-out NFTs.
+    /// @param cumulativeMintPrice The amount paid to mint the cashed-out positions.
     /// @param surplusValue The current project surplus.
     /// @param totalAmountRedeemed The amount already redeemed.
-    /// @param cumulativeCashOutWeight The scorecard weight for the NFTs.
+    /// @param cumulativeCashOutWeight The scorecard weight for the positions.
     function check_refundPhasesReturnMintPrice(
         uint128 cumulativeMintPrice,
         uint128 surplusValue,
@@ -86,10 +86,10 @@ contract DefifaHookLibHalmos {
     }
 
     /// @notice Proves weighted phases use cumulative pot value and ignore the original mint price.
-    /// @param cumulativeMintPrice The amount paid to mint the cashed-out NFTs.
+    /// @param cumulativeMintPrice The amount paid to mint the cashed-out positions.
     /// @param surplusValue The current project surplus.
     /// @param totalAmountRedeemed The amount already redeemed.
-    /// @param cumulativeCashOutWeight The scorecard weight for the NFTs.
+    /// @param cumulativeCashOutWeight The scorecard weight for the positions.
     function check_weightedPhasesIgnoreMintPrice(
         uint128 cumulativeMintPrice,
         uint64 surplusValue,

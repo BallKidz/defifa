@@ -151,7 +151,7 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
         DefifaLaunchProjectData memory defifaData = _getBasicLaunchData(nTiers);
         (uint256 _projectId, DefifaHook _nft, DefifaGovernor _governor) = _createProject(defifaData);
 
-        // --- Phase 1: Mint NFTs (1 ETH per user, 4 users = 4 ETH pot) ---
+        // --- Phase 1: Mint positions (1 ETH per user, 4 users = 4 ETH pot) ---
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
         for (uint256 i = 0; i < nTiers; i++) {
             _users[i] = address(bytes20(keccak256(abi.encode("qa_user", Strings.toString(i)))));
@@ -159,7 +159,9 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
             uint16[] memory rawMetadata = new uint16[](1);
             // forge-lint: disable-next-line(unsafe-typecast)
             rawMetadata[0] = uint16(i + 1);
-            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
+            uint256[] memory counts = new uint256[](1);
+            counts[0] = 1;
+            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, counts));
 
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(
@@ -224,10 +226,13 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
 
         // --- Players can cash out immediately ---
         uint256 user0BalBefore = _users[0].balance;
+        assertEq(_nft.balanceOf(_users[0], 1), 1, "winner should hold one tier 1 position");
         {
             uint256[] memory cashOutIds = new uint256[](1);
-            cashOutIds[0] = _generateTokenId(1, 1);
-            bytes memory cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutIds));
+            cashOutIds[0] = 1;
+            uint256[] memory cashOutAmounts = new uint256[](1);
+            cashOutAmounts[0] = 1;
+            bytes memory cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutIds, cashOutAmounts));
 
             vm.prank(_users[0]);
             JBMultiTerminal(address(jbMultiTerminal()))
@@ -242,6 +247,7 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
             });
         }
         uint256 reclaimed = _users[0].balance - user0BalBefore;
+        assertEq(_nft.balanceOf(_users[0], 1), 0, "cashed-out position should be burned");
         assertGt(reclaimed, 0, "winner should reclaim ETH immediately (no DoS)");
 
         // --- Calling fulfillCommitmentsOf again is a no-op (idempotent) ---
@@ -297,10 +303,6 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
             (_fc,) = jbRulesets().latestQueuedOf(projectId);
         }
         nft = DefifaHook(_fc.dataHook());
-    }
-
-    function _generateTokenId(uint256 _tierId, uint256 _tokenNumber) internal pure returns (uint256) {
-        return (_tierId * 1_000_000_000) + _tokenNumber;
     }
 
     function _buildPayMetadata(bytes memory metadata) internal view returns (bytes memory) {

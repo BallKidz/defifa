@@ -193,7 +193,7 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
     function testRevert_setTierDelegateTo_zeroAddress() external {
         _setupGame(4, 1 ether);
 
-        // _users[0] owns an NFT in tier 1 during the MINT phase.
+        // _users[0] owns a position in tier 1 during the MINT phase.
         vm.prank(_users[0]);
         vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
         _nft.setTierDelegateTo({delegatee: address(0), tierId: 1});
@@ -297,8 +297,10 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
         uint16[] memory m = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, m);
+        data[0] = abi.encode(user, m, counts);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(hook));
         vm.prank(user);

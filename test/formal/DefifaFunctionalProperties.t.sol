@@ -15,8 +15,8 @@ import {DefifaHookLib} from "../../src/libraries/DefifaHookLib.sol";
 ///
 /// Specs verified here come directly from the contracts and INVARIANTS.md:
 ///  - DefifaHookLib.computeCashOutCount phase branch (refund-style returns mint price;
-///    weighted phases use pot value and ignore mint price). [DefifaHookLib.sol:164-187]
-///  - DefifaHookLib.computeTokensClaim proportional fee-token claim. [DefifaHookLib.sol:324-353]
+///    weighted phases use pot value and ignore mint price). [DefifaHookLib.sol:185-208]
+///  - DefifaHookLib.computeTokensClaim proportional fee-token claim. [DefifaHookLib.sol:352-376]
 ///  - DefifaGovernor packed scorecard info: 3 x uint48 round-trip + field isolation.
 ///    [DefifaGovernor.sol:556-597]
 ///  - BWA reduction multiplier monotonicity: power * (TOTAL - tierWeight) / TOTAL.
@@ -215,7 +215,8 @@ contract DefifaFunctionalProperties is Test {
     function check_tokensClaimZeroCost(
         uint256 defifaBalance,
         uint256 baseProtocolBalance,
-        uint256[] memory tokenIds
+        uint256[] memory tokenIds,
+        uint256[] memory amounts
     )
         public
         view
@@ -223,7 +224,7 @@ contract DefifaFunctionalProperties is Test {
         // totalMintCost == 0 short-circuits to (0,0) before any store reads, so a zero / unused
         // store is fine for the symbolic path.
         (uint256 d, uint256 b) = DefifaHookLib.computeTokensClaim(
-            tokenIds, IJB721TiersHookStore(address(0)), address(this), 0, defifaBalance, baseProtocolBalance
+            tokenIds, amounts, IJB721TiersHookStore(address(0)), address(this), 0, defifaBalance, baseProtocolBalance
         );
         assert(d == 0);
         assert(b == 0);
@@ -239,7 +240,7 @@ contract DefifaFunctionalProperties is Test {
         pure
     {
         // The contract guarantees 0 < cumulativeMintPrice <= totalMintCost (a holder cannot claim for more
-        // than the whole pot's mint cost). Model the proportional math directly (mirrors lines 351-352).
+        // than the whole pot's mint cost). Model the proportional math directly (mirrors DefifaHookLib.sol:374-375).
         totalMintCost = bound(totalMintCost, 1, type(uint128).max);
         cumulativeMintPrice = bound(cumulativeMintPrice, 0, totalMintCost);
         defifaBalance = bound(defifaBalance, 0, type(uint128).max);
