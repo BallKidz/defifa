@@ -62,7 +62,7 @@ The contracts split responsibility as follows:
 | Dependency | Assumption | What breaks if wrong |
 |------------|------------|----------------------|
 | `nana-core-v6` | Treasury accounting, rulesets, and cash-out surfaces stay coherent | Pot settlement and redeem math become unsound |
-| `nana-721-hook-v6` | `JB721TiersHookStore` tier config, supply, reserve, and burn accounting match Defifa's game logic when called once per position; its per-holder views are unused (they read 0 for Defifa hooks) | Voting power, supply, and cash-out weights drift |
+| `nana-721-hook-v6` | `JB721TiersHookStore` tier config, supply, reserve, burn and holder accounting, extended in `DefifaTiersHookStore` with count-based records that must match the per-position originals (`test/DefifaTiersHookStore.t.sol`) | Voting power, supply, and cash-out weights drift |
 | Deployer launch patterns | Launch-time authority fully converges to the intended game authority | Games remain misconfigured or over-privileged |
 
 ## Critical invariants

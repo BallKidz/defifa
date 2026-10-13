@@ -9,7 +9,7 @@ import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierCashOutWeight} from "../../src/structs/DefifaTierCashOutWeight.sol";
 import {DefifaTierParams} from "../../src/structs/DefifaTierParams.sol";
-import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
+import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
@@ -106,7 +106,7 @@ contract OneTierZeroTimeoutLockTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: defifaProjectId,
             baseProtocolProjectId: protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore(),
+            hookStore: new DefifaTiersHookStore(),
             trustedForwarder: address(0)
         });
 

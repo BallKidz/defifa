@@ -9,6 +9,7 @@ import {mulDiv} from "@prb/math/src/Common.sol";
 
 import {DefifaGamePhase} from "../enums/DefifaGamePhase.sol";
 import {IDefifaHook} from "../interfaces/IDefifaHook.sol";
+import {IDefifaTiersHookStore} from "../interfaces/IDefifaTiersHookStore.sol";
 import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
 
 /// @notice Pure/view helper functions extracted from DefifaHook to reduce contract bytecode size.
@@ -63,9 +64,6 @@ library DefifaHookLib {
     /// @notice The offset added to a tier ID to form the token ID of its reserve-minted positions.
     /// @dev Above every uint16 tier ID the store can hold.
     uint256 internal constant RESERVE_TOKEN_ID_OFFSET = 1 << 16;
-
-    /// @notice The multiplier the store uses to encode a tier ID into a 721 token ID (`tierId * 1e9 + number`).
-    uint256 internal constant _STORE_TOKEN_ID_MULTIPLIER = 1_000_000_000;
 
     //*********************************************************************//
     // -------------------------- internal views ------------------------- //
@@ -126,15 +124,13 @@ library DefifaHookLib {
         return availableReserves > reservesMinted ? availableReserves - reservesMinted : 0;
     }
 
-    /// @notice Validates a payment's tier counts and computes what to mint and the attestation units per tier.
-    /// @dev The store records mints per position, so the counts are expanded into one tier ID per position.
+    /// @notice Validates a payment's tier counts and computes the attestation units minted in each tier.
     /// @param tierIds The tier IDs to mint, in strictly ascending order.
     /// @param counts The number of positions to mint in each tier.
     /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
-    /// @return expandedTierIds One tier ID per position, for the store.
     /// @return attestationAmounts The attestation units minted in each tier, parallel to `tierIds`.
-    function expandMints(
+    function computeAttestationUnits(
         uint16[] memory tierIds,
         uint256[] memory counts,
         IJB721TiersHookStore hookStore,
@@ -142,13 +138,12 @@ library DefifaHookLib {
     )
         public
         view
-        returns (uint16[] memory expandedTierIds, uint256[] memory attestationAmounts)
+        returns (uint256[] memory attestationAmounts)
     {
         uint256 numberOfTiers = tierIds.length;
         if (numberOfTiers != counts.length) revert DefifaHook_LengthMismatch(numberOfTiers, counts.length);
 
         attestationAmounts = new uint256[](numberOfTiers);
-        uint256 totalCount;
         uint256 previousTierId;
 
         for (uint256 i; i < numberOfTiers; i++) {
@@ -161,17 +156,6 @@ library DefifaHookLib {
 
             attestationAmounts[i] =
                 counts[i] * hookStore.tierOf({hook: hook, id: tierIds[i], includeResolvedUri: false}).votingUnits;
-            totalCount += counts[i];
-        }
-
-        // ponytail: one array slot per position because the store's recordMint is per position. A count-aware store
-        // entry point would make this O(tiers).
-        expandedTierIds = new uint16[](totalCount);
-        uint256 index;
-        for (uint256 i; i < numberOfTiers; i++) {
-            for (uint256 j; j < counts[i]; j++) {
-                expandedTierIds[index++] = tierIds[i];
-            }
         }
     }
 
@@ -491,14 +475,14 @@ library DefifaHookLib {
     /// @dev Executes via delegatecall, so the store records the burns for the calling hook.
     /// @param tokenIds The burned token IDs (paid or reserve IDs).
     /// @param amounts The number of positions burned of each token ID.
-    /// @param hookStore The 721 tiers hook store.
+    /// @param hookStore The tiers hook store.
     /// @param isComplete Whether the game is in its COMPLETE phase.
     /// @param tokensRedeemedFrom The hook's COMPLETE-phase redemptions per tier.
     /// @param refundedBurnsFrom The hook's non-COMPLETE-phase burns per tier.
     function recordBurns(
         uint256[] memory tokenIds,
         uint256[] memory amounts,
-        IJB721TiersHookStore hookStore,
+        IDefifaTiersHookStore hookStore,
         bool isComplete,
         mapping(uint256 => uint256) storage tokensRedeemedFrom,
         mapping(uint256 => uint256) storage refundedBurnsFrom
@@ -506,30 +490,18 @@ library DefifaHookLib {
         public
     {
         uint256 numberOfIds = tokenIds.length;
-        uint256 totalAmount;
-        for (uint256 i; i < numberOfIds; i++) {
-            totalAmount += amounts[i];
-        }
-
-        // ponytail: the store counts burns from 721 token IDs (`tierId * 1e9 + number`), one per position. Only the
-        // tier part is read, so each position is passed as `tierId * 1e9`.
-        uint256[] memory storeTokenIds = new uint256[](totalAmount);
-        uint256 index;
+        uint256[] memory tierIds = new uint256[](numberOfIds);
         for (uint256 i; i < numberOfIds; i++) {
             uint256 tierId = tierIdOf(tokenIds[i]);
-            uint256 amount = amounts[i];
+            tierIds[i] = tierId;
 
             // Track COMPLETE-phase redemptions, or non-COMPLETE burns (refund/no-contest) so pending reserve counts
             // can be adjusted.
-            if (isComplete) tokensRedeemedFrom[tierId] += amount;
-            else refundedBurnsFrom[tierId] += amount;
-
-            for (uint256 j; j < amount; j++) {
-                storeTokenIds[index++] = tierId * _STORE_TOKEN_ID_MULTIPLIER;
-            }
+            if (isComplete) tokensRedeemedFrom[tierId] += amounts[i];
+            else refundedBurnsFrom[tierId] += amounts[i];
         }
 
-        hookStore.recordBurn(storeTokenIds);
+        hookStore.recordBurnCounts({tierIds: tierIds, counts: amounts});
     }
 
     /// @notice Claims the defifa and base protocol tokens for a beneficiary.

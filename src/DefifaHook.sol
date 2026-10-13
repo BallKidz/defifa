@@ -32,6 +32,7 @@ import {DefifaDelegation} from "./structs/DefifaDelegation.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IDefifaHook} from "./interfaces/IDefifaHook.sol";
+import {IDefifaTiersHookStore} from "./interfaces/IDefifaTiersHookStore.sol";
 import {IDefifaGamePhaseReporter} from "./interfaces/IDefifaGamePhaseReporter.sol";
 import {IDefifaGamePotReporter} from "./interfaces/IDefifaGamePotReporter.sol";
 import {DefifaTierCashOutWeight} from "./structs/DefifaTierCashOutWeight.sol";
@@ -43,9 +44,10 @@ import {DefifaHookLib} from "./libraries/DefifaHookLib.sol";
 /// per-tier voting power via checkpoints, and applies scorecard-determined cash-out weights after ratification. Mints
 /// are only allowed during the MINT phase, refunds during the REFUND phase, and cash-outs with scoring weights only
 /// after a scorecard is ratified in the COMPLETE phase.
-/// @dev Tier configuration, supply, reserve and burn accounting stay in the shared `JB721TiersHookStore`. Each tier has
-/// two token IDs: the tier ID for paid positions and `tierId + RESERVE_TOKEN_ID_OFFSET` for reserve-minted positions,
-/// which refunds exclude.
+/// @dev Tier configuration, supply, reserve, burn and per-holder tier accounting stay in the tiers store, which must
+/// be a `DefifaTiersHookStore` (the 721 store plus count-based records, called once per tier). Each tier has two token
+/// IDs: the tier ID for paid positions and `tierId + RESERVE_TOKEN_ID_OFFSET` for reserve-minted positions, which
+/// refunds exclude.
 contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     using Checkpoints for Checkpoints.Trace208;
 
@@ -764,7 +766,7 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         DefifaHookLib.recordBurns({
             tokenIds: decodedTokenIds,
             amounts: decodedAmounts,
-            hookStore: store,
+            hookStore: IDefifaTiersHookStore(address(store)),
             isComplete: isComplete,
             tokensRedeemedFrom: tokensRedeemedFrom,
             refundedBurnsFrom: refundedBurnsFrom
@@ -947,25 +949,20 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     /// @param amount The amount to base the mints on. All mints' prices must fit in this amount.
     /// @param tierIds The tier IDs to mint, in strictly ascending order.
     /// @param counts The number of positions to mint in each tier.
-    /// @param expandedTierIds One tier ID per position, for the store.
     /// @param beneficiary The address to mint for.
     /// @return leftoverAmount The amount leftover after the mint.
     function _mintAll(
         uint256 amount,
         uint16[] memory tierIds,
         uint256[] memory counts,
-        uint16[] memory expandedTierIds,
         address beneficiary
     )
         internal
         returns (uint256 leftoverAmount)
     {
-        // Record the mint: price, supply and reserve checks per position. The store's 721 token numbers are not used.
-        (, leftoverAmount,) = store.recordMint({
-            amount: amount,
-            tierIds: expandedTierIds,
-            isOwnerMint: false // Not a manual mint
-        });
+        // Record the mint: price, supply and reserve checks, once per tier.
+        leftoverAmount =
+            IDefifaTiersHookStore(address(store)).recordMintCounts({amount: amount, tierIds: tierIds, counts: counts});
 
         // Increment the paid mint cost.
         totalMintCost += amount;
@@ -1086,10 +1083,10 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
             revert DefifaHook_NothingToMint({metadataFound: found, tierCount: tierIdsToMint.length});
         }
 
-        // Validate the tiers and counts, and compute the attestation units per tier and the per-position tier IDs the
-        // store records.
-        (uint16[] memory expandedTierIds, uint256[] memory attestationAmounts) =
-            DefifaHookLib.expandMints({tierIds: tierIdsToMint, counts: counts, hookStore: store, hook: address(this)});
+        // Validate the tiers and counts, and compute the attestation units per tier.
+        uint256[] memory attestationAmounts = DefifaHookLib.computeAttestationUnits({
+            tierIds: tierIdsToMint, counts: counts, hookStore: store, hook: address(this)
+        });
 
         // Apply attestation units for each tier.
         for (uint256 i; i < tierIdsToMint.length;) {
@@ -1122,11 +1119,7 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
 
         // Mint the positions.
         uint256 leftoverAmount = _mintAll({
-            amount: context.amount.value,
-            tierIds: tierIdsToMint,
-            counts: counts,
-            expandedTierIds: expandedTierIds,
-            beneficiary: context.beneficiary
+            amount: context.amount.value, tierIds: tierIdsToMint, counts: counts, beneficiary: context.beneficiary
         });
 
         // Make sure the buyer isn't overspending.
@@ -1188,7 +1181,8 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
 
     /// @notice Moves positions and the attestation units they carry.
     /// @dev Mints add attestation units where they are minted (`_processPayment`, `mintReservesFor`), so only transfers
-    /// and burns move units here. Burns bypass the transfer pause.
+    /// and burns move units here. Burns bypass the transfer pause. Every move, mints and burns included, is recorded in
+    /// the store's per-holder tier balances.
     /// @param from The address the positions come from (zero for mints).
     /// @param to The address the positions go to (zero for burns).
     /// @param ids The token IDs (paid or reserve IDs).
@@ -1205,8 +1199,6 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     {
         super._update({from: from, to: to, ids: ids, values: values});
 
-        if (from == address(0)) return;
-
         // Cache the store reference in a local variable to avoid repeated SLOAD.
         IJB721TiersHookStore hookStore = store;
 
@@ -1221,17 +1213,27 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
             }
 
             uint256 tierId = DefifaHookLib.tierIdOf(ids[i]);
-            JB721Tier memory tier = hookStore.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
 
-            // Transfers must not be paused (burns are allowed).
-            if (
-                to != address(0) && tier.flags.transfersPausable
-                    && JB721TiersRulesetMetadataResolver.transfersPaused(_rulesetMetadata())
-            ) {
-                revert DefifaHook_TransfersPaused({projectId: projectId, tokenId: ids[i], from: from, to: to});
+            // Mints add attestation units where they are minted; transfers and burns move them here.
+            if (from != address(0)) {
+                JB721Tier memory tier = hookStore.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
+
+                // Transfers must not be paused (burns are allowed).
+                if (
+                    to != address(0) && tier.flags.transfersPausable
+                        && JB721TiersRulesetMetadataResolver.transfersPaused(_rulesetMetadata())
+                ) {
+                    revert DefifaHook_TransfersPaused({projectId: projectId, tokenId: ids[i], from: from, to: to});
+                }
+
+                _transferTierAttestationUnits({
+                    from: from, to: to, tierId: tierId, amount: tier.votingUnits * values[i]
+                });
             }
 
-            _transferTierAttestationUnits({from: from, to: to, tierId: tierId, amount: tier.votingUnits * values[i]});
+            // Record the move in the store's per-holder tier balances after local delegation state is final.
+            IDefifaTiersHookStore(address(hookStore))
+                .recordTransferForTier({tierId: tierId, from: from, to: to, count: values[i]});
 
             unchecked {
                 ++i;
@@ -1255,9 +1257,8 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     /// @param tierId The ID of the tier to get attestation units for.
     /// @return The attestation units.
     function _getTierAttestationUnits(address account, uint256 tierId) internal view virtual returns (uint256) {
-        // Paid and reserve-minted positions both carry the tier's voting units.
-        return (balanceOf(account, tierId) + balanceOf(account, tierId + RESERVE_TOKEN_ID_OFFSET))
-            * store.tierOf({hook: address(this), id: tierId, includeResolvedUri: false}).votingUnits;
+        // The store's tier balance counts paid and reserve-minted positions alike.
+        return store.tierVotingUnitsOf({hook: address(this), account: account, tierId: tierId});
     }
 
     /// @notice Returns whether the caller is a terminal for the project.

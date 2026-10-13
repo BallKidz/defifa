@@ -7,7 +7,7 @@ import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
-import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
+import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
 import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
 
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
@@ -116,7 +116,7 @@ contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _protocolFeeProjectId,
             baseProtocolProjectId: _defifaProjectId,
-            hookStore: new JB721TiersHookStore(),
+            hookStore: new DefifaTiersHookStore(),
             trustedForwarder: address(0)
         });
         hook.transferOwnership(address(deployer));

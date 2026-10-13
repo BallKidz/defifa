@@ -11,7 +11,7 @@ import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
-import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
+import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
 import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -128,7 +128,7 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _protocolFeeProjectId,
             baseProtocolProjectId: _defifaProjectId,
-            hookStore: new JB721TiersHookStore(),
+            hookStore: new DefifaTiersHookStore(),
             trustedForwarder: address(0)
         });
         hook.transferOwnership(address(deployer));

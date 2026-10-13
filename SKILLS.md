@@ -41,7 +41,7 @@ Defifa is an onchain prediction game system built on Juicebox. This repo package
 - Start in [`src/DefifaDeployer.sol`](./src/DefifaDeployer.sol) for phase shape and commitment fulfillment, [`src/DefifaHook.sol`](./src/DefifaHook.sol) for ERC-1155 position runtime and settlement behavior, and [`src/DefifaGovernor.sol`](./src/DefifaGovernor.sol) for scorecards, attestation, and ratification.
 - Treat phase transitions, scorecard ratification, no-contest behavior, and fee accounting as one economic system.
 - Defifa-specific cash-out weights and governance thresholds sit on top of `nana-721-hook-v6` and `nana-core-v6`.
-- Positions are hook ERC-1155 balances: paid ID = tier ID, reserve ID = `tierId + RESERVE_TOKEN_ID_OFFSET`. Read holdings with `hook.balanceOf(account, id)`; the store's per-holder views read 0 for Defifa hooks. Games deployed before this change are still ERC-721.
+- Positions are hook ERC-1155 balances: paid ID = tier ID, reserve ID = `tierId + RESERVE_TOKEN_ID_OFFSET`. Read holdings with `hook.balanceOf(account, id)`; the store's per-holder views count a tier's paid and reserve IDs together. Games deployed before this change are still ERC-721.
 - When a task mentions game-piece rendering or metadata, confirm whether it belongs in [`src/DefifaTokenUriResolver.sol`](./src/DefifaTokenUriResolver.sol).
 - If you edit phase transitions, check lifecycle, governance, and fee-accounting tests together.
 - If ratification, attestation, or quorum behavior changes, re-read the review and regression tests before trusting a clean happy-path result.

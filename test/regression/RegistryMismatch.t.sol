@@ -8,7 +8,7 @@ import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../../src/structs/DefifaTierParams.sol";
 
-import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
+import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
@@ -94,7 +94,7 @@ contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
             registry: registry,
             defifaProjectId: defifaProjectId,
             baseProtocolProjectId: protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore(),
+            hookStore: new DefifaTiersHookStore(),
             trustedForwarder: address(0)
         });
 

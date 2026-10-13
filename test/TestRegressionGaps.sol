@@ -5,7 +5,7 @@ import {DefifaGovernor} from "../src/DefifaGovernor.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
-import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
+import {DefifaTiersHookStore} from "../src/DefifaTiersHookStore.sol";
 
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
@@ -154,7 +154,7 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore(),
+            hookStore: new DefifaTiersHookStore(),
             trustedForwarder: address(0)
         });
 
@@ -621,7 +621,7 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore(),
+            hookStore: new DefifaTiersHookStore(),
             trustedForwarder: address(0)
         });
         hook.transferOwnership(address(deployer));

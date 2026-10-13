@@ -12,7 +12,7 @@ import {DefifaLaunchProjectData} from "../src/structs/DefifaLaunchProjectData.so
 import {DefifaTierParams} from "../src/structs/DefifaTierParams.sol";
 
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
-import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
+import {DefifaTiersHookStore} from "../src/DefifaTiersHookStore.sol";
 import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
@@ -116,7 +116,7 @@ abstract contract DefifaERC1155Harness is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: protocolFeeProjectId,
             baseProtocolProjectId: defifaProjectId,
-            hookStore: new JB721TiersHookStore(),
+            hookStore: new DefifaTiersHookStore(),
             trustedForwarder: address(0)
         });
         hookImpl.transferOwnership(address(deployer));
@@ -342,13 +342,17 @@ contract DefifaERC1155Test is DefifaERC1155Harness {
         assertEq(nft.getTierTotalAttestationUnitsOf(3), 6 * TIER_PRICE, "tier 3 total conserved");
     }
 
-    function test_storePerHolderViewsAreNotMaintained() public {
+    function test_storeTracksHolderTierBalances() public {
         _pay(alice, _ids(2, 3), _counts(4, 6));
+        vm.prank(alice);
+        nft.safeTransferFrom(alice, bob, 2, 1, "");
 
-        // Holder balances live in the hook. The store keeps tier and supply accounting only.
-        assertEq(store.balanceOf(address(nft), alice), 0, "store balanceOf");
-        assertEq(store.tierBalanceOf(address(nft), alice, 2), 0, "store tierBalanceOf");
-        assertEq(store.totalSupplyOf(address(nft)), 10, "store total supply still tracks mints");
+        // The store's per-holder views agree with the hook's balances.
+        assertEq(store.balanceOf(address(nft), alice), 9, "store balanceOf alice");
+        assertEq(store.balanceOf(address(nft), bob), 1, "store balanceOf bob");
+        assertEq(store.tierBalanceOf(address(nft), alice, 2), nft.balanceOf(alice, 2), "store tier balance");
+        assertEq(store.tierVotingUnitsOf(address(nft), alice, 3), 6 * TIER_PRICE, "store voting units");
+        assertEq(store.totalSupplyOf(address(nft)), 10, "store total supply");
     }
 
     //*********************************************************************//

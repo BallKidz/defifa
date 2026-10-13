@@ -9,7 +9,7 @@ import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
 import {DefifaGamePhase} from "../src/enums/DefifaGamePhase.sol";
 import {IDefifaDeployer} from "../src/interfaces/IDefifaDeployer.sol";
-import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
+import {DefifaTiersHookStore} from "../src/DefifaTiersHookStore.sol";
 
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
@@ -135,7 +135,7 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
             registry: _registry,
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore(),
+            hookStore: new DefifaTiersHookStore(),
             trustedForwarder: address(0)
         });
 
@@ -416,7 +416,7 @@ contract TestQAGameIdPredictionRace is JBTest, TestBaseWorkflow {
             registry: _registry,
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore(),
+            hookStore: new DefifaTiersHookStore(),
             trustedForwarder: address(0)
         });
 

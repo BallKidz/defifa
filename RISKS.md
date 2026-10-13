@@ -20,7 +20,7 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 
 - **Governor as hook owner.** The governor can set tier cash-out weights through ratification.
 - **Deployer as project owner.** The deployer owns game projects and controls ruleset queuing and commitment fulfillment.
-- **External dependencies.** Core protocol and shared 721-store behavior remain upstream trust boundaries. The store still owns tier config, supply, reserve, and burn accounting for Defifa hooks, but not position ownership: its per-holder views (`balanceOf`, `tierBalanceOf`, `votingUnitsOf`, `tierVotingUnitsOf`) read 0 for Defifa hooks. Integrators reading holdings or voting units from the store instead of `hook.balanceOf(account, id)` and the hook's attestation views will see zero.
+- **External dependencies.** Core protocol and shared 721-store behavior remain upstream trust boundaries. The store owns tier config, supply, reserve, burn, and per-tier holder accounting for Defifa hooks through `DefifaTiersHookStore`, whose count-based records must stay equivalent to the upstream per-position ones. Its per-holder views count a tier's paid and reserve IDs together; use `hook.balanceOf(account, id)` to tell them apart.
 - **Terminal provenance is the launcher's responsibility.** The hook authenticates terminals via directory registration, not implementation identity. A game is only as trustworthy as the terminal its launcher chose. Users must verify a game's terminal before participating.
 - **Default attestation delegate.** If set, it can accumulate meaningful governance power across new minters.
 
@@ -51,7 +51,7 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 ## 5. DoS vectors
 
 - **Tier iteration in governance.** Quorum and attestation-weight calculations scale with tier count.
-- **Per-position store calls.** The store records mints and burns per position, so pay and cash-out gas still grows with the position count (the hook expands counts into one store entry per position), though the ERC-1155 balance write is per tier.
+- **Store fork drift.** `DefifaTiersHookStore` inherits the upstream store and adds count-based records. An upstream store change that alters per-position semantics must be mirrored in the count functions; `test/DefifaTiersHookStore.t.sol` fuzzes their equivalence.
 - **Large split arrays.** User-provided split arrays can increase gas and complexity even if practical counts stay bounded.
 
 ## 6. Integration risks

@@ -8,7 +8,7 @@ import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaScorecardState} from "../../src/enums/DefifaScorecardState.sol";
-import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
+import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
 
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
@@ -129,7 +129,7 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
             registry: _registry,
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new JB721TiersHookStore(),
+            hookStore: new DefifaTiersHookStore(),
             trustedForwarder: address(0)
         });
 

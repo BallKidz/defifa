@@ -30,7 +30,7 @@
 ## Trust boundaries
 
 - Canonical treasury accounting, project ownership, rulesets, terminals, and payout mechanics remain in `nana-core-v6`.
-- Tier config, supply, reserve, and burn accounting come from `nana-721-hook-v6`'s `JB721TiersHookStore`, which the hook calls once per position. Position ownership is the hook's own ERC-1155 (OpenZeppelin `ERC1155`) state; the store's per-holder views read 0 for Defifa hooks.
+- Tier config, supply, reserve, burn, and per-holder tier accounting come from `DefifaTiersHookStore`: `nana-721-hook-v6`'s `JB721TiersHookStore`, unchanged, plus count-based `recordMintCounts`, `recordBurnCounts` and `recordTransferForTier(tierId, from, to, count)` so the hook records once per tier. Position ownership is the hook's own ERC-1155 (OpenZeppelin `ERC1155`) state, mirrored per tier in the store's holder views.
 - `DefifaGovernor` is trusted to ratify scorecards only through its quorum, grace-period, and timelock rules.
 - `DefifaDeployer` is trusted to convert governance output into the final completion envelope.
 
@@ -82,7 +82,7 @@ authorized completion path
 
 ## Position model
 
-Positions are ERC-1155 balances, one balance per tier, so a payment mints a count per tier in one transfer. Per-position ERC-721 mints cost about 47k gas each, which capped one entry near 160 positions under Base's 2^24 per-transaction gas cap with the SDK's 2x gas headroom. Measured in `test/DefifaERC1155.t.sol`, a pay of 160 positions in one tier costs about 1.43M gas and 1,000 positions across 8 tiers about 7.28M, so 1,000 positions fit the same cap with 2x headroom. The store still records each position, so cost grows by roughly 7k gas per position.
+Positions are ERC-1155 balances, one balance per tier, so a payment mints a count per tier in one transfer. Per-position ERC-721 mints cost about 47k gas each, which capped one entry near 160 positions under Base's 2^24 per-transaction gas cap with the SDK's 2x gas headroom. Measured in `test/DefifaERC1155.t.sol`, a pay of 160 positions in one tier costs about 443k gas and 1,000 positions across 8 tiers about 1.63M. The store records counts once per tier, so cost grows with the number of tiers, not positions.
 
 - Paid positions use token ID = tier ID. Reserve-minted positions use `tierId + RESERVE_TOKEN_ID_OFFSET` (`1 << 16`), so refunds still exclude them after transfers. `tierIdOf(id)` maps either ID back to its tier.
 - Both IDs count toward tier supply, attestation units, and cash-out weight. Attestation units are hook balances times the tier's `votingUnits`.

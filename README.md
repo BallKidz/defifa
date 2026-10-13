@@ -143,7 +143,7 @@ references/
 - the shared `JB721TiersHookStore` surface is an upstream ecosystem dependency, not a Defifa-only detail
 - positions are ERC-1155 balances: paid positions use token ID = tier ID, reserve-minted positions use
   `tierId + RESERVE_TOKEN_ID_OFFSET` (`1 << 16`); read holdings with `hook.balanceOf(account, id)`, because the
-  store's per-holder views (`balanceOf`, `tierBalanceOf`, `votingUnitsOf`, `tierVotingUnitsOf`) read 0 for Defifa hooks
+  store's per-holder views (`balanceOf`, `tierBalanceOf`, `votingUnitsOf`, `tierVotingUnitsOf`) count positions per tier, paid and reserve IDs together; games need the `DefifaTiersHookStore` (the 721 store plus count-based records)
 - games deployed before the ERC-1155 change remain ERC-721 hooks; the new layout needs a new hook implementation and
   deployer deployment
 
