@@ -82,7 +82,7 @@ authorized completion path
 
 ## Position model
 
-Positions are ERC-1155 balances, one balance per tier, so a payment mints a count per tier in one transfer. Per-position ERC-721 mints cost about 47k gas each, which capped one entry near 160 positions under Base's 2^24 per-transaction gas cap with the SDK's 2x gas headroom.
+Positions are ERC-1155 balances, one balance per tier, so a payment mints a count per tier in one transfer. Per-position ERC-721 mints cost about 47k gas each, which capped one entry near 160 positions under Base's 2^24 per-transaction gas cap with the SDK's 2x gas headroom. Measured in `test/DefifaERC1155.t.sol`, a pay of 160 positions in one tier costs about 1.43M gas and 1,000 positions across 8 tiers about 7.28M, so 1,000 positions fit the same cap with 2x headroom. The store still records each position, so cost grows by roughly 7k gas per position.
 
 - Paid positions use token ID = tier ID. Reserve-minted positions use `tierId + RESERVE_TOKEN_ID_OFFSET` (`1 << 16`), so refunds still exclude them after transfers. `tierIdOf(id)` maps either ID back to its tier.
 - Both IDs count toward tier supply, attestation units, and cash-out weight. Attestation units are hook balances times the tier's `votingUnits`.

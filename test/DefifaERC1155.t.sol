@@ -38,9 +38,9 @@ import {IERC1155MetadataURI} from "@openzeppelin/contracts/token/ERC1155/extensi
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
-/// @notice Behavior that is specific to ERC-1155 positions: counts, reserve IDs, batch transfers, burn accounting,
-/// interface surface, and the gas a large entry costs.
-contract DefifaERC1155Test is JBTest, TestBaseWorkflow {
+/// @notice A launched game in its MINT phase with 8 tiers (tier 1 reserves one position per two paid), plus pay,
+/// cash-out and metadata helpers.
+abstract contract DefifaERC1155Harness is JBTest, TestBaseWorkflow {
     using JBRulesetMetadataResolver for JBRuleset;
 
     uint256 constant TIER_PRICE = 0.001 ether;
@@ -57,6 +57,7 @@ contract DefifaERC1155Test is JBTest, TestBaseWorkflow {
     IJB721TiersHookStore store;
     uint256 gameId;
     DefifaLaunchProjectData launchData;
+    uint256 launchedAt;
 
     function setUp() public virtual override {
         super.setUp();
@@ -145,7 +146,7 @@ contract DefifaERC1155Test is JBTest, TestBaseWorkflow {
             splits: new JBSplit[](0),
             attestationStartTime: 0,
             attestationGracePeriod: 100_381,
-            defaultAttestationDelegate: address(0),
+            defaultAttestationDelegate: _defaultDelegate(),
             // forge-lint: disable-next-line(unsafe-typecast)
             tierPrice: uint104(TIER_PRICE),
             tiers: tiers,
@@ -156,6 +157,7 @@ contract DefifaERC1155Test is JBTest, TestBaseWorkflow {
             timelockDuration: 0
         });
 
+        launchedAt = block.timestamp;
         gameId = deployer.launchGameWith(launchData);
         JBRuleset memory ruleset = jbRulesets().currentOf(gameId);
         if (ruleset.dataHook() == address(0)) (ruleset,) = jbRulesets().latestQueuedOf(gameId);
@@ -167,6 +169,111 @@ contract DefifaERC1155Test is JBTest, TestBaseWorkflow {
         assertEq(uint256(nft.gamePhaseReporter().currentGamePhaseOf(gameId)), uint256(DefifaGamePhase.MINT));
     }
 
+    //*********************************************************************//
+    // ------------------------------ helpers ---------------------------- //
+    //*********************************************************************//
+
+    /// @notice The game's default attestation delegate. Subclasses override it.
+    function _defaultDelegate() internal virtual returns (address) {
+        return address(0);
+    }
+
+    function _pay(address payer, uint16[] memory tierIds, uint256[] memory counts) internal {
+        uint256 total;
+        for (uint256 i; i < counts.length; i++) {
+            total += counts[i] * TIER_PRICE;
+        }
+        bytes memory metadata = _payMetadata(tierIds, counts);
+        vm.deal(payer, payer.balance + total);
+        vm.prank(payer);
+        jbMultiTerminal().pay{value: total}(gameId, JBConstants.NATIVE_TOKEN, total, payer, 0, "", metadata);
+    }
+
+    function _measurePay(address payer, uint256[] memory counts) internal returns (uint256 gasUsed) {
+        uint16[] memory tierIds = new uint16[](counts.length);
+        uint256 total;
+        for (uint256 i; i < counts.length; i++) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            tierIds[i] = uint16(i + 1);
+            total += counts[i] * TIER_PRICE;
+        }
+        bytes memory metadata = _payMetadata(tierIds, counts);
+        vm.deal(payer, total);
+        vm.prank(payer);
+        uint256 before = gasleft();
+        jbMultiTerminal().pay{value: total}(gameId, JBConstants.NATIVE_TOKEN, total, payer, 0, "", metadata);
+        gasUsed = before - gasleft();
+    }
+
+    function _expectPayRevert(address payer, uint16[] memory tierIds, uint256[] memory counts, uint256 value) internal {
+        // Build the metadata first: cheatcodes apply to the next external call.
+        bytes memory metadata = _payMetadata(tierIds, counts);
+        vm.deal(payer, value);
+        vm.prank(payer);
+        vm.expectRevert();
+        jbMultiTerminal().pay{value: value}(gameId, JBConstants.NATIVE_TOKEN, value, payer, 0, "", metadata);
+    }
+
+    /// @notice Cash out positions. Callers that expect a revert set `vm.expectRevert` before calling this; the
+    /// metadata is built through `_cashOutMetadata` first so the cheatcode applies to the terminal call.
+    function _cashOut(address holder, uint256[] memory ids, uint256[] memory amounts) internal {
+        _cashOutWith(holder, _cashOutMetadata(ids, amounts));
+    }
+
+    function _cashOutMetadata(uint256[] memory ids, uint256[] memory amounts) internal view returns (bytes memory) {
+        bytes[] memory data = new bytes[](1);
+        data[0] = abi.encode(ids, amounts);
+        bytes4[] memory metadataIds = new bytes4[](1);
+        metadataIds[0] = metadataHelper().getId("cashOut", address(hookImpl));
+        return metadataHelper().createMetadata(metadataIds, data);
+    }
+
+    function _cashOutWith(address holder, bytes memory metadata) internal {
+        vm.prank(holder);
+        JBMultiTerminal(address(jbMultiTerminal()))
+            .cashOutTokensOf({
+            holder: holder,
+            projectId: gameId,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(holder),
+            metadata: metadata
+        });
+    }
+
+    function _payMetadata(uint16[] memory tierIds, uint256[] memory counts) internal view returns (bytes memory) {
+        bytes[] memory data = new bytes[](1);
+        data[0] = abi.encode(address(0), tierIds, counts);
+        bytes4[] memory ids = new bytes4[](1);
+        ids[0] = metadataHelper().getId("pay", address(hookImpl));
+        return metadataHelper().createMetadata(ids, data);
+    }
+
+    function _ids(uint16 a, uint16 b) internal pure returns (uint16[] memory ids) {
+        ids = new uint16[](2);
+        ids[0] = a;
+        ids[1] = b;
+    }
+
+    function _counts(uint256 a, uint256 b) internal pure returns (uint256[] memory counts) {
+        counts = new uint256[](2);
+        counts[0] = a;
+        counts[1] = b;
+    }
+
+    /// @notice Spread `total` positions as evenly as possible across the first `tiers` tiers.
+    function _spread(uint256 tiers, uint256 total) internal pure returns (uint256[] memory counts) {
+        counts = new uint256[](tiers);
+        for (uint256 i; i < tiers; i++) {
+            counts[i] = total / tiers + (i < total % tiers ? 1 : 0);
+        }
+    }
+}
+
+/// @notice Behavior that is specific to ERC-1155 positions: counts, reserve IDs, batch transfers, burn accounting,
+/// interface surface, and the gas a large entry costs.
+contract DefifaERC1155Test is DefifaERC1155Harness {
     //*********************************************************************//
     // ------------------------------ minting ---------------------------- //
     //*********************************************************************//
@@ -383,101 +490,5 @@ contract DefifaERC1155Test is JBTest, TestBaseWorkflow {
         emit log_named_uint("gas, 160 positions in 1 tier", single);
         emit log_named_uint("gas, 1000 positions in 8 tiers", thousand);
         assertLt(thousand * 2, 1 << 24, "1000 positions fit with 2x headroom");
-    }
-
-    //*********************************************************************//
-    // ------------------------------ helpers ---------------------------- //
-    //*********************************************************************//
-
-    function _pay(address payer, uint16[] memory tierIds, uint256[] memory counts) internal {
-        uint256 total;
-        for (uint256 i; i < counts.length; i++) {
-            total += counts[i] * TIER_PRICE;
-        }
-        bytes memory metadata = _payMetadata(tierIds, counts);
-        vm.deal(payer, payer.balance + total);
-        vm.prank(payer);
-        jbMultiTerminal().pay{value: total}(gameId, JBConstants.NATIVE_TOKEN, total, payer, 0, "", metadata);
-    }
-
-    function _measurePay(address payer, uint256[] memory counts) internal returns (uint256 gasUsed) {
-        uint16[] memory tierIds = new uint16[](counts.length);
-        uint256 total;
-        for (uint256 i; i < counts.length; i++) {
-            // forge-lint: disable-next-line(unsafe-typecast)
-            tierIds[i] = uint16(i + 1);
-            total += counts[i] * TIER_PRICE;
-        }
-        bytes memory metadata = _payMetadata(tierIds, counts);
-        vm.deal(payer, total);
-        vm.prank(payer);
-        uint256 before = gasleft();
-        jbMultiTerminal().pay{value: total}(gameId, JBConstants.NATIVE_TOKEN, total, payer, 0, "", metadata);
-        gasUsed = before - gasleft();
-    }
-
-    function _expectPayRevert(address payer, uint16[] memory tierIds, uint256[] memory counts, uint256 value) internal {
-        // Build the metadata first: cheatcodes apply to the next external call.
-        bytes memory metadata = _payMetadata(tierIds, counts);
-        vm.deal(payer, value);
-        vm.prank(payer);
-        vm.expectRevert();
-        jbMultiTerminal().pay{value: value}(gameId, JBConstants.NATIVE_TOKEN, value, payer, 0, "", metadata);
-    }
-
-    /// @notice Cash out positions. Callers that expect a revert set `vm.expectRevert` before calling this; the
-    /// metadata is built through `_cashOutMetadata` first so the cheatcode applies to the terminal call.
-    function _cashOut(address holder, uint256[] memory ids, uint256[] memory amounts) internal {
-        _cashOutWith(holder, _cashOutMetadata(ids, amounts));
-    }
-
-    function _cashOutMetadata(uint256[] memory ids, uint256[] memory amounts) internal view returns (bytes memory) {
-        bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(ids, amounts);
-        bytes4[] memory metadataIds = new bytes4[](1);
-        metadataIds[0] = metadataHelper().getId("cashOut", address(hookImpl));
-        return metadataHelper().createMetadata(metadataIds, data);
-    }
-
-    function _cashOutWith(address holder, bytes memory metadata) internal {
-        vm.prank(holder);
-        JBMultiTerminal(address(jbMultiTerminal()))
-            .cashOutTokensOf({
-            holder: holder,
-            projectId: gameId,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(holder),
-            metadata: metadata
-        });
-    }
-
-    function _payMetadata(uint16[] memory tierIds, uint256[] memory counts) internal view returns (bytes memory) {
-        bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(address(0), tierIds, counts);
-        bytes4[] memory ids = new bytes4[](1);
-        ids[0] = metadataHelper().getId("pay", address(hookImpl));
-        return metadataHelper().createMetadata(ids, data);
-    }
-
-    function _ids(uint16 a, uint16 b) internal pure returns (uint16[] memory ids) {
-        ids = new uint16[](2);
-        ids[0] = a;
-        ids[1] = b;
-    }
-
-    function _counts(uint256 a, uint256 b) internal pure returns (uint256[] memory counts) {
-        counts = new uint256[](2);
-        counts[0] = a;
-        counts[1] = b;
-    }
-
-    /// @notice Spread `total` positions as evenly as possible across the first `tiers` tiers.
-    function _spread(uint256 tiers, uint256 total) internal pure returns (uint256[] memory counts) {
-        counts = new uint256[](tiers);
-        for (uint256 i; i < tiers; i++) {
-            counts[i] = total / tiers + (i < total % tiers ? 1 : 0);
-        }
     }
 }
