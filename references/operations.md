@@ -5,13 +5,13 @@ Use this file when the task is about launch config, phase timing, governance win
 ## Deployment surface
 
 - [`src/DefifaDeployer.sol`](../src/DefifaDeployer.sol) is the first stop for launch-time config, phase queueing, and post-ratification fulfillment.
-- [`script/Deploy.s.sol`](../script/Deploy.s.sol) and [`script/helpers/DefifaDeploymentLib.sol`](../script/helpers/DefifaDeploymentLib.sol) are the deployment entrypoints when the task is about current wiring rather than game mechanics.
+- [`script/Deploy.s.sol`](../script/Deploy.s.sol) and [`script/helpers/DefifaDeploymentLib.sol`](../script/helpers/DefifaDeploymentLib.sol) are the deployment entrypoints when the task is about current wiring rather than game mechanics. `Deploy.s.sol` deploys one `DefifaDeployer` plus `DefifaGovernor` pair per game type (ERC-721 `DefifaHook`, ERC-1155 `Defifa1155Hook`) over one shared `DefifaTiersHookStore` and `DefifaTokenUriResolver`; the ERC-1155 pair uses the salt `keccak256(abi.encode(_salt, "ERC1155"))`. `DefifaDeploymentLib` reads one deployer and governor pair by artifact name (`DefifaDeployer`, `DefifaGovernor`); the ERC-1155 pair's artifact names are wired in after that pair is deployed.
 - [`src/structs/`](../src/structs/) and [`src/enums/`](../src/enums/) define launch data, phase types, and other inputs that often drift from remembered assumptions.
 
 ## Change checklist
 
 - If you edit lifecycle timing, verify phase transitions, no-contest triggers, and the governor's attestation windows together.
-- If you edit hook settlement logic, re-check fee accounting and mint-cost invariants.
+- If you edit hook settlement logic, re-check fee accounting and mint-cost invariants for both hooks, and keep shared rules in `DefifaHookLib`.
 - If you touch governance thresholds or attestation behavior, inspect the governor tests before assuming the change is local.
 - If you touch token metadata or rendering, verify whether the bug belongs in the resolver instead of settlement code.
 - If you touch anything supply-sensitive, inspect the review tests around pending reserves and quorum before relying on current intuition.
@@ -21,7 +21,7 @@ Use this file when the task is about launch config, phase timing, governance win
 - Game-state issue is blamed on the hook even though the deployer queued the wrong phase or timing.
 - Governance behavior looks wrong, but the real issue is stale launch configuration.
 - Settlement changes accidentally affect fee distribution or redemption accounting.
-- Resolver issues get misdiagnosed as hook or governor problems because they surface through game-piece metadata.
+- Resolver issues get misdiagnosed as hook or governor problems because they surface through NFTs.
 - Review-style failures around reserve dilution or attestation counting are treated as isolated math issues even though they cross deployer, hook, and governor boundaries.
 
 ## Useful proof points

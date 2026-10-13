@@ -14,13 +14,14 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 |----------|------|----------------|------------------|
 | P0 | Scorecard capture at quorum | An actor that assembles enough attestation power can ratify an arbitrary scorecard and redirect the pot. | Tier-level attestation caps, grace period, and governance review of delegate concentration. |
 | P1 | Shared 721-hook store blast radius | Defifa inherits the same shared `JB721TiersHookStore` surface as the general 721-hook ecosystem. | Reuse of 721-hook invariants, store-focused testing, and ecosystem-level monitoring. |
+| P1 | Hook selector drift between game types | `DefifaDeployer`, `DefifaGovernor` and `DefifaTokenUriResolver` call the hook by selector and are shared by `DefifaHook` (ERC-721) and `Defifa1155Hook` (ERC-1155). A selector one hook drops or changes breaks launch, ratification, or rendering for that game type. | `test/DefifaHookParity.t.sol` checks both hooks expose the selectors the shared contracts call; shared rules live in `DefifaHookLib`. |
 | P1 | Supply and reserve accounting drift | Game fairness depends on attestation power, fee-token dilution, and cash-out weights tracking real mint and reserve state. | Explicit invariants on supply, reserve inclusion, and tier-weight arithmetic. |
 
 ## 1. Trust assumptions
 
 - **Governor as hook owner.** The governor can set tier cash-out weights through ratification.
 - **Deployer as project owner.** The deployer owns game projects and controls ruleset queuing and commitment fulfillment.
-- **External dependencies.** Core protocol and shared 721-store behavior remain upstream trust boundaries. The store owns tier config, supply, reserve, burn, and per-tier holder accounting for Defifa hooks through `DefifaTiersHookStore`, whose count-based records must stay equivalent to the upstream per-position ones. Its per-holder views count a tier's paid and reserve IDs together; use `hook.balanceOf(account, id)` to tell them apart.
+- **External dependencies.** Core protocol and shared 721-store behavior remain upstream trust boundaries. Both game types record tiers through `DefifaTiersHookStore`, whose count-based records must stay equivalent to the upstream per-position ones. In an ERC-1155 game, the store's per-holder views count a tier's paid and reserve IDs together; use `hook.balanceOf(account, id)` to tell them apart.
 - **Terminal provenance is the launcher's responsibility.** The hook authenticates terminals via directory registration, not implementation identity. A game is only as trustworthy as the terminal its launcher chose. Users must verify a game's terminal before participating.
 - **Default attestation delegate.** If set, it can accumulate meaningful governance power across new minters.
 
@@ -36,7 +37,7 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 
 ## 3. Governance risks
 
-- **Single governor instance across games.** A bug in the governor affects every game that uses it.
+- **Single governor instance across games.** A bug in the governor affects every game that uses it. Each game type has its own governor deployment, but both run the same `DefifaGovernor` code.
 - **Scorecard timeout can block legitimate ratification.** Once timeout is reached, the game may have to fall into no-contest even if a scorecard was close to success.
 - **Delegation is phase-sensitive.** Some delegation behavior freezes after mint phase.
 - **No-contest requires an explicit trigger.** The fallback path does not activate itself just because the timeout happened.
@@ -45,7 +46,7 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 ## 4. Reentrancy surface
 
 - **`afterCashOutRecordedWith`.** Burns happen before external fee-token transfers, which narrows the surface, but transfer compatibility still matters.
-- **Mints and transfers.** Pay and reserve mints skip the ERC-1155 receiver callback (as the earlier 721 `_mint` did), so no external call runs inside pay or cash-out. Holder transfers (`safeTransferFrom`, `safeBatchTransferFrom`) are standard ERC-1155 safe transfers that call `onERC1155Received` / `onERC1155BatchReceived` on contract recipients after balances and attestation units move.
+- **ERC-1155 mints and transfers.** `Defifa1155Hook` pay and reserve mints call the beneficiary's `onERC1155Received` / `onERC1155BatchReceived` when it is a contract (`DefifaHook`'s `_mint` calls no receiver). The call runs after every state change in the mint (store records, `totalMintCost`, attestation units), so a reentrant call sees final state. A beneficiary that rejects the call makes that pay revert; a rejecting reserve beneficiary blocks only its own tier's reserve mints. Holder transfers (`safeTransferFrom`, `safeBatchTransferFrom`) are standard ERC-1155 safe transfers that call `onERC1155Received` / `onERC1155BatchReceived` on contract recipients after balances and attestation units move.
 - **Ratification uses a low-level call into the hook.** Double-set protections must hold.
 
 ## 5. DoS vectors
@@ -60,15 +61,17 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 - **Permanent cash-out weights.** A ratified scorecard is final.
 - **No deployer upgrade path.** Bugs require a new deployer, not an in-place fix.
 - **Clone initialization assumptions matter.** Per-game clone setup must stay correct.
-- **ERC-721 and ERC-1155 games coexist.** Games deployed before the ERC-1155 change keep ERC-721 hooks with the old pay/cash-out metadata. The ERC-1155 layout needs a new hook implementation and deployer deployment, so integrators must detect the hook kind (for example via `supportsInterface`) before encoding metadata or reading holdings.
+- **Two game types coexist.** ERC-721 and ERC-1155 games use different pay and cash-out metadata layouts and holdings reads. Integrators must detect the hook kind (for example `supportsInterface(type(IERC1155).interfaceId)`) before encoding metadata or reading holdings, and pick the deployer for the game type they launch.
+- **Two hook implementations must keep the selectors the shared deployer, governor and resolver call.** A change to one hook's interface that drops or alters a shared selector breaks that game type. Gated by `test/DefifaHookParity.t.sol`.
 
 ## 7. Invariants to verify
 
-- `_totalMintCost` stays consistent with live tier state and burns.
+- `_totalMintCost` stays consistent with live tier state and burns (`test/DefifaMintCostInvariant.t.sol` and `test/erc1155/DefifaMintCostInvariant.t.sol`, each gated by `afterInvariant` so every run mints and refunds).
 - Total cash-outs plus remaining surplus match the pre-fulfillment pot minus intended fees.
 - Scorecard weights sum to `TOTAL_CASHOUT_WEIGHT`.
-- Attestation units are conserved across transfers and delegation, and equal (paid + reserve-ID balance) × `tier.votingUnits` per holder and tier.
-- Reserve-ID positions (`tierId + RESERVE_TOKEN_ID_OFFSET`) never contribute to a MINT/REFUND/NO_CONTEST refund amount, including after transfer.
+- Attestation units are conserved across transfers and delegation. In an ERC-1155 game they equal (paid + reserve-ID balance) × `tier.votingUnits` per holder and tier.
+- `_tierDelegation[address(0)]` is never written or read for mints and burns, in either hook.
+- Reserve positions cannot be refunded: a MINT/REFUND/NO_CONTEST cash-out that includes one reverts (`DefifaHook_CantRefundReserveMint` for `isReserveMint` NFTs, `Defifa1155Hook_CantRefundReserveMint` for `tierId + RESERVE_TOKEN_ID_OFFSET` IDs), including after transfer. Reserves exist only from SCORING on, so in practice this applies in NO_CONTEST.
 - `fulfilledCommitmentsOf[gameId]` is set at most once.
 - Per-tier supply never exceeds `initialSupply`.
 
@@ -92,7 +95,7 @@ This is conservative, but it prevents users from front-running reserve dilution 
 
 ### 8.5 Launcher-selected terminals are trusted per game
 
-`DefifaDeployer.launchGameWith(...)` is permissionless and allows the launcher to choose the terminal registered for the game. `DefifaHook` trusts any registered terminal as the source of pay and cash-out callbacks. This means a malicious launcher can register a callback-forging terminal that fabricates hook contexts without recording real payments. Users and integrators must verify a game's registered terminal before trusting or participating in it. The same applies to scorecard timing parameters and tier configuration — a game's safety depends on the launcher choosing sane inputs. Frontends and aggregators should cross-reference a game's terminal against the canonical `JBMultiTerminal` for the chain before displaying it as trustworthy.
+`DefifaDeployer.launchGameWith(...)` is permissionless and allows the launcher to choose the terminal registered for the game. `DefifaHook` (and `Defifa1155Hook`) trusts any registered terminal as the source of pay and cash-out callbacks. This means a malicious launcher can register a callback-forging terminal that fabricates hook contexts without recording real payments. Users and integrators must verify a game's registered terminal before trusting or participating in it. The same applies to scorecard timing parameters and tier configuration — a game's safety depends on the launcher choosing sane inputs. Frontends and aggregators should cross-reference a game's terminal against the canonical `JBMultiTerminal` for the chain before displaying it as trustworthy.
 
 ### 8.6 One-tier games always resolve via no-contest
 
@@ -108,4 +111,4 @@ This means **a single bad split cannot block the others from being paid**, and t
 
 ### 8.8 Reserve minting is blocked during NO_CONTEST
 
-`DefifaHook.mintReservesFor` reverts with `DefifaHook_ReservedTokenMintingBlockedInNoContest` once `currentGamePhaseOf` reports `NO_CONTEST`. Reserve mints inflate `totalMintCost` so reserved recipients can claim a proportional share of fee tokens. Without this block, a game that failed `minParticipation` could be revived back into a SCORING-eligible state via free notional face value (reserves bump `totalMintCost` over the threshold) before `triggerNoContestFor()` latches the failure into a refund ruleset. The block tightens the §8.4 trust assumption that pending reserves are folded into governance and fee accounting: that remains true while the game is live, but once a game has already failed participation the reserve channel is closed so the no-contest outcome is final.
+`DefifaHook.mintReservesFor` reverts with `DefifaHook_ReservedTokenMintingBlockedInNoContest` (`Defifa1155Hook_ReservedTokenMintingBlockedInNoContest` in the ERC-1155 game) once `currentGamePhaseOf` reports `NO_CONTEST`. Reserve mints inflate `totalMintCost` so reserved recipients can claim a proportional share of fee tokens. Without this block, a game that failed `minParticipation` could be revived back into a SCORING-eligible state via free notional face value (reserves bump `totalMintCost` over the threshold) before `triggerNoContestFor()` latches the failure into a refund ruleset. The block tightens the §8.4 trust assumption that pending reserves are folded into governance and fee accounting: that remains true while the game is live, but once a game has already failed participation the reserve channel is closed so the no-contest outcome is final.

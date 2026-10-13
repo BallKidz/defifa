@@ -8,7 +8,7 @@ import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../../src/structs/DefifaTierParams.sol";
 
-import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
+import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
@@ -94,7 +94,7 @@ contract TierCapValidationRegressionTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: defifaProjectId,
             baseProtocolProjectId: protocolFeeProjectId,
-            hookStore: new DefifaTiersHookStore(),
+            hookStore: new JB721TiersHookStore(),
             trustedForwarder: address(0)
         });
 

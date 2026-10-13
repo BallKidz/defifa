@@ -7,7 +7,7 @@ import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
-import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
+import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
 
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
@@ -119,7 +119,7 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new DefifaTiersHookStore(),
+            hookStore: new JB721TiersHookStore(),
             trustedForwarder: address(0)
         });
 
@@ -301,10 +301,8 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         uint16[] memory tiers = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         tiers[0] = uint16(tierId);
-        uint256[] memory counts = new uint256[](1);
-        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, tiers, counts);
+        data[0] = abi.encode(user, tiers);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(_hookImpl));
         bytes memory metadata = metadataHelper().createMetadata(ids, data);

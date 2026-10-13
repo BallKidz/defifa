@@ -11,7 +11,7 @@ import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
-import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
+import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
 
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
@@ -128,7 +128,7 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _protocolFeeProjectId,
             baseProtocolProjectId: _defifaProjectId,
-            hookStore: new DefifaTiersHookStore(),
+            hookStore: new JB721TiersHookStore(),
             trustedForwarder: address(0)
         });
         hook.transferOwnership(address(deployer));
@@ -164,17 +164,17 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
         DefifaLaunchProjectData memory data = _launchData(5);
         (_pid, _nft, _gov) = _launch(data);
 
-        // Mint 10 positions from tier 1 during MINT phase.
+        // Mint 10 tokens from tier 1 during MINT phase.
         vm.warp(data.start - data.mintPeriodDuration - data.refundPeriodDuration);
         for (uint256 i; i < 10; i++) {
             _mint(player, 1, 1 ether);
             vm.warp(_tsReader.timestamp() + 1);
         }
 
-        // Advance to REFUND phase and cash out 4 positions.
+        // Advance to REFUND phase and cash out 4 tokens.
         vm.warp(data.start - data.refundPeriodDuration);
         for (uint256 i = 1; i <= 4; i++) {
-            _cashOut(player, 1, 1);
+            _cashOut(player, 1, i);
             vm.warp(_tsReader.timestamp() + 1);
         }
 
@@ -193,17 +193,17 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
         DefifaLaunchProjectData memory data = _launchData(5);
         (_pid, _nft, _gov) = _launch(data);
 
-        // Mint 10 positions from tier 1 during MINT phase.
+        // Mint 10 tokens from tier 1 during MINT phase.
         vm.warp(data.start - data.mintPeriodDuration - data.refundPeriodDuration);
         for (uint256 i; i < 10; i++) {
             _mint(player, 1, 1 ether);
             vm.warp(_tsReader.timestamp() + 1);
         }
 
-        // Advance to REFUND phase and cash out 5 positions.
+        // Advance to REFUND phase and cash out 5 tokens.
         vm.warp(data.start - data.refundPeriodDuration);
         for (uint256 i = 1; i <= 5; i++) {
-            _cashOut(player, 1, 1);
+            _cashOut(player, 1, i);
             vm.warp(_tsReader.timestamp() + 1);
         }
 
@@ -213,8 +213,6 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
             2,
             "store still shows 2 pending (unaware of burns)"
         );
-
-        assertEq(_nft.balanceOf(player, 1), 5, "5 tier-1 positions remain");
 
         // adjustedMints = 10 - 5 = 5, ceil(5/5) = 1. Reduced from 2 to 1.
         assertEq(_nft.adjustedPendingReservesFor(1), 1, "5 burns cross frequency boundary: 2 -> 1");
@@ -227,17 +225,17 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
         DefifaLaunchProjectData memory data = _launchData(5);
         (_pid, _nft, _gov) = _launch(data);
 
-        // Mint 10 positions from tier 1 during MINT phase.
+        // Mint 10 tokens from tier 1 during MINT phase.
         vm.warp(data.start - data.mintPeriodDuration - data.refundPeriodDuration);
         for (uint256 i; i < 10; i++) {
             _mint(player, 1, 1 ether);
             vm.warp(_tsReader.timestamp() + 1);
         }
 
-        // Advance to REFUND phase and cash out all 10 positions.
+        // Advance to REFUND phase and cash out all 10 tokens.
         vm.warp(data.start - data.refundPeriodDuration);
         for (uint256 i = 1; i <= 10; i++) {
-            _cashOut(player, 1, 1);
+            _cashOut(player, 1, i);
             vm.warp(_tsReader.timestamp() + 1);
         }
 
@@ -247,8 +245,6 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
             2,
             "store still shows 2 pending (unaware of burns)"
         );
-
-        assertEq(_nft.balanceOf(player, 1), 0, "all 10 tier-1 positions burned");
 
         // adjustedMints = 10 - 10 = 0, 0 pending reserves.
         assertEq(_nft.adjustedPendingReservesFor(1), 0, "all burned: 0 pending reserves");
@@ -284,7 +280,7 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
         DefifaLaunchProjectData memory data = _launchData(1);
         (_pid, _nft, _gov) = _launch(data);
 
-        // MINT phase: player mints 3 positions from tier 1, others mint disinterested tiers.
+        // MINT phase: player mints 3 tokens from tier 1, others mint disinterested tiers.
         vm.warp(data.start - data.mintPeriodDuration - data.refundPeriodDuration);
         for (uint256 i; i < 3; i++) {
             _mint(player, 1, 1 ether);
@@ -339,12 +335,9 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
         // COMPLETE phase: verify cashOutWeightOf for a single token.
         // Denominator = (3 minted - (1 burn - 0 redeemed)) + 2 adjusted pending = 4
         // Weight per token = TOTAL_CASHOUT_WEIGHT / 4
-        assertEq(_nft.balanceOf(player, 1), 2, "player holds 2 tier-1 positions after 1 refund");
         uint256[] memory tokenIds = new uint256[](1);
-        tokenIds[0] = 1; // one of the player's remaining tier-1 positions
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = 1;
-        uint256 weight = _nft.cashOutWeightOf(tokenIds, amounts);
+        tokenIds[0] = 1_000_000_002; // player's second token (first was burned in refund)
+        uint256 weight = _nft.cashOutWeightOf(tokenIds);
 
         uint256 expectedWeight = _nft.TOTAL_CASHOUT_WEIGHT() / 4;
         assertEq(weight, expectedWeight, "cash-out weight denominator includes adjusted reserves");
@@ -358,7 +351,7 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
         DefifaLaunchProjectData memory data = _launchData(1);
         (_pid, _nft, _gov) = _launch(data);
 
-        // MINT phase: player mints 2 positions from tier 1 (pays 2 ETH).
+        // MINT phase: player mints 2 tokens from tier 1 (pays 2 ETH).
         vm.warp(data.start - data.mintPeriodDuration - data.refundPeriodDuration);
         _mint(player, 1, 1 ether);
         vm.warp(_tsReader.timestamp() + 1);
@@ -376,7 +369,7 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
         vm.warp(data.start - data.refundPeriodDuration);
         _cashOut(player, 1, 1);
         vm.warp(_tsReader.timestamp() + 1);
-        _cashOut(player, 1, 1);
+        _cashOut(player, 1, 2);
         vm.warp(_tsReader.timestamp() + 1);
 
         assertEq(_nft.totalMintCost(), 0, "totalMintCost = 0 after full refund");
@@ -424,7 +417,7 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
         // REFUND phase: refund 3 of 4 tokens.
         vm.warp(data.start - data.refundPeriodDuration);
         for (uint256 i = 1; i <= 3; i++) {
-            _cashOut(player, 1, 1);
+            _cashOut(player, 1, i);
             vm.warp(_tsReader.timestamp() + 1);
         }
 
@@ -518,10 +511,8 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
         uint16[] memory m = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
-        uint256[] memory counts = new uint256[](1);
-        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, m, counts);
+        data[0] = abi.encode(user, m);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(hook));
         bytes memory metadata = metadataHelper().createMetadata(ids, data);
@@ -536,8 +527,8 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
         _nft.setTierDelegatesTo(dd);
     }
 
-    function _cashOut(address user, uint256 tokenId, uint256 amount) internal {
-        bytes memory meta = _cashOutMeta(tokenId, amount);
+    function _cashOut(address user, uint256 tid, uint256 tnum) internal {
+        bytes memory meta = _cashOutMeta(tid, tnum);
         vm.prank(user);
         jbMultiTerminal()
             .cashOutTokensOf({
@@ -551,13 +542,11 @@ contract AdjustedPendingReservesTest is JBTest, TestBaseWorkflow {
         });
     }
 
-    function _cashOutMeta(uint256 tokenId, uint256 amount) internal view returns (bytes memory) {
+    function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {
         uint256[] memory cid = new uint256[](1);
-        cid[0] = tokenId;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = amount;
+        cid[0] = (tid * 1_000_000_000) + tnum;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(cid, amounts);
+        data[0] = abi.encode(cid);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("cashOut", address(hook));
         return metadataHelper().createMetadata(ids, data);

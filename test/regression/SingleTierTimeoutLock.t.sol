@@ -13,7 +13,7 @@ import {DefifaTierCashOutWeight} from "../../src/structs/DefifaTierCashOutWeight
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../../src/structs/DefifaTierParams.sol";
 import {DefifaDelegation} from "../../src/structs/DefifaDelegation.sol";
-import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
+import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
@@ -107,7 +107,7 @@ contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new DefifaTiersHookStore(),
+            hookStore: new JB721TiersHookStore(),
             trustedForwarder: address(0)
         });
 
@@ -177,5 +177,25 @@ contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
             scorecardTimeout: 0,
             timelockDuration: 0
         });
+    }
+
+    function _buildPayMetadata(bytes memory decodedData) internal view returns (bytes memory) {
+        bytes4[] memory ids = new bytes4[](1);
+        ids[0] = metadataHelper().getId("pay", address(_hookImpl));
+        bytes[] memory datas = new bytes[](1);
+        datas[0] = decodedData;
+        return metadataHelper().createMetadata(ids, datas);
+    }
+
+    function _buildCashOutMetadata(uint256[] memory tokenIds) internal view returns (bytes memory) {
+        bytes4[] memory ids = new bytes4[](1);
+        ids[0] = metadataHelper().getId("cashOut", address(_hookImpl));
+        bytes[] memory datas = new bytes[](1);
+        datas[0] = abi.encode(tokenIds);
+        return metadataHelper().createMetadata(ids, datas);
+    }
+
+    function _generateTokenId(uint256 tierId, uint256 tokenNumber) internal pure returns (uint256) {
+        return (tierId * 1_000_000_000) + tokenNumber;
     }
 }

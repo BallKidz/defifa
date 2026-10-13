@@ -79,7 +79,7 @@ contract SameTimestampReserveMintSnapshotPOC is DefifaGovernorTest {
     function _mintOne(uint256 projectId, address beneficiary, uint16 tierId) internal {
         uint16[] memory tiers = new uint16[](1);
         tiers[0] = tierId;
-        bytes memory metadata = _buildPayMetadata(abi.encode(beneficiary, tiers, _ones(1)));
+        bytes memory metadata = _buildPayMetadata(abi.encode(beneficiary, tiers));
 
         vm.deal(beneficiary, 1 ether);
         vm.prank(beneficiary);

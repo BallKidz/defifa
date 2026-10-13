@@ -1,7 +1,7 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.28;
 
-import {DefifaGamePhase} from "../../src/enums/DefifaGamePhase.sol";
+import {DefifaGamePhase} from "../../../src/enums/DefifaGamePhase.sol";
 import {DefifaERC1155Harness} from "../DefifaERC1155.t.sol";
 
 /// @notice Delegation state must only change for accounts that actually receive or hold positions. Calls that move
@@ -10,7 +10,7 @@ import {DefifaERC1155Harness} from "../DefifaERC1155.t.sol";
 contract ZeroAddressDelegationTest is DefifaERC1155Harness {
     address oracle = makeAddr("oracle");
 
-    function _defaultDelegate() internal override returns (address) {
+    function _defaultDelegate() internal view override returns (address) {
         return oracle;
     }
 

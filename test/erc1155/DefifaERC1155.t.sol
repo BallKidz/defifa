@@ -1,18 +1,20 @@
 // SPDX-License-Identifier: UNLICENSED
 pragma solidity 0.8.28;
 
-import {DefifaDeployer} from "../src/DefifaDeployer.sol";
-import {DefifaGovernor} from "../src/DefifaGovernor.sol";
-import {DefifaHook} from "../src/DefifaHook.sol";
-import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
-import {DefifaGamePhase} from "../src/enums/DefifaGamePhase.sol";
-import {IDefifaHook} from "../src/interfaces/IDefifaHook.sol";
-import {DefifaHookLib} from "../src/libraries/DefifaHookLib.sol";
-import {DefifaLaunchProjectData} from "../src/structs/DefifaLaunchProjectData.sol";
-import {DefifaTierParams} from "../src/structs/DefifaTierParams.sol";
+import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
+import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {Defifa1155Hook} from "../../src/Defifa1155Hook.sol";
+import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
+import {DefifaGamePhase} from "../../src/enums/DefifaGamePhase.sol";
+import {IDefifa1155Hook} from "../../src/interfaces/IDefifa1155Hook.sol";
+import {IDefifaGamePhaseReporter} from "../../src/interfaces/IDefifaGamePhaseReporter.sol";
+import {Defifa1155HookLib} from "../../src/libraries/Defifa1155HookLib.sol";
+import {DefifaHookLib} from "../../src/libraries/DefifaHookLib.sol";
+import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
+import {DefifaTierParams} from "../../src/structs/DefifaTierParams.sol";
 
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
-import {DefifaTiersHookStore} from "../src/DefifaTiersHookStore.sol";
+import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
 import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
@@ -37,6 +39,7 @@ import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC1155MetadataURI} from "@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
 /// @notice A launched game in its MINT phase with 8 tiers (tier 1 reserves one position per two paid), plus pay,
 /// cash-out and metadata helpers.
@@ -52,8 +55,8 @@ abstract contract DefifaERC1155Harness is JBTest, TestBaseWorkflow {
     address bob = makeAddr("bob");
     address reserveBeneficiary = makeAddr("reserveBeneficiary");
 
-    DefifaHook hookImpl;
-    DefifaHook nft;
+    Defifa1155Hook hookImpl;
+    Defifa1155Hook nft;
     IJB721TiersHookStore store;
     uint256 gameId;
     DefifaLaunchProjectData launchData;
@@ -106,7 +109,7 @@ abstract contract DefifaERC1155Harness is JBTest, TestBaseWorkflow {
         vm.prank(projectOwner);
         address defifaToken = address(jbController().deployERC20For(defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
 
-        hookImpl = new DefifaHook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
+        hookImpl = new Defifa1155Hook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
         DefifaGovernor governor = new DefifaGovernor(jbController(), address(this));
         DefifaDeployer deployer = new DefifaDeployer({
             hookCodeOrigin: address(hookImpl),
@@ -161,7 +164,7 @@ abstract contract DefifaERC1155Harness is JBTest, TestBaseWorkflow {
         gameId = deployer.launchGameWith(launchData);
         JBRuleset memory ruleset = jbRulesets().currentOf(gameId);
         if (ruleset.dataHook() == address(0)) (ruleset,) = jbRulesets().latestQueuedOf(gameId);
-        nft = DefifaHook(ruleset.dataHook());
+        nft = Defifa1155Hook(ruleset.dataHook());
         store = nft.store();
 
         // Enter the MINT phase.
@@ -391,7 +394,7 @@ contract DefifaERC1155Test is DefifaERC1155Harness {
         amounts[0] = 2;
 
         bytes memory overdraw = _cashOutMetadata(ids, amounts);
-        vm.expectRevert(abi.encodeWithSelector(DefifaHook.DefifaHook_Unauthorized.selector, 2, 2, 1, alice));
+        vm.expectRevert(abi.encodeWithSelector(Defifa1155Hook.Defifa1155Hook_Unauthorized.selector, 2, 2, 1, alice));
         _cashOutWith(alice, overdraw);
 
         // Duplicate IDs that together exceed the balance fail in the batch burn.
@@ -426,24 +429,95 @@ contract DefifaERC1155Test is DefifaERC1155Harness {
         assertEq(nft.totalMintCost(), 7 * TIER_PRICE, "reserves count at tier price");
         assertEq(nft.getTierAttestationUnitsOf(reserveBeneficiary, 1), 2 * TIER_PRICE, "reserve units");
 
-        // A refund prices reserve positions at zero; a fee-token claim prices them like paid ones.
+        // A refund rejects reserve positions, which it would pay nothing for; a fee-token claim prices them like paid
+        // ones.
         uint256[] memory ids = new uint256[](2);
         ids[0] = 1;
         ids[1] = reserveId;
-        assertEq(
-            DefifaHookLib.computeCumulativeMintPriceForCashOut({
-                tokenIds: ids, amounts: _counts(1, 2), hookStore: store, hook: address(nft), excludeReserveMints: true
-            }),
-            TIER_PRICE,
-            "refund excludes reserves"
+        vm.expectRevert(
+            abi.encodeWithSelector(Defifa1155HookLib.Defifa1155Hook_CantRefundReserveMint.selector, reserveId)
         );
+        Defifa1155HookLib.computeCumulativeMintPriceForCashOut({
+            tokenIds: ids, amounts: _counts(1, 2), hookStore: store, hook: address(nft), excludeReserveMints: true
+        });
         assertEq(
-            DefifaHookLib.computeCumulativeMintPriceForCashOut({
+            Defifa1155HookLib.computeCumulativeMintPriceForCashOut({
                 tokenIds: ids, amounts: _counts(1, 2), hookStore: store, hook: address(nft), excludeReserveMints: false
             }),
             3 * TIER_PRICE,
             "claims include reserves"
         );
+    }
+
+    function test_mintsRunTheReceiverCheckAfterEveryStateChange() public {
+        // A contract that does not accept ERC-1155 positions cannot be paid into.
+        address rejecter = address(new NonReceiver());
+        _expectPayRevert(rejecter, _ids(2, 5), _counts(1, 1), 2 * TIER_PRICE);
+
+        // A paid mint's callback sees the final units and mint cost.
+        RecordingReceiver payee = new RecordingReceiver();
+        payee.watch(nft, 2);
+        _pay(address(payee), _ids(2, 5), _counts(3, 1));
+        assertEq(payee.calls(), 1, "one batch callback");
+        assertEq(payee.unitsSeen(), 3 * TIER_PRICE, "paid units before callback");
+        assertEq(payee.mintCostSeen(), 4 * TIER_PRICE, "paid mint cost before callback");
+
+        // A reserve mint's callback also sees the final units and mint cost.
+        vm.etch(reserveBeneficiary, address(new RecordingReceiver()).code);
+        RecordingReceiver(reserveBeneficiary).watch(nft, 1);
+        _pay(alice, _ids(1, 2), _counts(4, 1));
+        vm.warp(launchData.start);
+        nft.mintReservesFor(1, 2);
+        assertEq(RecordingReceiver(reserveBeneficiary).calls(), 1, "one reserve callback");
+        assertEq(RecordingReceiver(reserveBeneficiary).unitsSeen(), 2 * TIER_PRICE, "reserve units before callback");
+        assertEq(
+            RecordingReceiver(reserveBeneficiary).mintCostSeen(), 11 * TIER_PRICE, "reserve mint cost before callback"
+        );
+    }
+
+    function test_rejectingReserveBeneficiaryRollsBackTheReserveMint() public {
+        vm.etch(reserveBeneficiary, address(new NonReceiver()).code);
+        _pay(alice, _ids(1, 2), _counts(4, 1));
+        vm.warp(launchData.start);
+
+        vm.expectRevert(abi.encodeWithSelector(IERC1155Errors.ERC1155InvalidReceiver.selector, reserveBeneficiary));
+        nft.mintReservesFor(1, 2);
+
+        assertEq(nft.totalMintCost(), 5 * TIER_PRICE, "mint cost unchanged");
+        assertEq(nft.adjustedPendingReservesFor(1), 2, "reserves still pending");
+        assertEq(nft.currentSupplyOfTier(1), 4, "supply unchanged");
+        assertEq(nft.getTierTotalAttestationUnitsOf(1), 4 * TIER_PRICE, "units unchanged");
+
+        // Other tiers' reserves are unaffected; tier 2 has none, so it is a no-op rather than a revert.
+        nft.mintReservesFor(2, 1);
+    }
+
+    function test_noContestRefundThroughTheTerminalRejectsReserves() public {
+        _pay(alice, _ids(1, 2), _counts(4, 1));
+        _pay(reserveBeneficiary, _ids(1, 2), _counts(2, 1));
+        vm.warp(launchData.start);
+        nft.mintReservesFor(1, 1);
+        uint256 reserveId = 1 + OFFSET;
+
+        // Only the hook reads this phase; the terminal keeps the SCORING ruleset, so this checks the rejection, not the
+        // refund amount (covered by the NoContestReserveDrain regressions).
+        vm.mockCall(
+            address(nft.gamePhaseReporter()),
+            abi.encodeWithSelector(IDefifaGamePhaseReporter.currentGamePhaseOf.selector, gameId),
+            abi.encode(DefifaGamePhase.NO_CONTEST)
+        );
+
+        // A refund that includes the reserve position reverts as a whole.
+        uint256[] memory mixed = new uint256[](2);
+        mixed[0] = 1;
+        mixed[1] = reserveId;
+        bytes memory mixedMetadata = _cashOutMetadata(mixed, _counts(1, 1));
+        vm.expectRevert(
+            abi.encodeWithSelector(Defifa1155HookLib.Defifa1155Hook_CantRefundReserveMint.selector, reserveId)
+        );
+        _cashOutWith(reserveBeneficiary, mixedMetadata);
+
+        assertEq(nft.balanceOf(reserveBeneficiary, reserveId), 1, "reserve position kept");
     }
 
     //*********************************************************************//
@@ -459,7 +533,9 @@ contract DefifaERC1155Test is DefifaERC1155Harness {
     function test_tokenIdRangesRejectInvalidIds() public {
         uint256[3] memory invalid = [uint256(0), OFFSET, 2 * OFFSET];
         for (uint256 i; i < invalid.length; i++) {
-            vm.expectRevert(abi.encodeWithSelector(DefifaHookLib.DefifaHook_InvalidTokenId.selector, invalid[i]));
+            vm.expectRevert(
+                abi.encodeWithSelector(Defifa1155HookLib.Defifa1155Hook_InvalidTokenId.selector, invalid[i])
+            );
             nft.tierIdOf(invalid[i]);
         }
     }
@@ -467,7 +543,7 @@ contract DefifaERC1155Test is DefifaERC1155Harness {
     function test_supportsInterfacesAndMetadata() public {
         assertTrue(nft.supportsInterface(type(IERC1155).interfaceId), "IERC1155");
         assertTrue(nft.supportsInterface(type(IERC1155MetadataURI).interfaceId), "IERC1155MetadataURI");
-        assertTrue(nft.supportsInterface(type(IDefifaHook).interfaceId), "IDefifaHook");
+        assertTrue(nft.supportsInterface(type(IDefifa1155Hook).interfaceId), "IDefifa1155Hook");
         assertTrue(nft.supportsInterface(type(IJBRulesetDataHook).interfaceId), "IJBRulesetDataHook");
         assertTrue(nft.supportsInterface(type(IJBPayHook).interfaceId), "IJBPayHook");
         assertTrue(nft.supportsInterface(type(IJBCashOutHook).interfaceId), "IJBCashOutHook");
@@ -483,6 +559,30 @@ contract DefifaERC1155Test is DefifaERC1155Harness {
         assertEq(nft.METADATA_ID_TARGET(), address(hookImpl), "metadata target is the implementation");
     }
 
+    /// @notice The shared resolver reads an ERC-1155 game's tier from its token ID: a paid ID and the reserve ID of the
+    /// same tier render the same tier, and different tiers render different tiers.
+    function test_uriResolvesBothTokenIdsOfATier() public {
+        _pay(alice, _ids(1, 2), _counts(2, 1));
+
+        DefifaTokenUriResolver resolver = DefifaTokenUriResolver(address(store.tokenUriResolverOf(address(nft))));
+        address typeface = makeAddr("typeface");
+        vm.etch(typeface, hex"00");
+        vm.mockCall(typeface, abi.encodeWithSelector(ITypeface.sourceOf.selector), abi.encode(bytes("")));
+        resolver.setChainSpecificConstants(ITypeface(typeface));
+
+        // The card's JSON opens with the tier's name and ID: `{"name":"TEAM", "id": "<tierId>",` is 27 bytes, the
+        // first 36 base64 characters after the 29-character data URI prefix. Only the printed token ID differs.
+        assertEq(_cardHeader(nft.uri(1 + OFFSET)), _cardHeader(nft.uri(1)), "reserve ID renders its tier");
+        assertNotEq(_cardHeader(nft.uri(2)), _cardHeader(nft.uri(1)), "tiers render their own cards");
+    }
+
+    function _cardHeader(string memory uri) internal pure returns (bytes memory header) {
+        header = new bytes(65);
+        for (uint256 i; i < 65; i++) {
+            header[i] = bytes(uri)[i];
+        }
+    }
+
     //*********************************************************************//
     // -------------------------------- gas ------------------------------ //
     //*********************************************************************//
@@ -494,5 +594,47 @@ contract DefifaERC1155Test is DefifaERC1155Harness {
         emit log_named_uint("gas, 160 positions in 1 tier", single);
         emit log_named_uint("gas, 1000 positions in 8 tiers", thousand);
         assertLt(thousand * 2, 1 << 24, "1000 positions fit with 2x headroom");
+    }
+}
+
+/// @notice Has code but no ERC-1155 receiver functions.
+contract NonReceiver {}
+
+/// @notice Accepts ERC-1155 positions and records what the hook reports during the callback.
+contract RecordingReceiver {
+    Defifa1155Hook public nft;
+    uint256 public tierId;
+    uint256 public calls;
+    uint256 public unitsSeen;
+    uint256 public mintCostSeen;
+
+    function watch(Defifa1155Hook hook, uint256 tier) external {
+        nft = hook;
+        tierId = tier;
+    }
+
+    function onERC1155Received(address, address, uint256, uint256, bytes calldata) external returns (bytes4) {
+        _record();
+        return this.onERC1155Received.selector;
+    }
+
+    function onERC1155BatchReceived(
+        address,
+        address,
+        uint256[] calldata,
+        uint256[] calldata,
+        bytes calldata
+    )
+        external
+        returns (bytes4)
+    {
+        _record();
+        return this.onERC1155BatchReceived.selector;
+    }
+
+    function _record() internal {
+        calls++;
+        unitsSeen = nft.getTierAttestationUnitsOf(address(this), tierId);
+        mintCostSeen = nft.totalMintCost();
     }
 }

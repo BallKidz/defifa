@@ -29,7 +29,7 @@
 
 ## Purpose
 
-Defifa is an onchain prediction game system built on Juicebox. This repo packages game launch, phased lifecycle control, scorecard governance, and ERC-1155 position-based settlement into one game-specific deployment surface.
+Defifa is an onchain prediction game system built on Juicebox. This repo packages game launch, phased lifecycle control, scorecard governance, and NFT-based settlement into one game-specific deployment surface. It ships two game types: the ERC-721 game (`DefifaHook`) and the ERC-1155 game (`Defifa1155Hook`, one balance per tier).
 
 ## Reference files
 
@@ -38,10 +38,11 @@ Defifa is an onchain prediction game system built on Juicebox. This repo package
 
 ## Working rules
 
-- Start in [`src/DefifaDeployer.sol`](./src/DefifaDeployer.sol) for phase shape and commitment fulfillment, [`src/DefifaHook.sol`](./src/DefifaHook.sol) for ERC-1155 position runtime and settlement behavior, and [`src/DefifaGovernor.sol`](./src/DefifaGovernor.sol) for scorecards, attestation, and ratification.
+- Start in [`src/DefifaDeployer.sol`](./src/DefifaDeployer.sol) for phase shape and commitment fulfillment, [`src/DefifaHook.sol`](./src/DefifaHook.sol) for ERC-721 runtime and settlement behavior, [`src/Defifa1155Hook.sol`](./src/Defifa1155Hook.sol) for ERC-1155 position runtime, and [`src/DefifaGovernor.sol`](./src/DefifaGovernor.sol) for scorecards, attestation, and ratification.
 - Treat phase transitions, scorecard ratification, no-contest behavior, and fee accounting as one economic system.
 - Defifa-specific cash-out weights and governance thresholds sit on top of `nana-721-hook-v6` and `nana-core-v6`.
-- Positions are hook ERC-1155 balances: paid ID = tier ID, reserve ID = `tierId + RESERVE_TOKEN_ID_OFFSET`. Read holdings with `hook.balanceOf(account, id)`; the store's per-holder views count a tier's paid and reserve IDs together. Games deployed before this change are still ERC-721.
-- When a task mentions game-piece rendering or metadata, confirm whether it belongs in [`src/DefifaTokenUriResolver.sol`](./src/DefifaTokenUriResolver.sol).
+- Put game rules both hooks need in [`src/libraries/DefifaHookLib.sol`](./src/libraries/DefifaHookLib.sol); [`src/libraries/Defifa1155HookLib.sol`](./src/libraries/Defifa1155HookLib.sol) holds only ERC-1155 ID and amount logic. Keep the selectors the shared deployer, governor and resolver call on both hooks ([`test/DefifaHookParity.t.sol`](./test/DefifaHookParity.t.sol)).
+- ERC-1155 positions: paid ID = tier ID, reserve ID = `tierId + RESERVE_TOKEN_ID_OFFSET`. Read holdings with `hook.balanceOf(account, id)`; the store's per-holder views count a tier's paid and reserve IDs together. ERC-1155 tests live in [`test/erc1155/`](./test/erc1155/) under the same file names as the 721 suite.
+- When a task mentions NFT rendering or metadata, confirm whether it belongs in [`src/DefifaTokenUriResolver.sol`](./src/DefifaTokenUriResolver.sol).
 - If you edit phase transitions, check lifecycle, governance, and fee-accounting tests together.
 - If ratification, attestation, or quorum behavior changes, re-read the review and regression tests before trusting a clean happy-path result.

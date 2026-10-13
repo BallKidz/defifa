@@ -7,7 +7,7 @@ import {DefifaGovernor} from "../src/DefifaGovernor.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
-import {DefifaTiersHookStore} from "../src/DefifaTiersHookStore.sol";
+import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
@@ -46,7 +46,7 @@ contract TSReader {
 ///         1. Attestation power is snapshot-based (getPastTierAttestationUnitsOf), so buying
 ///            tokens after a scorecard is submitted gives zero attestation power.
 ///         2. Delegation changes after the mint phase are blocked, preventing post-scorecard vote shifting.
-///         3. Transferring positions after attestation does not create double-voting opportunities.
+///         3. Transferring NFTs after attestation does not create double-voting opportunities.
 ///         4. A single tier with a dominant holder cannot override the quorum system because
 ///            each tier caps at MAX_ATTESTATION_POWER_TIER regardless of token count.
 contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
@@ -129,7 +129,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _protocolFeeProjectId,
             baseProtocolProjectId: _defifaProjectId,
-            hookStore: new DefifaTiersHookStore(),
+            hookStore: new JB721TiersHookStore(),
             trustedForwarder: address(0)
         });
         hook.transferOwnership(address(deployer));
@@ -209,7 +209,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
     // =========================================================================
     // TEST 4: Double attestation is prevented.
     // An attacker who already attested cannot attest again even after transferring
-    // their position to a new address.
+    // their NFT to a new address.
     // =========================================================================
     function test_doubleAttestationPrevented() external {
         _setupGame(4, 1 ether);
@@ -563,9 +563,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
         bytes[] memory data = new bytes[](1);
-        uint256[] memory counts = new uint256[](1);
-        counts[0] = 1;
-        data[0] = abi.encode(user, m, counts);
+        data[0] = abi.encode(user, m);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(hook));
         // Build metadata before vm.prank so the external call to createMetadata doesn't consume the prank.
@@ -593,8 +591,8 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         }
     }
 
-    function _cashOut(address user, uint256 tid, uint256 amount) internal {
-        bytes memory meta = _cashOutMeta(tid, amount);
+    function _cashOut(address user, uint256 tid, uint256 tnum) internal {
+        bytes memory meta = _cashOutMeta(tid, tnum);
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
@@ -608,13 +606,11 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         });
     }
 
-    function _cashOutMeta(uint256 tid, uint256 amount) internal view returns (bytes memory) {
+    function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {
         uint256[] memory cid = new uint256[](1);
-        cid[0] = tid;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = amount;
+        cid[0] = (tid * 1_000_000_000) + tnum;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(cid, amounts);
+        data[0] = abi.encode(cid);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("cashOut", address(hook));
         return metadataHelper().createMetadata(ids, data);

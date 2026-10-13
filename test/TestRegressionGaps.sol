@@ -5,7 +5,7 @@ import {DefifaGovernor} from "../src/DefifaGovernor.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
-import {DefifaTiersHookStore} from "../src/DefifaTiersHookStore.sol";
+import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
@@ -16,6 +16,7 @@ import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ERC20} from "@openzeppelin/contracts/token/ERC20/ERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
+import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 import {DefifaDelegation} from "../src/structs/DefifaDelegation.sol";
 import {DefifaLaunchProjectData} from "../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../src/structs/DefifaTierParams.sol";
@@ -154,7 +155,7 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new DefifaTiersHookStore(),
+            hookStore: new JB721TiersHookStore(),
             trustedForwarder: address(0)
         });
 
@@ -233,10 +234,8 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
         uint16[] memory m = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
-        uint256[] memory counts = new uint256[](1);
-        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, m, counts);
+        data[0] = abi.encode(user, m);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(hook));
         vm.startPrank(user);
@@ -308,6 +307,10 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
         return jbMultiTerminal().STORE().balanceOf(address(jbMultiTerminal()), _pid, address(token));
     }
 
+    function _generateTokenId(uint256 tierId, uint256 tokenNumber) internal pure returns (uint256) {
+        return (tierId * 1_000_000_000) + tokenNumber;
+    }
+
     function _buildCashOutMetadata(bytes memory decodedData) internal view returns (bytes memory) {
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("cashOut", address(hook));
@@ -316,12 +319,10 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
         return metadataHelper().createMetadata(ids, datas);
     }
 
-    function _cashOut(address user, uint256 tid) internal {
+    function _cashOut(address user, uint256 tid, uint256 tnum) internal {
         uint256[] memory cashOutIds = new uint256[](1);
-        cashOutIds[0] = tid;
-        uint256[] memory cashOutAmounts = new uint256[](1);
-        cashOutAmounts[0] = 1;
-        bytes memory cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutIds, cashOutAmounts));
+        cashOutIds[0] = _generateTokenId(tid, tnum);
+        bytes memory cashOutMetadata = _buildCashOutMetadata(abi.encode(cashOutIds));
 
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
@@ -336,19 +337,18 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
         });
     }
 
-    /// @dev The total number of positions `user` holds across every paid and reserve token ID of `nft`.
-    function _positionsOf(DefifaHook nft, address user) internal view returns (uint256 positions) {
-        uint256 maxTierId = nft.store().maxTierIdOf(address(nft));
-        for (uint256 tierId = 1; tierId <= maxTierId; tierId++) {
-            positions += nft.balanceOf(user, tierId) + nft.balanceOf(user, tierId + nft.RESERVE_TOKEN_ID_OFFSET());
-        }
+    function _refund(address user, uint256 tid) internal {
+        JB721Tier memory tier = _nft.store().tierOf(address(_nft), tid, false);
+        uint256 nb = _nft.store().numberOfBurnedFor(address(_nft), tid);
+        uint256 tnum = tier.initialSupply - tier.remainingSupply + nb;
+        _cashOut(user, tid, tnum);
     }
 
     // =========================================================================
     // TESTS
     // =========================================================================
 
-    /// @notice ERC-20: Mint and verify position ownership and terminal balance.
+    /// @notice ERC-20: Mint and verify NFT ownership and terminal balance.
     function test_erc20_mintAndBalance() external {
         uint104 tierPrice = 1 ether;
         _setupGame(4, tierPrice);
@@ -356,10 +356,9 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
         // Verify MINT phase.
         assertEq(uint256(deployer.currentGamePhaseOf(_pid)), uint256(DefifaGamePhase.MINT));
 
-        // All 4 users should hold positions.
+        // All 4 users should hold NFTs.
         for (uint256 i; i < 4; i++) {
-            assertEq(_nft.balanceOf(_users[i], i + 1), 1, "each user holds 1 position in their tier");
-            assertEq(_positionsOf(_nft, _users[i]), 1, "each user holds 1 position in total");
+            assertEq(_nft.balanceOf(_users[i]), 1, "each user holds 1 NFT");
         }
 
         // Terminal should hold 4 ether worth of tokens.
@@ -373,9 +372,9 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
 
         // Refund user 0 during MINT phase.
         uint256 balBefore = token.balanceOf(_users[0]);
-        _cashOut(_users[0], 1);
+        _refund(_users[0], 1);
         assertEq(token.balanceOf(_users[0]) - balBefore, 1 ether, "refund = 1 token");
-        assertEq(_positionsOf(_nft, _users[0]), 0, "position burned on refund");
+        assertEq(_nft.balanceOf(_users[0]), 0, "NFT burned on refund");
 
         // Remaining balance = 3 tokens.
         assertEq(_balance(), 3 ether, "terminal balance after refund");
@@ -397,14 +396,14 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
 
         // Winner cashes out and receives ERC-20 tokens.
         uint256 winnerBalBefore = token.balanceOf(_users[0]);
-        _cashOut(_users[0], 1);
+        _cashOut(_users[0], 1, 1);
         uint256 winnerReceived = token.balanceOf(_users[0]) - winnerBalBefore;
         assertGt(winnerReceived, 0, "winner received tokens");
 
         // Losers get 0 tokens.
         for (uint256 i = 1; i < 4; i++) {
             uint256 bb = token.balanceOf(_users[i]);
-            _cashOut(_users[i], i + 1);
+            _cashOut(_users[i], i + 1, 1);
             assertEq(token.balanceOf(_users[i]), bb, "loser gets 0 tokens");
         }
     }
@@ -444,7 +443,7 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
         uint256[] memory received = new uint256[](4);
         for (uint256 i; i < 4; i++) {
             uint256 bb = token.balanceOf(_users[i]);
-            _cashOut(_users[i], i + 1);
+            _cashOut(_users[i], i + 1, 1);
             received[i] = token.balanceOf(_users[i]) - bb;
             assertGt(received[i], 0, "each user receives tokens");
         }
@@ -497,10 +496,10 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
 
         // Cash out should return exactly 1 ether of ERC-20.
         uint256 balBefore = token.balanceOf(_users[0]);
-        _cashOut(_users[0], 1);
+        _refund(_users[0], 1);
         uint256 received = token.balanceOf(_users[0]) - balBefore;
         assertEq(received, 1 ether, "should receive exact mint price in ERC-20");
-        assertEq(_positionsOf(_nft, _users[0]), 0, "position should be burned");
+        assertEq(_nft.balanceOf(_users[0]), 0, "NFT should be burned");
     }
 
     /// @notice ERC-20: Pot reporting works correctly with ERC-20 tokens.
@@ -621,7 +620,7 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new DefifaTiersHookStore(),
+            hookStore: new JB721TiersHookStore(),
             trustedForwarder: address(0)
         });
         hook.transferOwnership(address(deployer));
@@ -686,10 +685,8 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
         uint16[] memory m = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
-        uint256[] memory counts = new uint256[](1);
-        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, m, counts);
+        data[0] = abi.encode(user, m);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(hook));
         vm.prank(user);
@@ -703,14 +700,6 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
         dd[0] = DefifaDelegation({delegatee: user, tierId: tid});
         vm.prank(user);
         nft.setTierDelegatesTo(dd);
-    }
-
-    /// @dev The total number of positions `user` holds across every paid and reserve token ID of `nft`.
-    function _positionsOf(DefifaHook nft, address user) internal view returns (uint256 positions) {
-        uint256 maxTierId = nft.store().maxTierIdOf(address(nft));
-        for (uint256 tierId = 1; tierId <= maxTierId; tierId++) {
-            positions += nft.balanceOf(user, tierId) + nft.balanceOf(user, tierId + nft.RESERVE_TOKEN_ID_OFFSET());
-        }
     }
 
     function _buildScorecard(uint256 n) internal pure returns (DefifaTierCashOutWeight[] memory sc) {
@@ -734,20 +723,18 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
         }
     }
 
-    function _cashOutMeta(uint256 tid) internal view returns (bytes memory) {
+    function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {
         uint256[] memory cid = new uint256[](1);
-        cid[0] = tid;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = 1;
+        cid[0] = (tid * 1_000_000_000) + tnum;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(cid, amounts);
+        data[0] = abi.encode(cid);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("cashOut", address(hook));
         return metadataHelper().createMetadata(ids, data);
     }
 
-    function _cashOut(address user, uint256 pid, uint256 tid) internal {
-        bytes memory meta = _cashOutMeta(tid);
+    function _cashOut(address user, uint256 pid, uint256 tid, uint256 tnum) internal {
+        bytes memory meta = _cashOutMeta(tid, tnum);
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
@@ -761,7 +748,7 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
         });
     }
 
-    /// @dev Deploy both games and mint positions for both. Game A has 4 tiers, Game B has 3 tiers.
+    /// @dev Deploy both games and mint NFTs for both. Game A has 4 tiers, Game B has 3 tiers.
     function _setupBothGames() internal {
         DefifaLaunchProjectData memory dA = _launchData(4);
         (pidA, nftA) = _launchGame(dA);
@@ -831,7 +818,7 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
         assertEq(balB, 3 ether, "Game B balance = 3 ETH (3 minters)");
     }
 
-    /// @notice Each game has independent position hooks.
+    /// @notice Each game has independent NFT hooks.
     function test_multiGame_independentNFTHooks() external {
         _setupBothGames();
 
@@ -844,14 +831,12 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
 
         // Game A users should not own tokens in Game B and vice versa.
         for (uint256 i; i < 4; i++) {
-            assertEq(nftA.balanceOf(usersA[i], i + 1), 1, "Game A user has 1 position in their Game A tier");
-            assertEq(_positionsOf(nftA, usersA[i]), 1, "Game A user has 1 position in Game A");
-            assertEq(_positionsOf(nftB, usersA[i]), 0, "Game A user has 0 positions in Game B");
+            assertEq(nftA.balanceOf(usersA[i]), 1, "Game A user has 1 NFT in Game A");
+            assertEq(nftB.balanceOf(usersA[i]), 0, "Game A user has 0 NFTs in Game B");
         }
         for (uint256 i; i < 3; i++) {
-            assertEq(nftB.balanceOf(usersB[i], i + 1), 1, "Game B user has 1 position in their Game B tier");
-            assertEq(_positionsOf(nftB, usersB[i]), 1, "Game B user has 1 position in Game B");
-            assertEq(_positionsOf(nftA, usersB[i]), 0, "Game B user has 0 positions in Game A");
+            assertEq(nftB.balanceOf(usersB[i]), 1, "Game B user has 1 NFT in Game B");
+            assertEq(nftA.balanceOf(usersB[i]), 0, "Game B user has 0 NFTs in Game A");
         }
     }
 
@@ -899,17 +884,17 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
 
         // Cash out from Game A: winner gets tokens.
         uint256 bbA = usersA[0].balance;
-        _cashOut(usersA[0], pidA, 1);
+        _cashOut(usersA[0], pidA, 1, 1);
         assertGt(usersA[0].balance - bbA, 0, "Game A winner received ETH");
 
         // Cash out from Game B: all get roughly equal share.
         uint256 bbB0 = usersB[0].balance;
-        _cashOut(usersB[0], pidB, 1);
+        _cashOut(usersB[0], pidB, 1, 1);
         uint256 receivedB0 = usersB[0].balance - bbB0;
         assertGt(receivedB0, 0, "Game B user 0 received ETH");
 
         uint256 bbB1 = usersB[1].balance;
-        _cashOut(usersB[1], pidB, 2);
+        _cashOut(usersB[1], pidB, 2, 1);
         uint256 receivedB1 = usersB[1].balance - bbB1;
         assertGt(receivedB1, 0, "Game B user 1 received ETH");
         assertApproxEqRel(receivedB0, receivedB1, 0.01 ether, "Game B users get roughly equal share");
@@ -947,7 +932,7 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
         uint256 powerA = governor.getAttestationWeight(gameIdA, usersA[0], uint48(_tsReader.timestamp()));
         assertGt(powerA, 0, "Game A user has power in Game A");
 
-        // Game A user 0 has NO attestation power in Game B (they don't hold Game B positions).
+        // Game A user 0 has NO attestation power in Game B (they don't hold Game B NFTs).
         uint256 powerB = governor.getAttestationWeight(gameIdB, usersA[0], uint48(_tsReader.timestamp()));
         assertEq(powerB, 0, "Game A user has no power in Game B");
 

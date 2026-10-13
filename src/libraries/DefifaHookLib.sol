@@ -9,7 +9,6 @@ import {mulDiv} from "@prb/math/src/Common.sol";
 
 import {DefifaGamePhase} from "../enums/DefifaGamePhase.sol";
 import {IDefifaHook} from "../interfaces/IDefifaHook.sol";
-import {IDefifaTiersHookStore} from "../interfaces/IDefifaTiersHookStore.sol";
 import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
 
 /// @notice Pure/view helper functions extracted from DefifaHook to reduce contract bytecode size.
@@ -25,21 +24,15 @@ library DefifaHookLib {
     /// @notice Thrown when tier IDs are not provided in strict ascending order.
     error DefifaHook_BadTierOrder(uint256 previousTierId, uint256 tierId);
 
+    /// @notice Thrown when a refund includes a reserve mint.
+    error DefifaHook_CantRefundReserveMint(uint256 tokenId);
+
     /// @notice Thrown when a tier ID does not match a stored tier, exceeds the maximum tier ID, or is not in category
     /// 0.
     error DefifaHook_InvalidTierId(uint256 tierId, uint256 actualTierId, uint256 maxTierId, uint256 category);
 
     /// @notice Thrown when the cumulative cash-out weights do not sum to the expected total.
     error DefifaHook_InvalidCashoutWeights(uint256 totalWeight, uint256 expectedWeight);
-
-    /// @notice Thrown when parallel ID and amount arrays have different lengths.
-    error DefifaHook_LengthMismatch(uint256 idCount, uint256 amountCount);
-
-    /// @notice Thrown when a token ID is outside both the paid and the reserve ID ranges.
-    error DefifaHook_InvalidTokenId(uint256 tokenId);
-
-    /// @notice Thrown when a position count or amount is zero.
-    error DefifaHook_ZeroAmount(uint256 id);
 
     //*********************************************************************//
     // ----------------------------- events ------------------------------ //
@@ -61,21 +54,33 @@ library DefifaHookLib {
     /// @notice The total cash-out weight that can be divided among tiers.
     uint256 internal constant _TOTAL_CASHOUT_WEIGHT = 1_000_000_000_000_000_000;
 
-    /// @notice The offset added to a tier ID to form the token ID of its reserve-minted positions.
-    /// @dev Above every uint16 tier ID the store can hold.
-    uint256 internal constant RESERVE_TOKEN_ID_OFFSET = 1 << 16;
-
     //*********************************************************************//
-    // -------------------------- internal views ------------------------- //
+    // ------------------------- internal helpers ------------------------ //
     //*********************************************************************//
 
-    /// @notice The tier a token ID belongs to.
-    /// @dev Paid positions use the tier ID; reserve-minted positions use `tierId + RESERVE_TOKEN_ID_OFFSET`.
-    /// @param tokenId The token ID.
-    /// @return tierId The tier ID.
-    function tierIdOf(uint256 tokenId) internal pure returns (uint256 tierId) {
-        tierId = tokenId > RESERVE_TOKEN_ID_OFFSET ? tokenId - RESERVE_TOKEN_ID_OFFSET : tokenId;
-        if (tierId == 0 || tierId >= RESERVE_TOKEN_ID_OFFSET) revert DefifaHook_InvalidTokenId(tokenId);
+    /// @notice The fee tokens claimable for burned tokens, proportional to what they cost to mint.
+    /// @param cumulativeMintPrice The mint price of the burned tokens.
+    /// @param totalMintCost The cumulative mint cost.
+    /// @param defifaBalance The current $DEFIFA balance.
+    /// @param baseProtocolBalance The current $BASE_PROTOCOL balance.
+    /// @return defifaTokenAmount The claimable $DEFIFA amount.
+    /// @return baseProtocolTokenAmount The claimable $BASE_PROTOCOL amount.
+    function tokensClaimFor(
+        uint256 cumulativeMintPrice,
+        uint256 totalMintCost,
+        uint256 defifaBalance,
+        uint256 baseProtocolBalance
+    )
+        internal
+        pure
+        returns (uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount)
+    {
+        // If nothing was paid to mint, no fee tokens can be claimed.
+        if (totalMintCost == 0) return (0, 0);
+
+        // Calculate the user's claimable amount proportional to what they paid.
+        defifaTokenAmount = mulDiv({x: defifaBalance, y: cumulativeMintPrice, denominator: totalMintCost});
+        baseProtocolTokenAmount = mulDiv({x: baseProtocolBalance, y: cumulativeMintPrice, denominator: totalMintCost});
     }
 
     //*********************************************************************//
@@ -124,38 +129,60 @@ library DefifaHookLib {
         return availableReserves > reservesMinted ? availableReserves - reservesMinted : 0;
     }
 
-    /// @notice Validates a payment's tier counts and computes the attestation units minted in each tier.
-    /// @param tierIds The tier IDs to mint, in strictly ascending order.
-    /// @param counts The number of positions to mint in each tier.
+    /// @notice Computes the attestation units for tiers during payment processing.
+    /// @dev Returns parallel arrays: tier IDs, cumulative attestation units per tier, and whether to switch delegate.
+    /// @param tierIdsToMint The tier IDs to mint (must be in ascending order).
     /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
-    /// @return attestationAmounts The attestation units minted in each tier, parallel to `tierIds`.
+    /// @return tierIds The unique tier IDs.
+    /// @return attestationAmounts The cumulative attestation units for each unique tier.
+    /// @return count The number of unique tiers.
     function computeAttestationUnits(
-        uint16[] memory tierIds,
-        uint256[] memory counts,
+        uint16[] memory tierIdsToMint,
         IJB721TiersHookStore hookStore,
         address hook
     )
         public
         view
-        returns (uint256[] memory attestationAmounts)
+        returns (uint256[] memory tierIds, uint256[] memory attestationAmounts, uint256 count)
     {
-        uint256 numberOfTiers = tierIds.length;
-        if (numberOfTiers != counts.length) revert DefifaHook_LengthMismatch(numberOfTiers, counts.length);
-
+        uint256 numberOfTiers = tierIdsToMint.length;
+        tierIds = new uint256[](numberOfTiers);
         attestationAmounts = new uint256[](numberOfTiers);
-        uint256 previousTierId;
 
-        for (uint256 i; i < numberOfTiers; i++) {
-            // Strict ascending order rules out duplicate tiers.
-            if (tierIds[i] <= previousTierId) {
-                revert DefifaHook_BadTierOrder({previousTierId: previousTierId, tierId: tierIds[i]});
+        if (numberOfTiers == 0) return (tierIds, attestationAmounts, 0);
+
+        uint256 currentTierId;
+        uint256 attestationUnits;
+        uint256 accumulated;
+
+        for (uint256 i; i < numberOfTiers;) {
+            if (currentTierId != tierIdsToMint[i]) {
+                // Flush accumulated units for previous tier.
+                if (currentTierId != 0) {
+                    tierIds[count] = currentTierId;
+                    attestationAmounts[count] = accumulated;
+                    count++;
+                }
+                if (tierIdsToMint[i] < currentTierId) {
+                    revert DefifaHook_BadTierOrder({previousTierId: currentTierId, tierId: tierIdsToMint[i]});
+                }
+                currentTierId = tierIdsToMint[i];
+                attestationUnits =
+                hookStore.tierOf({hook: hook, id: currentTierId, includeResolvedUri: false}).votingUnits;
+                accumulated = attestationUnits;
+            } else {
+                accumulated += attestationUnits;
             }
-            previousTierId = tierIds[i];
-            if (counts[i] == 0) revert DefifaHook_ZeroAmount(tierIds[i]);
-
-            attestationAmounts[i] =
-                counts[i] * hookStore.tierOf({hook: hook, id: tierIds[i], includeResolvedUri: false}).votingUnits;
+            unchecked {
+                ++i;
+            }
+        }
+        // Flush the last tier.
+        if (currentTierId != 0) {
+            tierIds[count] = currentTierId;
+            attestationAmounts[count] = accumulated;
+            count++;
         }
     }
 
@@ -191,8 +218,8 @@ library DefifaHookLib {
         }
     }
 
-    /// @notice Compute the cash-out weight of one position of a token ID.
-    /// @param tokenId The token ID (paid or reserve ID).
+    /// @notice Compute the cash-out weight for a single token.
+    /// @param tokenId The token ID.
     /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
     /// @param tierCashOutWeights The tier cash-out weights array.
@@ -209,9 +236,33 @@ library DefifaHookLib {
         view
         returns (uint256)
     {
-        // Keep a reference to the token's tier ID.
-        uint256 tierId = tierIdOf(tokenId);
+        return computeTierCashOutWeight({
+            tierId: hookStore.tierIdOfToken(tokenId),
+            hookStore: hookStore,
+            hook: hook,
+            tierCashOutWeights: tierCashOutWeights,
+            tokensRedeemedFrom: tokensRedeemedFrom
+        });
+    }
 
+    /// @notice Compute the cash-out weight of a single token in a tier.
+    /// @param tierId The tier ID.
+    /// @param hookStore The 721 tiers hook store.
+    /// @param hook The hook address.
+    /// @param tierCashOutWeights The tier cash-out weights array.
+    /// @param tokensRedeemedFrom The mapping of tokens redeemed per tier.
+    /// @return The cash-out weight.
+    function computeTierCashOutWeight(
+        uint256 tierId,
+        IJB721TiersHookStore hookStore,
+        address hook,
+        uint256[128] storage tierCashOutWeights,
+        mapping(uint256 => uint256) storage tokensRedeemedFrom
+    )
+        public
+        view
+        returns (uint256)
+    {
         // Keep a reference to the tier.
         JB721Tier memory tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
 
@@ -231,27 +282,25 @@ library DefifaHookLib {
         uint256 totalTokensForCashoutInTier =
             tier.initialSupply - tier.remainingSupply - (burnedTokens - tokensRedeemedFrom[tierId]);
 
-        // Include pending (unminted) reserve positions in the denominator, adjusted for refund-phase burns.
+        // Include pending (unminted) reserve NFTs in the denominator, adjusted for refund-phase burns.
         totalTokensForCashoutInTier += IDefifaHook(hook).adjustedPendingReservesFor(tierId);
 
-        // Calculate the percentage of the tier's cash-out amount that a single position counts for.
+        // Calculate the percentage of the tier's cash-out amount that a single token counts for.
         // Integer division rounding in cashOutWeight is unavoidable in Solidity. Rounding direction
         // (down) is consistent and conservative — it slightly favors the project over individual cash-out recipients.
         // The maximum error per operation is 1 wei per division.
         return weight / totalTokensForCashoutInTier;
     }
 
-    /// @notice Compute the cumulative cash-out weight of a set of positions.
-    /// @param tokenIds The token IDs (paid or reserve IDs).
-    /// @param amounts The number of positions of each token ID.
+    /// @notice Compute the cumulative cash-out weight for multiple tokens.
+    /// @param tokenIds The token IDs.
     /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
     /// @param tierCashOutWeights The tier cash-out weights array.
-    /// @param tokensRedeemedFrom The mapping of positions redeemed per tier.
+    /// @param tokensRedeemedFrom The mapping of tokens redeemed per tier.
     /// @return cumulativeWeight The cumulative weight.
     function computeCashOutWeightBatch(
         uint256[] memory tokenIds,
-        uint256[] memory amounts,
         IJB721TiersHookStore hookStore,
         address hook,
         uint256[128] storage tierCashOutWeights,
@@ -261,11 +310,9 @@ library DefifaHookLib {
         view
         returns (uint256 cumulativeWeight)
     {
-        uint256 numberOfIds = tokenIds.length;
-        if (numberOfIds != amounts.length) revert DefifaHook_LengthMismatch(numberOfIds, amounts.length);
-        for (uint256 i; i < numberOfIds;) {
-            cumulativeWeight += amounts[i]
-            * computeCashOutWeight({
+        uint256 tokenCount = tokenIds.length;
+        for (uint256 i; i < tokenCount;) {
+            cumulativeWeight += computeCashOutWeight({
                 tokenId: tokenIds[i],
                 hookStore: hookStore,
                 hook: hook,
@@ -278,16 +325,14 @@ library DefifaHookLib {
         }
     }
 
-    /// @notice Compute the cumulative mint price of a set of positions.
-    /// @param tokenIds The token IDs (paid or reserve IDs).
-    /// @param amounts The number of positions of each token ID.
+    /// @notice Compute the cumulative mint price for a set of token IDs.
+    /// @param tokenIds The token IDs.
     /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
-    /// @param excludeReserveMints Whether reserve-minted positions should be excluded.
+    /// @param excludeReserveMints Whether reserve-minted tokens should be excluded.
     /// @return cumulativeMintPrice The total mint price.
     function computeCumulativeMintPriceForCashOut(
         uint256[] memory tokenIds,
-        uint256[] memory amounts,
         IJB721TiersHookStore hookStore,
         address hook,
         bool excludeReserveMints
@@ -296,12 +341,16 @@ library DefifaHookLib {
         view
         returns (uint256 cumulativeMintPrice)
     {
-        uint256 numberOfIds = tokenIds.length;
-        if (numberOfIds != amounts.length) revert DefifaHook_LengthMismatch(numberOfIds, amounts.length);
-        for (uint256 i; i < numberOfIds; i++) {
-            if (excludeReserveMints && tokenIds[i] > RESERVE_TOKEN_ID_OFFSET) continue;
-            cumulativeMintPrice += amounts[i]
-            * hookStore.tierOf({hook: hook, id: tierIdOf(tokenIds[i]), includeResolvedUri: false}).price;
+        uint256 numberOfTokenIds = tokenIds.length;
+        for (uint256 i; i < numberOfTokenIds; i++) {
+            // A refund pays nothing for a reserve mint, so burning one would leave its cost in `totalMintCost` and
+            // count it as a refunded paid mint.
+            if (excludeReserveMints && IDefifaHook(hook).isReserveMint(tokenIds[i])) {
+                revert DefifaHook_CantRefundReserveMint(tokenIds[i]);
+            }
+            cumulativeMintPrice += hookStore.tierOfTokenId({
+                hook: hook, tokenId: tokenIds[i], includeResolvedUri: false
+            }).price;
         }
     }
 
@@ -323,9 +372,8 @@ library DefifaHookLib {
         return tier.initialSupply - (tier.remainingSupply + hookStore.numberOfBurnedFor({hook: hook, tierId: tierId}));
     }
 
-    /// @notice Compute the claimable token amounts for a set of positions.
-    /// @param tokenIds The token IDs (paid or reserve IDs).
-    /// @param amounts The number of positions of each token ID.
+    /// @notice Compute the claimable token amounts for a set of token IDs.
+    /// @param tokenIds The token IDs.
     /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
     /// @param totalMintCost The cumulative mint cost.
@@ -335,7 +383,6 @@ library DefifaHookLib {
     /// @return baseProtocolTokenAmount The claimable $BASE_PROTOCOL amount.
     function computeTokensClaim(
         uint256[] memory tokenIds,
-        uint256[] memory amounts,
         IJB721TiersHookStore hookStore,
         address hook,
         uint256 totalMintCost,
@@ -349,17 +396,26 @@ library DefifaHookLib {
         // If nothing was paid to mint, no fee tokens can be claimed.
         if (totalMintCost == 0) return (0, 0);
 
-        // Calculate the amount paid to mint the positions, reserve-minted ones included.
-        uint256 cumulativeMintPrice = computeCumulativeMintPriceForCashOut({
-            tokenIds: tokenIds, amounts: amounts, hookStore: hookStore, hook: hook, excludeReserveMints: false
-        });
+        // Keep a reference to the number of tokens being used for claims.
+        uint256 numberOfTokens = tokenIds.length;
 
-        // Calculate the user's claimable amount proportional to what they paid.
-        defifaTokenAmount = mulDiv({x: defifaBalance, y: cumulativeMintPrice, denominator: totalMintCost});
-        baseProtocolTokenAmount = mulDiv({x: baseProtocolBalance, y: cumulativeMintPrice, denominator: totalMintCost});
+        // Calculate the amount paid to mint the tokens that are being burned.
+        uint256 cumulativeMintPrice;
+        for (uint256 i; i < numberOfTokens; i++) {
+            cumulativeMintPrice += hookStore.tierOfTokenId({
+                hook: hook, tokenId: tokenIds[i], includeResolvedUri: false
+            }).price;
+        }
+
+        return tokensClaimFor({
+            cumulativeMintPrice: cumulativeMintPrice,
+            totalMintCost: totalMintCost,
+            defifaBalance: defifaBalance,
+            baseProtocolBalance: baseProtocolBalance
+        });
     }
 
-    /// @notice Computes the total mint cost of all pending reserve positions across all tiers.
+    /// @notice Computes the total mint cost of all pending reserve NFTs across all tiers.
     /// @param hookStore The 721 tiers hook store.
     /// @param hook The hook address.
     /// @return cost The total pending reserve mint cost.
@@ -470,39 +526,6 @@ library DefifaHookLib {
     //*********************************************************************//
     // ----------------------- public transactions ----------------------- //
     //*********************************************************************//
-
-    /// @notice Records burned positions in the store and in the hook's per-tier burn counters.
-    /// @dev Executes via delegatecall, so the store records the burns for the calling hook.
-    /// @param tokenIds The burned token IDs (paid or reserve IDs).
-    /// @param amounts The number of positions burned of each token ID.
-    /// @param hookStore The tiers hook store.
-    /// @param isComplete Whether the game is in its COMPLETE phase.
-    /// @param tokensRedeemedFrom The hook's COMPLETE-phase redemptions per tier.
-    /// @param refundedBurnsFrom The hook's non-COMPLETE-phase burns per tier.
-    function recordBurns(
-        uint256[] memory tokenIds,
-        uint256[] memory amounts,
-        IDefifaTiersHookStore hookStore,
-        bool isComplete,
-        mapping(uint256 => uint256) storage tokensRedeemedFrom,
-        mapping(uint256 => uint256) storage refundedBurnsFrom
-    )
-        public
-    {
-        uint256 numberOfIds = tokenIds.length;
-        uint256[] memory tierIds = new uint256[](numberOfIds);
-        for (uint256 i; i < numberOfIds; i++) {
-            uint256 tierId = tierIdOf(tokenIds[i]);
-            tierIds[i] = tierId;
-
-            // Track COMPLETE-phase redemptions, or non-COMPLETE burns (refund/no-contest) so pending reserve counts
-            // can be adjusted.
-            if (isComplete) tokensRedeemedFrom[tierId] += amounts[i];
-            else refundedBurnsFrom[tierId] += amounts[i];
-        }
-
-        hookStore.recordBurnCounts({tierIds: tierIds, counts: amounts});
-    }
 
     /// @notice Claims the defifa and base protocol tokens for a beneficiary.
     /// @dev Executes via delegatecall, so `address(this)` is the calling contract. Transfers are from the hook's

@@ -6,9 +6,11 @@ import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
+import {DefifaHookLib} from "../../src/libraries/DefifaHookLib.sol";
+import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaScorecardState} from "../../src/enums/DefifaScorecardState.sol";
-import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
+import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
 
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
@@ -34,8 +36,8 @@ import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 
-/// @notice Pending reserve positions are included in the cash-out weight denominator so paid holders cannot extract
-/// more than their fair share before reserves are minted.
+/// @notice Pending reserve NFTs are included in the cash-out weight denominator so paid holders cannot extract more
+/// than their fair share before reserves are minted.
 ///
 /// With BWA + HHI-adjusted quorum, a single-tier winner-take-all scorecard gives the sole beneficiary
 /// 0 attestation power (BWA multiplier = 1 - 1 = 0). To allow ratification, we add 3 disinterested
@@ -123,7 +125,7 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _protocolFeeProjectId,
             baseProtocolProjectId: _defifaProjectId,
-            hookStore: new DefifaTiersHookStore(),
+            hookStore: new JB721TiersHookStore(),
             trustedForwarder: address(0)
         });
         hook.transferOwnership(address(deployer));
@@ -136,7 +138,7 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
     function test_paidHolderCashOutDilutedByPendingReserves() external {
         (_pid, _nft, _gov) = _launch(_launchData());
 
-        // Mint phase: player mints 1 position into tier 1, disinterested users mint tiers 2-4.
+        // Mint phase: player mints 1 NFT into tier 1, disinterested users mint tiers 2-4.
         vm.warp(block.timestamp + 1 days + 1);
         _mint(player, 1, 1 ether);
         _delegateSelf(player, 1);
@@ -206,7 +208,7 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
     function test_reserveHolderCanCashOutAfterMinting() external {
         (_pid, _nft, _gov) = _launch(_launchData());
 
-        // Mint phase: player mints 1 position into tier 1, disinterested users mint tiers 2-4.
+        // Mint phase: player mints 1 NFT into tier 1, disinterested users mint tiers 2-4.
         vm.warp(block.timestamp + 1 days + 1);
         _mint(player, 1, 1 ether);
         _delegateSelf(player, 1);
@@ -244,25 +246,29 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
         _gov.ratifyScorecardFrom(_gameId, sc);
 
-        // Mint the reserve positions for tier 1.
+        // Mint the reserve NFTs for tier 1.
         JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
         reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
         _nft.mintReservesFor(reserveConfigs);
-        assertEq(
-            _nft.balanceOf(reserveBeneficiary, 1 + _nft.RESERVE_TOKEN_ID_OFFSET()),
-            1,
-            "reserve position should be minted"
-        );
-        assertEq(_nft.balanceOf(reserveBeneficiary, 1), 0, "reserve position is not minted under the paid ID");
+        assertEq(_nft.balanceOf(reserveBeneficiary), 1, "reserve NFT should be minted");
+
+        // A refund pays nothing for a reserve mint, so refund-phase pricing rejects it.
+        uint256[] memory reserveIds = new uint256[](1);
+        reserveIds[0] = (1 * 1_000_000_000) + 2;
+        IJB721TiersHookStore hookStore = _nft.store();
+        vm.expectRevert(abi.encodeWithSelector(DefifaHookLib.DefifaHook_CantRefundReserveMint.selector, reserveIds[0]));
+        DefifaHookLib.computeCumulativeMintPriceForCashOut({
+            tokenIds: reserveIds, hookStore: hookStore, hook: address(_nft), excludeReserveMints: true
+        });
 
         // Now player cashes out.
         uint256 beforePlayerBalance = player.balance;
         _cashOut(player, 1, 1);
         uint256 playerReclaim = player.balance - beforePlayerBalance;
 
-        // Reserve holder cashes out its tier-1 reserve position.
+        // Reserve holder cashes out (token ID for tier 1, token number 2).
         uint256 beforeReserveBalance = reserveBeneficiary.balance;
-        _cashOut(reserveBeneficiary, 1 + _nft.RESERVE_TOKEN_ID_OFFSET(), 1);
+        _cashOut(reserveBeneficiary, 1, 2);
         uint256 reserveReclaim = reserveBeneficiary.balance - beforeReserveBalance;
 
         // Both should get approximately equal shares.
@@ -386,10 +392,8 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         uint16[] memory m = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
-        uint256[] memory counts = new uint256[](1);
-        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, m, counts);
+        data[0] = abi.encode(user, m);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(hook));
         bytes memory metadata = metadataHelper().createMetadata(ids, data);
@@ -404,8 +408,8 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         _nft.setTierDelegatesTo(dd);
     }
 
-    function _cashOut(address user, uint256 tokenId, uint256 amount) internal {
-        bytes memory meta = _cashOutMeta(tokenId, amount);
+    function _cashOut(address user, uint256 tid, uint256 tnum) internal {
+        bytes memory meta = _cashOutMeta(tid, tnum);
         vm.prank(user);
         jbMultiTerminal()
             .cashOutTokensOf({
@@ -419,13 +423,11 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         });
     }
 
-    function _cashOutMeta(uint256 tokenId, uint256 amount) internal view returns (bytes memory) {
+    function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {
         uint256[] memory cid = new uint256[](1);
-        cid[0] = tokenId;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = amount;
+        cid[0] = (tid * 1_000_000_000) + tnum;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(cid, amounts);
+        data[0] = abi.encode(cid);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("cashOut", address(hook));
         return metadataHelper().createMetadata(ids, data);

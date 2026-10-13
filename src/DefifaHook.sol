@@ -1,7 +1,6 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {ERC1155} from "@openzeppelin/contracts/token/ERC1155/ERC1155.sol";
 import {Checkpoints} from "@openzeppelin/contracts/utils/structs/Checkpoints.sol";
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IJBCashOutHook} from "@bananapus/core-v6/src/interfaces/IJBCashOutHook.sol";
@@ -14,10 +13,9 @@ import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRule
 import {JBAfterCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterCashOutRecordedContext.sol";
 import {JBAfterPayRecordedContext} from "@bananapus/core-v6/src/structs/JBAfterPayRecordedContext.sol";
 import {JBBeforeCashOutRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforeCashOutRecordedContext.sol";
-import {JBBeforePayRecordedContext} from "@bananapus/core-v6/src/structs/JBBeforePayRecordedContext.sol";
 import {JBCashOutHookSpecification} from "@bananapus/core-v6/src/structs/JBCashOutHookSpecification.sol";
-import {JBPayHookSpecification} from "@bananapus/core-v6/src/structs/JBPayHookSpecification.sol";
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
+import {JB721Hook} from "@bananapus/721-hook-v6/src/abstract/JB721Hook.sol";
 import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {
@@ -32,23 +30,17 @@ import {DefifaDelegation} from "./structs/DefifaDelegation.sol";
 import {Ownable} from "@openzeppelin/contracts/access/Ownable.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IDefifaHook} from "./interfaces/IDefifaHook.sol";
-import {IDefifaTiersHookStore} from "./interfaces/IDefifaTiersHookStore.sol";
 import {IDefifaGamePhaseReporter} from "./interfaces/IDefifaGamePhaseReporter.sol";
 import {IDefifaGamePotReporter} from "./interfaces/IDefifaGamePotReporter.sol";
 import {DefifaTierCashOutWeight} from "./structs/DefifaTierCashOutWeight.sol";
 import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
 import {DefifaHookLib} from "./libraries/DefifaHookLib.sol";
 
-/// @notice The ERC-1155 hook that powers Defifa games. Positions are balances: a payment mints a count per tier in one
-/// transfer instead of one token per position. The hook enforces game phase rules on minting and cashing out, tracks
-/// per-tier voting power via checkpoints, and applies scorecard-determined cash-out weights after ratification. Mints
-/// are only allowed during the MINT phase, refunds during the REFUND phase, and cash-outs with scoring weights only
-/// after a scorecard is ratified in the COMPLETE phase.
-/// @dev Tier configuration, supply, reserve, burn and per-holder tier accounting stay in the tiers store, which must
-/// be a `DefifaTiersHookStore` (the 721 store plus count-based records, called once per tier). Each tier has two token
-/// IDs: the tier ID for paid positions and `tierId + RESERVE_TOKEN_ID_OFFSET` for reserve-minted positions, which
-/// refunds exclude.
-contract DefifaHook is ERC1155, Ownable, IDefifaHook {
+/// @notice The 721 hook that powers Defifa games. Extends JB721Hook to enforce game phase rules on minting and
+/// cashing out, track per-tier voting power via checkpoints, and apply scorecard-determined cash-out weights after
+/// ratification. Mints are only allowed during the MINT phase, refunds during the REFUND phase, and cash-outs
+/// with scoring weights only after a scorecard is ratified in the COMPLETE phase.
+contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
     using Checkpoints for Checkpoints.Trace208;
 
     //*********************************************************************//
@@ -66,15 +58,6 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
 
     /// @notice Thrown when setting cash-out weights while the game is not yet in its SCORING phase.
     error DefifaHook_GameIsntScoringYet(uint256 projectId, DefifaGamePhase phase);
-
-    /// @notice Thrown when a cash-out is not called by one of the project's terminals for this project.
-    error DefifaHook_InvalidCashOut(address caller, uint256 contextProjectId, uint256 projectId, uint256 msgValue);
-
-    /// @notice Thrown when a payment is not reported by one of the project's terminals for this project.
-    error DefifaHook_InvalidPay(address caller, uint256 contextProjectId, uint256 projectId);
-
-    /// @notice Thrown when a payment would mint positions to the zero address.
-    error DefifaHook_InvalidBeneficiary();
 
     /// @notice Thrown when a cash-out reclaims nothing and the beneficiary received no fee tokens.
     error DefifaHook_NothingToClaim(uint256 reclaimedAmount, bool beneficiaryReceivedTokens);
@@ -97,14 +80,11 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     /// @notice Thrown when minting reserved tokens while the game is in its NO_CONTEST phase.
     error DefifaHook_ReservedTokenMintingBlockedInNoContest(uint256 projectId, uint256 tierId);
 
-    /// @notice Thrown when fungible project tokens are cashed out alongside game positions.
-    error DefifaHook_UnexpectedTokenCashedOut(uint256 cashOutCount);
-
-    /// @notice Thrown when transferring positions whose tier has transfers paused.
+    /// @notice Thrown when transferring an NFT whose tier has transfers paused.
     error DefifaHook_TransfersPaused(uint256 projectId, uint256 tokenId, address from, address to);
 
-    /// @notice Thrown when cashing out more positions of a token ID than the cash-out holder owns.
-    error DefifaHook_Unauthorized(uint256 tokenId, uint256 amount, uint256 balance, address holder);
+    /// @notice Thrown when cashing out a token whose owner is not the cash-out holder.
+    error DefifaHook_Unauthorized(uint256 tokenId, address owner, address holder);
 
     //*********************************************************************//
     // --------------------- public constant properties ------------------ //
@@ -112,9 +92,6 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
 
     /// @notice The total cash-out weight that can be divided among tiers.
     uint256 public constant override TOTAL_CASHOUT_WEIGHT = 1_000_000_000_000_000_000;
-
-    /// @notice The offset added to a tier ID to form the token ID of its reserve-minted positions.
-    uint256 public constant override RESERVE_TOKEN_ID_OFFSET = DefifaHookLib.RESERVE_TOKEN_ID_OFFSET;
 
     //*********************************************************************//
     // -------------------- internal stored properties ------------------- //
@@ -138,11 +115,9 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     /// @custom:param tierId The ID of the tier to check.
     mapping(uint256 => Checkpoints.Trace208) internal _totalTierCheckpoints;
 
-    /// @notice The name of the game-piece collection.
-    string internal _name;
-
-    /// @notice The symbol of the game-piece collection.
-    string internal _symbol;
+    /// @notice The first owner of each token ID, stored on first transfer out.
+    /// @custom:param tokenId The ID of the token to get the stored first owner of.
+    mapping(uint256 => address) internal _firstOwnerOf;
 
     /// @notice The names of each tier.
     /// @custom:param tierId The ID of the tier to get a name for.
@@ -151,9 +126,6 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     //*********************************************************************//
     // ---------------- public immutable stored properties --------------- //
     //*********************************************************************//
-
-    /// @notice The directory of terminals and controllers for projects.
-    IJBDirectory public immutable override DIRECTORY;
 
     /// @notice The $DEFIFA token that is expected to be issued from paying fees.
     IERC20 public immutable override DEFIFA_TOKEN;
@@ -165,7 +137,7 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     // --------------------- public stored properties -------------------- //
     //*********************************************************************//
 
-    /// @notice The cumulative mint price of all paid and reserved positions. Decremented on burns/refunds. Used as the
+    /// @notice The cumulative mint price of all paid and reserved NFTs. Decremented on burns/refunds. Used as the
     /// participation metric — immune to `addToBalanceOf` inflation because only actual mints increment it.
     uint256 public override totalMintCost;
 
@@ -193,25 +165,27 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     /// @notice The contract reporting the game pot.
     IDefifaGamePotReporter public override gamePotReporter;
 
-    /// @notice The currency that is accepted when minting tier positions.
+    /// @notice Whether a token was minted through reserves (free) rather than paid for.
+    /// @dev Reserve-minted tokens are excluded from refund calculations since no funds were contributed for them.
+    /// @custom:param tokenId The ID of the token whose reserve-mint status is stored.
+    mapping(uint256 tokenId => bool) public override isReserveMint;
+
+    /// @notice The currency that is accepted when minting tier NFTs.
     uint256 public override pricingCurrency;
 
-    /// @notice The number of positions burned from a tier during non-COMPLETE phases (refund, no-contest).
+    /// @notice The number of tokens burned from a tier during non-COMPLETE phases (refund, no-contest).
     /// @dev Used to adjust pending reserve counts so reserves that correspond to refunded mints
     /// are excluded from the cash-out denominator.
     /// @custom:param tierId The ID of the tier whose non-COMPLETE-phase burn count is stored.
     mapping(uint256 => uint256) public refundedBurnsFrom;
 
-    /// @notice The ID of the project (game) this hook belongs to.
-    uint256 public override projectId;
-
     /// @notice The contract storing all funding cycle configurations.
     IJBRulesets public override rulesets;
 
-    /// @notice The contract that stores tier configuration, supply, reserve and burn accounting.
+    /// @notice The contract that stores and manages the NFT's data.
     IJB721TiersHookStore public override store;
 
-    /// @notice The number of positions redeemed from each tier, excluding refunds.
+    /// @notice The amount of tokens redeemed from each tier, excluding refunds.
     /// @custom:param tierId The tier from which tokens have been redeemed.
     mapping(uint256 => uint256) public override tokensRedeemedFrom;
 
@@ -228,6 +202,21 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         return DefifaHookLib.adjustedPendingReservesFor({
             tierId: tierId, hookStore: store, hook: address(this), refundBurns: refundedBurnsFrom[tierId]
         });
+    }
+
+    /// @notice The first owner of each token ID, which corresponds to the address that originally contributed to the
+    /// project to receive the NFT.
+    /// @param tokenId The ID of the token to get the first owner of.
+    /// @return The first owner of the token.
+    function firstOwnerOf(uint256 tokenId) external view override returns (address) {
+        // Get a reference to the first owner.
+        address storedFirstOwner = _firstOwnerOf[tokenId];
+
+        // If the stored first owner is set, return it.
+        if (storedFirstOwner != address(0)) return storedFirstOwner;
+
+        // Otherwise, the first owner must be the current owner.
+        return _owners[tokenId];
     }
 
     /// @notice Returns the past attestation units of a specific address for a specific tier.
@@ -288,34 +277,6 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         return _tierCashOutWeights;
     }
 
-    /// @notice The ID used when parsing pay and cash-out metadata. Clones share the implementation's ID.
-    /// @return The address of the metadata ID target.
-    function METADATA_ID_TARGET() external view override returns (address) {
-        return CODE_ORIGIN;
-    }
-
-    /// @notice The name of the game-piece collection.
-    function name() external view override returns (string memory) {
-        return _name;
-    }
-
-    /// @notice The symbol of the game-piece collection.
-    function symbol() external view override returns (string memory) {
-        return _symbol;
-    }
-
-    /// @notice Required by the IJBRulesetDataHook interface. Return false to not leak any permissions.
-    function hasMintPermissionFor(uint256, JBRuleset memory, address) external pure override returns (bool) {
-        return false;
-    }
-
-    /// @notice The tier a token ID belongs to.
-    /// @param tokenId The token ID (paid or reserve ID).
-    /// @return The tier ID.
-    function tierIdOf(uint256 tokenId) external pure override returns (uint256) {
-        return DefifaHookLib.tierIdOf(tokenId);
-    }
-
     /// @notice The name of the tier with the specified ID.
     /// @param tierId The ID of the tier.
     function tierNameOf(uint256 tierId) external view override returns (string memory) {
@@ -329,7 +290,7 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     /// @notice The data calculated before a cash-out is recorded in the terminal store. This data is provided to the
     /// terminal's `cashOutTokensOf(...)` transaction.
     /// @dev Sets this contract as the cash-out hook. Part of `IJBRulesetDataHook`.
-    /// @dev This function is used for position cash-outs, and will only be called if the project's ruleset has
+    /// @dev This function is used for NFT cash-outs, and will only be called if the project's ruleset has
     /// `useDataHookForCashOut` set to `true`.
     /// @param context The cash-out context passed to this contract by the `cashOutTokensOf(...)` function.
     /// @return cashOutTaxRate The cash-out tax rate influencing the reclaim amount.
@@ -342,7 +303,7 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         public
         view
         virtual
-        override
+        override(IJBRulesetDataHook, JB721Hook)
         returns (
             uint256 cashOutTaxRate,
             uint256 cashOutCount,
@@ -352,7 +313,7 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         )
     {
         // Make sure (fungible) project tokens aren't also being cashed out.
-        if (context.cashOutCount > 0) revert DefifaHook_UnexpectedTokenCashedOut({cashOutCount: context.cashOutCount});
+        if (context.cashOutCount > 0) revert JB721Hook_UnexpectedTokenCashedOut({cashOutCount: context.cashOutCount});
 
         // Fetch the cash-out hook metadata using the corresponding metadata ID.
         (bool metadataExists, bytes memory metadata) = JBMetadataResolver.getDataFor({
@@ -360,10 +321,9 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         });
 
         uint256[] memory decodedTokenIds;
-        uint256[] memory decodedAmounts;
 
-        // Decode the metadata: the token IDs and the number of positions of each to cash out.
-        if (metadataExists) (decodedTokenIds, decodedAmounts) = abi.decode(metadata, (uint256[], uint256[]));
+        // Decode the metadata.
+        if (metadataExists) decodedTokenIds = abi.decode(metadata, (uint256[]));
 
         // Get the current game phase.
         DefifaGamePhase gamePhase = gamePhaseReporter.currentGamePhaseOf(context.projectId);
@@ -371,10 +331,9 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         // Cache the store reference in a local variable to avoid repeated SLOAD.
         IJB721TiersHookStore hookStore = store;
 
-        // During refund phases, reserve-minted positions were minted for free and have no paid amount to refund.
+        // During refund phases, reserve-minted tokens were minted for free and have no paid amount to refund.
         uint256 cumulativeMintPrice = DefifaHookLib.computeCumulativeMintPriceForCashOut({
             tokenIds: decodedTokenIds,
-            amounts: decodedAmounts,
             hookStore: hookStore,
             hook: address(this),
             excludeReserveMints: gamePhase == DefifaGamePhase.MINT || gamePhase == DefifaGamePhase.REFUND
@@ -392,7 +351,7 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
             cumulativeMintPrice: cumulativeMintPrice,
             surplusValue: context.surplus.value,
             totalAmountRedeemed: amountRedeemed,
-            cumulativeCashOutWeight: cashOutWeightOf(decodedTokenIds, decodedAmounts)
+            cumulativeCashOutWeight: cashOutWeightOf(decodedTokenIds)
         });
 
         // Use the surplus as the total supply.
@@ -405,23 +364,19 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         cashOutTaxRate = context.cashOutTaxRate;
     }
 
-    /// @notice The cumulative weight the given positions have in cash-outs compared to the `totalCashOutWeight`.
-    /// @param tokenIds The token IDs (paid or reserve IDs).
-    /// @param amounts The number of positions of each token ID.
+    /// @notice The cumulative weight the given token IDs have in cash-outs compared to the `totalCashOutWeight`.
+    /// @param tokenIds The IDs of the tokens to get the cumulative cashOut weight of.
     /// @return cumulativeWeight The weight.
-    function cashOutWeightOf(
-        uint256[] memory tokenIds,
-        uint256[] memory amounts
-    )
+    function cashOutWeightOf(uint256[] memory tokenIds)
         public
         view
         virtual
         override
         returns (uint256 cumulativeWeight)
     {
+        // Cache the store in a local variable to avoid repeated SLOAD.
         cumulativeWeight = DefifaHookLib.computeCashOutWeightBatch({
             tokenIds: tokenIds,
-            amounts: amounts,
             hookStore: store,
             hook: address(this),
             tierCashOutWeights: _tierCashOutWeights,
@@ -429,8 +384,8 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         });
     }
 
-    /// @notice The weight one position of the given token ID has in cash-outs.
-    /// @param tokenId The token ID (paid or reserve ID).
+    /// @notice The weight the given token ID has in cashOuts.
+    /// @param tokenId The ID of the token to get the cashOut weight of.
     /// @return The weight.
     function cashOutWeightOf(uint256 tokenId) public view override returns (uint256) {
         return DefifaHookLib.computeCashOutWeight({
@@ -442,7 +397,7 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         });
     }
 
-    /// @notice The number of positions of a tier that are currently in circulation, paid and reserve-minted.
+    /// @notice The amount of tokens of a tier that are currently in circulation.
     /// @param tierId The ID of the tier to get the current supply of.
     /// @return The current supply count.
     function currentSupplyOfTier(uint256 tierId) public view returns (uint256) {
@@ -452,29 +407,24 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     /// @notice Indicates if this contract adheres to the specified interface.
     /// @dev See {IERC165-supportsInterface}.
     /// @param interfaceId The ID of the interface to check for adherence to.
-    function supportsInterface(bytes4 interfaceId) public view override(ERC1155, IERC165) returns (bool) {
-        return interfaceId == type(IDefifaHook).interfaceId || interfaceId == type(IJBRulesetDataHook).interfaceId
-            || interfaceId == type(IJBPayHook).interfaceId || interfaceId == type(IJBCashOutHook).interfaceId
-            || super.supportsInterface(interfaceId);
+    function supportsInterface(bytes4 interfaceId) public view override(JB721Hook, IERC165) returns (bool) {
+        return interfaceId == type(IDefifaHook).interfaceId || super.supportsInterface(interfaceId);
     }
 
     /// @notice The metadata URI of the provided token ID.
-    /// @dev Defers to the token URI resolver.
-    /// @param tokenId The token ID (paid or reserve ID).
-    /// @return The token URI from the resolver.
-    function uri(uint256 tokenId) public view virtual override returns (string memory) {
+    /// @dev Defer to the token URI resolver if set; otherwise, use the token URI set with the token's tier.
+    /// @param tokenId The ID of the token to get the tier URI for.
+    /// @return The token URI corresponding with the tier or the tokenUriResolver URI.
+    function tokenURI(uint256 tokenId) public view virtual override returns (string memory) {
+        // Use the resolver.
         return store.tokenUriResolverOf(address(this)).tokenUriOf({nft: address(this), tokenId: tokenId});
     }
 
-    /// @notice The amount of $DEFIFA and $BASE_PROTOCOL tokens claimable for a set of positions.
-    /// @param tokenIds The token IDs (paid or reserve IDs).
-    /// @param amounts The number of positions of each token ID.
+    /// @notice The amount of $DEFIFA and $BASE_PROTOCOL tokens claimable for a set of token IDs.
+    /// @param tokenIds The IDs of the tokens that justify a $DEFIFA claim.
     /// @return defifaTokenAmount The amount of $DEFIFA that can be claimed.
     /// @return baseProtocolTokenAmount The amount of $BASE_PROTOCOL that can be claimed.
-    function tokensClaimableFor(
-        uint256[] memory tokenIds,
-        uint256[] memory amounts
-    )
+    function tokensClaimableFor(uint256[] memory tokenIds)
         public
         view
         returns (uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount)
@@ -483,11 +433,10 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         if (_currentGamePhaseOf(projectId) != DefifaGamePhase.COMPLETE) return (0, 0);
 
         // Include unminted reserves in the denominator. Once reserves are pending, their future recipients are
-        // entitled to fee-token claims as if the reserve positions had already been minted; otherwise paid holders
-        // could claim too large a share before the reserve mint transaction lands.
+        // entitled to fee-token claims as if the reserve NFTs had already been minted; otherwise paid holders could
+        // claim too large a share before the reserve mint transaction lands.
         return DefifaHookLib.computeTokensClaim({
             tokenIds: tokenIds,
-            amounts: amounts,
             hookStore: store,
             hook: address(this),
             totalMintCost: totalMintCost + _pendingReserveMintCost(),
@@ -496,12 +445,26 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         });
     }
 
+    /// @notice The combined cash-out weight of all outstanding NFTs.
+    /// @dev An NFT's cash-out weight is its price.
+    /// @return The total cash-out weight.
+    function totalCashOutWeight() public view virtual override returns (uint256) {
+        return TOTAL_CASHOUT_WEIGHT;
+    }
+
     //*********************************************************************//
     // -------------------------- constructor ---------------------------- //
     //*********************************************************************//
 
     /// @dev The initial owner is msg.sender; ownership is transferred to the governor after initialization.
-    constructor(IJBDirectory directory, IERC20 defifaToken, IERC20 baseProtocolToken) ERC1155("") Ownable(msg.sender) {
+    constructor(
+        IJBDirectory directory,
+        IERC20 defifaToken,
+        IERC20 baseProtocolToken
+    )
+        JB721Hook(directory)
+        Ownable(msg.sender)
+    {
         if (address(defifaToken) == address(baseProtocolToken)) {
             revert DefifaHook_IdenticalTokens({
                 defifaToken: address(defifaToken), baseProtocolToken: address(baseProtocolToken)
@@ -509,7 +472,6 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         }
 
         CODE_ORIGIN = address(this);
-        DIRECTORY = directory;
         DEFIFA_TOKEN = defifaToken;
         BASE_PROTOCOL_TOKEN = baseProtocolToken;
     }
@@ -518,16 +480,21 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     // ---------------------- external transactions ---------------------- //
     //*********************************************************************//
 
-    /// @notice Mints positions to the `context.beneficiary` upon payment if conditions are met.
+    /// @notice Mints one or more NFTs to the `context.beneficiary` upon payment if conditions are met.
     /// @dev Reverts if the calling contract is not one of the project's terminals.
     /// @param context The payment context passed in by the terminal.
-    function afterPayRecordedWith(JBAfterPayRecordedContext calldata context) external payable virtual override {
+    function afterPayRecordedWith(JBAfterPayRecordedContext calldata context)
+        external
+        payable
+        virtual
+        override(IJBPayHook, JB721Hook)
+    {
         uint256 localProjectId = projectId;
 
         // Make sure the caller is a terminal of the project, and that the call is being made on behalf of an
         // interaction with the correct project.
         if (msg.value != 0 || !_isProjectTerminal(localProjectId) || context.projectId != localProjectId) {
-            revert DefifaHook_InvalidPay({
+            revert JB721Hook_InvalidPay({
                 caller: msg.sender, contextProjectId: context.projectId, projectId: localProjectId
             });
         }
@@ -536,45 +503,29 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         _processPayment(context);
     }
 
-    /// @notice The data calculated before a payment is recorded: forwards the ruleset weight and uses this contract as
-    /// the only pay hook. Part of `IJBRulesetDataHook`.
-    /// @param context The payment context passed to this contract by the `pay(...)` function.
-    /// @return weight The weight to use, the ruleset's.
-    /// @return hookSpecifications This contract, with nothing forwarded to it.
-    function beforePayRecordedWith(JBBeforePayRecordedContext calldata context)
-        external
-        view
-        override
-        returns (uint256 weight, JBPayHookSpecification[] memory hookSpecifications)
-    {
-        weight = context.weight;
-        hookSpecifications = new JBPayHookSpecification[](1);
-        hookSpecifications[0] = JBPayHookSpecification({hook: this, noop: false, amount: 0, metadata: bytes("")});
-    }
-
     //*********************************************************************//
     // ----------------------- public transactions ----------------------- //
     //*********************************************************************//
 
     /// @notice Initialize a clone of this contract.
     /// @param _gameId The ID of the project this contract's functionality applies to.
-    /// @param _gameName The name of the game-piece collection.
-    /// @param _gameSymbol The symbol of the game-piece collection.
+    /// @param _name The name of the token.
+    /// @param _symbol The symbol that the token should be represented by.
     /// @param _rulesets A contract storing all ruleset configurations.
     /// @param _baseUri A URI to use as a base for full token URIs.
     /// @param _tokenUriResolver A contract responsible for resolving the token URI for each token ID.
     /// @param _contractUri A URI where contract metadata can be found.
     /// @param _tiers The tiers to set.
     /// @param _currency The currency that the tier contribution floors are denoted in.
-    /// @param _store A contract that stores tier configuration and supply accounting.
+    /// @param _store A contract that stores the NFT's data.
     /// @param _gamePhaseReporter The contract that reports the game phase.
     /// @param _gamePotReporter The contract that reports the game's pot.
     /// @param _defaultAttestationDelegate The address that will be set as the attestation delegate by default.
     /// @param _tierNames The names of each tier.
     function initialize(
         uint256 _gameId,
-        string memory _gameName,
-        string memory _gameSymbol,
+        string memory _name,
+        string memory _symbol,
         IJBRulesets _rulesets,
         string memory _baseUri,
         IJB721TokenUriResolver _tokenUriResolver,
@@ -596,10 +547,8 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         // Stop re-initialization.
         if (address(store) != address(0)) revert();
 
-        // Store the game and collection identity.
-        projectId = _gameId;
-        _name = _gameName;
-        _symbol = _gameSymbol;
+        // Initialize the superclass.
+        _initialize({initialProjectId: _gameId, name: _name, symbol: _symbol});
 
         // Store stuff.
         rulesets = _rulesets;
@@ -640,9 +589,9 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         _transferOwnership(msg.sender);
     }
 
-    /// @notice Mint reserved positions within a tier.
+    /// @notice Mint reserved tokens within the tier for the provided value.
     /// @param tierId The ID of the tier to mint within.
-    /// @param count The number of reserved positions to mint.
+    /// @param count The number of reserved tokens to mint.
     function mintReservesFor(uint256 tierId, uint256 count) public override {
         // Minting reserves must not be paused.
         if (JB721TiersRulesetMetadataResolver.mintPendingReservesPaused(_rulesetMetadata())) {
@@ -682,8 +631,11 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
             });
         }
 
-        // Record the minted reserves for the tier. The store's 721 token numbers are not used.
-        hookStore.recordMintReservesFor({tierId: tierId, count: count});
+        // Record the minted reserves for the tier.
+        uint256[] memory tokenIds = hookStore.recordMintReservesFor({tierId: tierId, count: count});
+
+        // Keep a reference to the token ID being iterated on.
+        uint256 tokenId;
 
         // Fetch the tier details (needed for votingUnits below).
         JB721Tier memory tier = hookStore.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
@@ -694,17 +646,28 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         // reserved recipients receive a proportional claim on fee tokens as if they had paid to mint.
         totalMintCost += tier.price * count;
 
-        // Mint the reserve-ID positions so refunds can exclude them. No receiver callback, matching the previous
-        // 721 `_mint`: no external call runs inside the mint.
-        _mintWithoutCallback({to: reservedTokenBeneficiary, tokenId: tierId + RESERVE_TOKEN_ID_OFFSET, count: count});
+        for (uint256 i; i < count;) {
+            // Set the token ID.
+            tokenId = tokenIds[i];
 
-        emit MintReservedToken({
-            tierId: tierId, beneficiary: reservedTokenBeneficiary, count: count, caller: msg.sender
-        });
+            // Flag this token as reserve-minted so it is excluded from refund calculations.
+            isReserveMint[tokenId] = true;
+
+            // Mint the token to the reserve beneficiary.
+            _mint({to: reservedTokenBeneficiary, tokenId: tokenId});
+
+            emit MintReservedToken({
+                tokenId: tokenId, tierId: tierId, beneficiary: reservedTokenBeneficiary, caller: msg.sender
+            });
+
+            unchecked {
+                ++i;
+            }
+        }
 
         // Transfer the attestation units to the delegate.
         _transferTierAttestationUnits({
-            from: address(0), to: reservedTokenBeneficiary, tierId: tierId, amount: tier.votingUnits * count
+            from: address(0), to: reservedTokenBeneficiary, tierId: tierId, amount: tier.votingUnits * tokenIds.length
         });
     }
 
@@ -712,7 +675,7 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     // ---------------------- external transactions ---------------------- //
     //*********************************************************************//
 
-    /// @notice Burns the specified positions upon holder cash-out, reclaiming funds from the project's balance for
+    /// @notice Burns the specified NFTs upon token holder cash-out, reclaiming funds from the project's balance for
     /// `context.beneficiary`. Part of `IJBCashOutHook`.
     /// @dev Reverts if the calling contract is not one of the project's terminals.
     /// @param context The cash-out context passed in by the terminal.
@@ -720,57 +683,77 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         external
         payable
         virtual
-        override
+        override(IJBCashOutHook, JB721Hook)
     {
         // Make sure the caller is a terminal of the project, and that the call is being made on behalf of an
         // interaction with the correct project.
         uint256 localProjectId = projectId;
 
         if (msg.value != 0 || !_isProjectTerminal(localProjectId) || context.projectId != localProjectId) {
-            revert DefifaHook_InvalidCashOut({
+            revert JB721Hook_InvalidCashOut({
                 caller: msg.sender, contextProjectId: context.projectId, projectId: localProjectId, msgValue: msg.value
             });
         }
 
         // Fetch the cash-out hook metadata using the corresponding metadata ID.
         (bool metadataExists, bytes memory metadata) = JBMetadataResolver.getDataFor({
-            id: JBMetadataResolver.getId({purpose: "cashOut", target: CODE_ORIGIN}), metadata: context.cashOutMetadata
+            id: JBMetadataResolver.getId({purpose: "cashOut", target: METADATA_ID_TARGET}),
+            metadata: context.cashOutMetadata
         });
 
         if (!metadataExists) {
             revert();
         }
 
-        // Decode the cash-out metadata: the token IDs and the number of positions of each.
-        (uint256[] memory decodedTokenIds, uint256[] memory decodedAmounts) =
-            abi.decode(metadata, (uint256[], uint256[]));
+        // Decode the CashOut metadata.
+        (uint256[] memory decodedTokenIds) = abi.decode(metadata, (uint256[]));
 
-        // Make sure the holder owns every position being cashed out. Duplicate IDs are checked cumulatively by the
-        // burn below.
-        for (uint256 i; i < decodedTokenIds.length; i++) {
-            uint256 balance = balanceOf(context.holder, decodedTokenIds[i]);
-            if (balance < decodedAmounts[i]) {
-                revert DefifaHook_Unauthorized({
-                    tokenId: decodedTokenIds[i], amount: decodedAmounts[i], balance: balance, holder: context.holder
-                });
-            }
-        }
+        // Get a reference to the number of token IDs being checked.
+        uint256 numberOfTokenIds = decodedTokenIds.length;
+
+        // Keep a reference to the token ID being iterated on.
+        uint256 tokenId;
 
         // Keep track of whether the cashOut is happening during the complete phase.
         bool isComplete = _currentGamePhaseOf(localProjectId) == DefifaGamePhase.COMPLETE;
 
-        // Burn the positions. Attestation units move out through `_update`.
-        _burnBatch({from: context.holder, ids: decodedTokenIds, values: decodedAmounts});
+        // Cache the store reference in a local variable to avoid repeated SLOAD in the loop.
+        IJB721TiersHookStore hookStore = store;
 
-        // Record the burns in the store and the per-tier redemption or refund counters.
-        DefifaHookLib.recordBurns({
-            tokenIds: decodedTokenIds,
-            amounts: decodedAmounts,
-            hookStore: IDefifaTiersHookStore(address(store)),
-            isComplete: isComplete,
-            tokensRedeemedFrom: tokensRedeemedFrom,
-            refundedBurnsFrom: refundedBurnsFrom
-        });
+        // Iterate through all tokens, burning them if the owner is correct.
+        for (uint256 i; i < numberOfTokenIds;) {
+            // Set the token's ID.
+            tokenId = decodedTokenIds[i];
+
+            // Make sure the token's owner is correct.
+            address tokenOwner = _ownerOf(tokenId);
+            if (tokenOwner != context.holder) {
+                revert DefifaHook_Unauthorized({tokenId: tokenId, owner: tokenOwner, holder: context.holder});
+            }
+
+            // Burn the token.
+            _burn(tokenId);
+
+            uint256 tierId = hookStore.tierIdOfToken(tokenId);
+            if (isComplete) {
+                // Track per-tier redemptions during the complete phase.
+                unchecked {
+                    ++tokensRedeemedFrom[tierId];
+                }
+            } else {
+                // Track non-COMPLETE burns (refund/no-contest) so pending reserve counts can be adjusted.
+                unchecked {
+                    ++refundedBurnsFrom[tierId];
+                }
+            }
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        // Call the hook.
+        _didBurn(decodedTokenIds);
 
         // Decode the metadata passed by the hook.
         (uint256 cumulativeMintPrice) = abi.decode(context.hookMetadata, (uint256));
@@ -804,7 +787,7 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         totalMintCost -= cumulativeMintPrice;
     }
 
-    /// @notice Mint reserved positions for multiple tiers.
+    /// @notice Mint reserved tokens within the tier for the provided value.
     /// @param mintReservesForTiersData Contains information about how many reserved tokens to mint for each tier.
     function mintReservesFor(JB721TiersMintReservesConfig[] calldata mintReservesForTiersData) external override {
         // Keep a reference to the number of tiers to mint reserves for.
@@ -945,38 +928,57 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         });
     }
 
-    /// @notice Mints positions in the provided tiers.
-    /// @param amount The amount to base the mints on. All mints' prices must fit in this amount.
-    /// @param tierIds The tier IDs to mint, in strictly ascending order.
-    /// @param counts The number of positions to mint in each tier.
+    /// @notice A function that will run when tokens are burned via cashOut.
+    /// @param tokenIds The IDs of the tokens that were burned.
+    function _didBurn(uint256[] memory tokenIds) internal virtual override {
+        // Add to burned counter.
+        store.recordBurn(tokenIds);
+    }
+
+    /// @notice Mints a token in all provided tiers.
+    /// @param amount The amount to base the mints on. All mints' price floors must fit in this amount.
+    /// @param mintTierIds An array of tier IDs that are intended to be minted.
     /// @param beneficiary The address to mint for.
     /// @return leftoverAmount The amount leftover after the mint.
     function _mintAll(
         uint256 amount,
-        uint16[] memory tierIds,
-        uint256[] memory counts,
+        uint16[] memory mintTierIds,
         address beneficiary
     )
         internal
         returns (uint256 leftoverAmount)
     {
-        // Record the mint: price, supply and reserve checks, once per tier.
-        leftoverAmount =
-            IDefifaTiersHookStore(address(store)).recordMintCounts({amount: amount, tierIds: tierIds, counts: counts});
+        // Keep a reference to the token ID.
+        uint256[] memory tokenIds;
+
+        // Record the mint. The returned token IDs correspond to the tiers passed in.
+        (tokenIds, leftoverAmount,) = store.recordMint({
+            amount: amount,
+            tierIds: mintTierIds,
+            isOwnerMint: false // Not a manual mint
+        });
+
+        // Get a reference to the number of mints.
+        uint256 mintsLength = tokenIds.length;
+
+        // Keep a reference to the token ID being iterated on.
+        uint256 tokenId;
 
         // Increment the paid mint cost.
         totalMintCost += amount;
 
-        // Mint one balance per tier.
-        uint256 numberOfTiers = tierIds.length;
-        uint256[] memory tokenIds = new uint256[](numberOfTiers);
-        for (uint256 i; i < numberOfTiers;) {
-            tokenIds[i] = tierIds[i];
+        // Loop through each token ID and mint.
+        for (uint256 i; i < mintsLength;) {
+            // Get a reference to the tier being iterated on.
+            tokenId = tokenIds[i];
+
+            // Mint the tokens.
+            _mint({to: beneficiary, tokenId: tokenId});
 
             emit Mint({
-                tierId: tierIds[i],
+                tokenId: tokenId,
+                tierId: mintTierIds[i],
                 beneficiary: beneficiary,
-                count: counts[i],
                 totalAmountContributed: amount,
                 caller: msg.sender
             });
@@ -985,21 +987,6 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
                 ++i;
             }
         }
-
-        // No receiver callback, matching the previous 721 `_mint`: no external call runs inside the payment.
-        _update({from: address(0), to: beneficiary, ids: tokenIds, values: counts});
-    }
-
-    /// @notice Mints positions of one token ID without the ERC-1155 receiver callback.
-    /// @param to The address to mint to.
-    /// @param tokenId The token ID.
-    /// @param count The number of positions.
-    function _mintWithoutCallback(address to, uint256 tokenId, uint256 count) internal {
-        uint256[] memory ids = new uint256[](1);
-        uint256[] memory values = new uint256[](1);
-        ids[0] = tokenId;
-        values[0] = count;
-        _update({from: address(0), to: to, ids: ids, values: values});
     }
 
     /// @notice Moves delegated tier attestations from one delegate to another.
@@ -1016,7 +1003,7 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
             // Get the current amount for the sending delegate.
             uint208 current = _delegateTierCheckpoints[from][tierId].latest();
             // Set the new amount for the sending delegate.
-            // uint208 is sufficient for attestation values: each tier's attestation units are bounded by the position
+            // uint208 is sufficient for attestation values: each tier's attestation units are bounded by the NFT
             // supply (max ~999_999_999 per tier * 128 tiers), well within uint208's ~4.1e62 range.
             // forge-lint: disable-next-line(unsafe-typecast)
             (uint256 oldValue, uint256 newValue) = _delegateTierCheckpoints[from][tierId].push({
@@ -1050,7 +1037,7 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
 
     /// @notice Process an incoming payment.
     /// @param context The Juicebox standard project payment data.
-    function _processPayment(JBAfterPayRecordedContext calldata context) internal {
+    function _processPayment(JBAfterPayRecordedContext calldata context) internal override {
         // Make sure the game is being played in the correct currency.
         if (context.amount.currency != pricingCurrency) {
             revert DefifaHook_WrongCurrency({
@@ -1065,12 +1052,8 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
 
         if (!found) revert DefifaHook_NothingToMint({metadataFound: found, tierCount: 0});
 
-        // Decode the metadata: the attestation delegate, the tiers to mint in ascending order, and a count per tier.
-        (address attestationDelegate, uint16[] memory tierIdsToMint, uint256[] memory counts) =
-            abi.decode(metadata, (address, uint16[], uint256[]));
-
-        // Positions can't be minted to the zero address.
-        if (context.beneficiary == address(0)) revert DefifaHook_InvalidBeneficiary();
+        // Decode the metadata.
+        (address attestationDelegate, uint16[] memory tierIdsToMint) = abi.decode(metadata, (address, uint16[]));
 
         // Set the beneficiary as the attestation delegate by default.
         if (attestationDelegate == address(0)) {
@@ -1083,14 +1066,13 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
             revert DefifaHook_NothingToMint({metadataFound: found, tierCount: tierIdsToMint.length});
         }
 
-        // Validate the tiers and counts, and compute the attestation units per tier.
-        uint256[] memory attestationAmounts = DefifaHookLib.computeAttestationUnits({
-            tierIds: tierIdsToMint, counts: counts, hookStore: store, hook: address(this)
-        });
+        // Compute attestation units per unique tier (validates ascending order, reverts on bad order).
+        (uint256[] memory tierIds, uint256[] memory attestationAmounts, uint256 uniqueTierCount) =
+            DefifaHookLib.computeAttestationUnits({tierIdsToMint: tierIdsToMint, hookStore: store, hook: address(this)});
 
-        // Apply attestation units for each tier.
-        for (uint256 i; i < tierIdsToMint.length;) {
-            uint256 tierId = tierIdsToMint[i];
+        // Apply attestation units for each unique tier.
+        for (uint256 i; i < uniqueTierCount;) {
+            uint256 tierId = tierIds[i];
 
             // Get a reference to the old delegate.
             address oldDelegate = _tierDelegation[context.beneficiary][tierId];
@@ -1117,10 +1099,9 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
             }
         }
 
-        // Mint the positions.
-        uint256 leftoverAmount = _mintAll({
-            amount: context.amount.value, tierIds: tierIdsToMint, counts: counts, beneficiary: context.beneficiary
-        });
+        // Mint tiers if they were specified.
+        uint256 leftoverAmount =
+            _mintAll({amount: context.amount.value, mintTierIds: tierIdsToMint, beneficiary: context.beneficiary});
 
         // Make sure the buyer isn't overspending.
         if (leftoverAmount != 0) revert DefifaHook_Overspending({leftoverAmount: leftoverAmount});
@@ -1139,7 +1120,7 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
 
             // If minting, add to the total tier checkpoints.
             if (from == address(0)) {
-                // Casting to uint208/uint48 is safe because attestation unit amounts are bounded by supply counts.
+                // Casting to uint208/uint48 is safe because attestation unit amounts are bounded by NFT supply counts.
                 // forge-lint: disable-next-line(unsafe-typecast)
                 uint208 newValue = current + uint208(amount);
                 // forge-lint: disable-next-line(unsafe-typecast)
@@ -1148,7 +1129,7 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
 
             // If burning, subtract from the total tier checkpoints.
             if (to == address(0)) {
-                // Casting to uint208/uint48 is safe because attestation unit amounts are bounded by supply counts.
+                // Casting to uint208/uint48 is safe because attestation unit amounts are bounded by NFT supply counts.
                 // forge-lint: disable-next-line(unsafe-typecast)
                 uint208 newValue = current - uint208(amount);
                 // forge-lint: disable-next-line(unsafe-typecast)
@@ -1179,66 +1160,45 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
         });
     }
 
-    /// @notice Moves positions and the attestation units they carry.
-    /// @dev Mints add attestation units where they are minted (`_processPayment`, `mintReservesFor`), so only transfers
-    /// and burns move units here. Burns bypass the transfer pause. Every move, mints and burns included, is recorded in
-    /// the store's per-holder tier balances.
-    /// @param from The address the positions come from (zero for mints).
-    /// @param to The address the positions go to (zero for burns).
-    /// @param ids The token IDs (paid or reserve IDs).
-    /// @param values The number of positions of each token ID.
-    function _update(
-        address from,
-        address to,
-        uint256[] memory ids,
-        uint256[] memory values
-    )
-        internal
-        virtual
-        override
-    {
-        super._update({from: from, to: to, ids: ids, values: values});
-
+    /// @notice Before transferring an NFT, register its first owner (if necessary).
+    /// @param to The address to transfer the NFT to.
+    /// @param tokenId The token ID of the NFT to transfer.
+    /// @param auth The address authorizing the transfer.
+    /// @return from The address the token was transferred from.
+    function _update(address to, uint256 tokenId, address auth) internal virtual override returns (address from) {
         // Cache the store reference in a local variable to avoid repeated SLOAD.
         IJB721TiersHookStore hookStore = store;
 
-        uint256 numberOfIds = ids.length;
-        for (uint256 i; i < numberOfIds;) {
-            // Zero-amount transfers move no units, and must not auto-delegate a recipient who received nothing.
-            if (values[i] == 0) {
-                unchecked {
-                    ++i;
+        // Get a reference to the tier.
+        JB721Tier memory tier =
+            hookStore.tierOfTokenId({hook: address(this), tokenId: tokenId, includeResolvedUri: false});
+
+        // Record the transfers and keep a reference to where the token is coming from.
+        from = super._update({to: to, tokenId: tokenId, auth: auth});
+
+        // Transfers must not be paused (when not minting or burning).
+        if (from != address(0)) {
+            // If transfers are pausable, check if they're paused.
+            if (tier.flags.transfersPausable) {
+                // If transfers are paused and the NFT isn't being transferred to the zero address, revert.
+                if (to != address(0) && JB721TiersRulesetMetadataResolver.transfersPaused(_rulesetMetadata())) {
+                    revert DefifaHook_TransfersPaused({projectId: projectId, tokenId: tokenId, from: from, to: to});
                 }
-                continue;
             }
 
-            uint256 tierId = DefifaHookLib.tierIdOf(ids[i]);
-
-            // Mints add attestation units where they are minted; transfers and burns move them here.
-            if (from != address(0)) {
-                JB721Tier memory tier = hookStore.tierOf({hook: address(this), id: tierId, includeResolvedUri: false});
-
-                // Transfers must not be paused (burns are allowed).
-                if (
-                    to != address(0) && tier.flags.transfersPausable
-                        && JB721TiersRulesetMetadataResolver.transfersPaused(_rulesetMetadata())
-                ) {
-                    revert DefifaHook_TransfersPaused({projectId: projectId, tokenId: ids[i], from: from, to: to});
-                }
-
-                _transferTierAttestationUnits({
-                    from: from, to: to, tierId: tierId, amount: tier.votingUnits * values[i]
-                });
-            }
-
-            // Record the move in the store's per-holder tier balances after local delegation state is final.
-            IDefifaTiersHookStore(address(hookStore))
-                .recordTransferForTier({tierId: tierId, from: from, to: to, count: values[i]});
-
-            unchecked {
-                ++i;
-            }
+            // If the token isn't already associated with a first owner, store the sender as the first owner.
+            if (_firstOwnerOf[tokenId] == address(0)) _firstOwnerOf[tokenId] = from;
         }
+
+        // Don't transfer on mint since the delegation will be transferred more efficiently in _processPayment.
+        if (from != address(0)) {
+            _transferTierAttestationUnits({from: from, to: to, tierId: tier.id, amount: tier.votingUnits});
+        }
+
+        // Record the transfer after local delegation state has been finalized.
+        hookStore.recordTransferForTier({tierId: tier.id, from: from, to: to});
+
+        return from;
     }
 
     //*********************************************************************//
@@ -1246,10 +1206,10 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     //*********************************************************************//
 
     /// @notice Returns the current phase for the project.
-    /// @param gameId The project ID to check.
+    /// @param projectId The project ID to check.
     /// @return The current game phase.
-    function _currentGamePhaseOf(uint256 gameId) internal view returns (DefifaGamePhase) {
-        return gamePhaseReporter.currentGamePhaseOf(gameId);
+    function _currentGamePhaseOf(uint256 projectId) internal view returns (DefifaGamePhase) {
+        return gamePhaseReporter.currentGamePhaseOf(projectId);
     }
 
     /// @notice Gets the amount of attestation units an address has for a particular tier.
@@ -1257,18 +1217,17 @@ contract DefifaHook is ERC1155, Ownable, IDefifaHook {
     /// @param tierId The ID of the tier to get attestation units for.
     /// @return The attestation units.
     function _getTierAttestationUnits(address account, uint256 tierId) internal view virtual returns (uint256) {
-        // The store's tier balance counts paid and reserve-minted positions alike.
         return store.tierVotingUnitsOf({hook: address(this), account: account, tierId: tierId});
     }
 
     /// @notice Returns whether the caller is a terminal for the project.
-    /// @param gameId The project ID to check.
+    /// @param projectId The project ID to check.
     /// @return True if the caller is a terminal of the project.
-    function _isProjectTerminal(uint256 gameId) internal view returns (bool) {
-        return DIRECTORY.isTerminalOf({projectId: gameId, terminal: IJBTerminal(msg.sender)});
+    function _isProjectTerminal(uint256 projectId) internal view returns (bool) {
+        return DIRECTORY.isTerminalOf({projectId: projectId, terminal: IJBTerminal(msg.sender)});
     }
 
-    /// @notice Computes the total mint cost of all pending (unminted) reserve positions across all tiers.
+    /// @notice Computes the total mint cost of all pending (unminted) reserve NFTs across all tiers.
     /// @dev Used to include pending reserves in the fee token claim denominator so that paid holders
     /// cannot claim a disproportionate share before reserves are minted.
     /// @return cost The total mint cost of pending reserves.

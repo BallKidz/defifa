@@ -20,16 +20,13 @@ contract SameTimestampTransferSnapshotPOC is DefifaGovernanceHardeningTest {
 
         address attacker = address(0xBEEF);
 
-        // Same block, after submission: sweep three holders' positions to the attacker.
+        // Same block, after submission: sweep three holders' NFTs to the attacker.
         for (uint256 i; i < 3; i++) {
             address originalHolder = _users[i];
-            uint256 tokenId = i + 1;
+            uint256 tokenId = ((i + 1) * 1_000_000_000) + 1;
 
             vm.prank(originalHolder);
-            _nft.safeTransferFrom({from: originalHolder, to: attacker, id: tokenId, value: 1, data: ""});
-
-            assertEq(_nft.balanceOf(originalHolder, tokenId), 0, "holder swept");
-            assertEq(_nft.balanceOf(attacker, tokenId), 1, "attacker holds the position");
+            _nft.transferFrom({from: originalHolder, to: attacker, tokenId: tokenId});
         }
 
         // Move into the attestation window.

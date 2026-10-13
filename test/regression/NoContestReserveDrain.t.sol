@@ -11,7 +11,7 @@ import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaGamePhase} from "../../src/enums/DefifaGamePhase.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../../src/structs/DefifaTierParams.sol";
-import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
+import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
@@ -102,7 +102,7 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new DefifaTiersHookStore(),
+            hookStore: new JB721TiersHookStore(),
             trustedForwarder: address(0)
         });
 
@@ -122,8 +122,6 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
 
         uint16[] memory tierIds = new uint16[](1);
         tierIds[0] = 1;
-        uint256[] memory counts = new uint256[](1);
-        counts[0] = 1;
         vm.prank(_player);
         jbMultiTerminal().pay{value: 1 ether}(
             projectId,
@@ -132,7 +130,7 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
             _player,
             0,
             "",
-            _buildPayMetadata(abi.encode(_player, tierIds, counts))
+            _buildPayMetadata(abi.encode(_player, tierIds))
         );
 
         vm.warp(data.start + 1);
@@ -150,20 +148,18 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
         _deployer.triggerNoContestFor(projectId);
 
         // The paid player can still get their full refund through the no-contest path.
-        assertEq(hook.balanceOf(_player, 1), 1, "player holds the paid position");
+        uint256 playerTokenId = _generateTokenId(1, 1);
         uint256 balanceBefore = _player.balance;
-        _cashOut(projectId, _player, 1, 1);
+        _cashOut(projectId, _player, playerTokenId);
 
         assertTrue(_player.balance > balanceBefore, "player received refund");
-        assertEq(hook.balanceOf(_player, 1), 0, "player position burned");
+        assertEq(hook.balanceOf(_player), 0, "player NFT burned");
     }
 
-    function _cashOut(uint256 projectId, address holder, uint256 tokenId, uint256 amount) internal {
+    function _cashOut(uint256 projectId, address holder, uint256 tokenId) internal {
         uint256[] memory tokenIds = new uint256[](1);
         tokenIds[0] = tokenId;
-        uint256[] memory amounts = new uint256[](1);
-        amounts[0] = amount;
-        bytes memory cashOutMetadata = _buildCashOutMetadata(tokenIds, amounts);
+        bytes memory cashOutMetadata = _buildCashOutMetadata(tokenIds);
 
         vm.prank(holder);
         jbMultiTerminal()
@@ -211,18 +207,15 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
         return metadataHelper().createMetadata(ids, datas);
     }
 
-    function _buildCashOutMetadata(
-        uint256[] memory tokenIds,
-        uint256[] memory amounts
-    )
-        internal
-        view
-        returns (bytes memory)
-    {
+    function _buildCashOutMetadata(uint256[] memory tokenIds) internal view returns (bytes memory) {
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("cashOut", address(_hookImpl));
         bytes[] memory datas = new bytes[](1);
-        datas[0] = abi.encode(tokenIds, amounts);
+        datas[0] = abi.encode(tokenIds);
         return metadataHelper().createMetadata(ids, datas);
+    }
+
+    function _generateTokenId(uint256 tierId, uint256 tokenNumber) internal pure returns (uint256) {
+        return (tierId * 1_000_000_000) + tokenNumber;
     }
 }

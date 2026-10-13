@@ -2,11 +2,15 @@
 
 ## Purpose
 
-`defifa` builds phased prediction games on top of Juicebox and the 721 tier store. A game is a Juicebox project with a custom ERC-1155 game-piece hook, a scorecard governor, and a deployer that launches the project and later fulfills the economic commitments that make completion real.
+`defifa` builds phased prediction games on top of Juicebox and the 721 hook stack. A game is a Juicebox project with a custom NFT hook, a scorecard governor, and a deployer that launches the project and later fulfills the economic commitments that make completion real.
+
+Defifa ships two game types side by side. `DefifaHook` is the ERC-721 game, one NFT per position. `Defifa1155Hook` is the ERC-1155 game, one balance per tier, so a payment mints a count per tier in one transfer. A launcher picks the game type by picking the deployer.
 
 ## System overview
 
-`DefifaHook`, `DefifaGovernor`, and `DefifaDeployer` form one game-state machine even though they are deployed separately. The hook owns game-piece position balances, attestation delegation, and phase-sensitive cash-out weighting. The governor owns scorecard submission, attestation, quorum, and ratification. The deployer owns game launch, phased ruleset setup, and commitment fulfillment after governance decides the outcome.
+`DefifaHook`, `DefifaGovernor`, and `DefifaDeployer` form one game-state machine even though they are deployed separately. The hook owns game-piece NFT behavior, attestation delegation, and phase-sensitive cash-out weighting. The governor owns scorecard submission, attestation, quorum, and ratification. The deployer owns game launch, phased ruleset setup, and commitment fulfillment after governance decides the outcome.
+
+The deployer and governor are hook-agnostic. They call the hook by selector, and both hooks expose the selectors they use (`initialize`, `store`, `currentSupplyOfTier`, `adjustedPendingReservesFor`, `TOTAL_CASHOUT_WEIGHT`, `setTierCashOutWeightsTo`, and the attestation views), gated by `test/DefifaHookParity.t.sol`. Deployment is one `DefifaDeployer` plus `DefifaGovernor` pair per hook implementation, with the governor owned by its deployer. Both pairs share one `DefifaTiersHookStore` and one `DefifaTokenUriResolver`.
 
 ## Core invariants
 
@@ -22,15 +26,19 @@
 | Module | Responsibility | Notes |
 | --- | --- | --- |
 | `DefifaDeployer` | Launches games, sets phased rulesets, clones hooks, resolves ERC-2771 launch callers, initializes governance, and fulfills commitments | Launch-time and completion-time runtime surface |
-| `DefifaHook` | ERC-1155 position minting, delegation, game-phase-aware cash-out behavior, and completion claims | Main game-facing runtime hook |
+| `DefifaHook` | NFT minting, delegation, game-phase-aware cash-out behavior, and completion claims | ERC-721 game hook |
+| `Defifa1155Hook` | ERC-1155 position minting (one balance per tier), delegation, game-phase-aware cash-out behavior, and completion claims | ERC-1155 game hook |
 | `DefifaGovernor` | Scorecard submission, attestation weighting, quorum, grace periods, and ratification | Governance surface |
-| `DefifaHookLib` | Shared validation and weight math extracted from the hook | Bytecode-management helper |
-| `DefifaTokenUriResolver` | Dynamic token metadata and SVG rendering | Metadata layer |
+| `DefifaHookLib` | Shared validation and weight math extracted from the hook, including the per-tier cash-out weight (`computeTierCashOutWeight`) and fee-token claim share (`tokensClaimFor`) both hooks use | Bytecode-management helper |
+| `Defifa1155HookLib` | ERC-1155 ID and amount logic (`tierIdOf`, `RESERVE_TOKEN_ID_OFFSET`, count-based attestation units, `(ids, amounts)` cash-out weight, mint price, claims, and burns); calls `DefifaHookLib` for shared rules | Bytecode-management helper |
+| `DefifaTiersHookStore` | `JB721TiersHookStore`, unchanged, plus count-based `recordMintCounts`, `recordBurnCounts` and `recordTransferForTier(tierId, from, to, count)` | Shared by both game types; required by the ERC-1155 hook |
+| `DefifaTokenUriResolver` | Dynamic token metadata and SVG rendering | Shared metadata layer; resolves the tier by ERC-165 (an ERC-1155 hook via `tierIdOf`, a 721 hook via `store.tierIdOfToken`) |
 
 ## Trust boundaries
 
 - Canonical treasury accounting, project ownership, rulesets, terminals, and payout mechanics remain in `nana-core-v6`.
-- Tier config, supply, reserve, burn, and per-holder tier accounting come from `DefifaTiersHookStore`: `nana-721-hook-v6`'s `JB721TiersHookStore`, unchanged, plus count-based `recordMintCounts`, `recordBurnCounts` and `recordTransferForTier(tierId, from, to, count)` so the hook records once per tier. Position ownership is the hook's own ERC-1155 (OpenZeppelin `ERC1155`) state, mirrored per tier in the store's holder views.
+- Tier storage, reserve minting mechanics, and generic ERC-721 behavior come from `nana-721-hook-v6`.
+- Both game types record tiers in `DefifaTiersHookStore`, the upstream store plus count-based records that must match the per-position originals (`test/DefifaTiersHookStore.t.sol`). ERC-1155 position ownership is `Defifa1155Hook`'s own OpenZeppelin `ERC1155` state, mirrored per tier in the store's holder views.
 - `DefifaGovernor` is trusted to ratify scorecards only through its quorum, grace-period, and timelock rules.
 - `DefifaDeployer` is trusted to convert governance output into the final completion envelope.
 
@@ -55,7 +63,8 @@ creator
 ```text
 player
   -> pays the game project during the mint window
-  -> hook records each position in the store, then mints one ERC-1155 balance per selected tier (no receiver callback)
+  -> ERC-721 hook mints one game-piece NFT per selected tier entry
+  -> ERC-1155 hook records counts once per tier in the store, then mints one balance per selected tier; the ERC-1155 receiver check runs last
   -> delegation state and total mint-cost accounting are updated
   -> reserved mints and pending reserves continue to affect later completion claims
 ```
@@ -77,18 +86,18 @@ authorized completion path
   -> deployer reads the ratified outcome
   -> deployer fulfills the game's promised commitments and queues the final ruleset
   -> hook installs final cash-out weights
-  -> holders burn position balances during complete phase to reclaim their weighted share of the pot
+  -> holders burn pieces during complete phase to reclaim their weighted share of the pot
 ```
 
-## Position model
+## ERC-1155 position model
 
-Positions are ERC-1155 balances, one balance per tier, so a payment mints a count per tier in one transfer. Per-position ERC-721 mints cost about 47k gas each, which capped one entry near 160 positions under Base's 2^24 per-transaction gas cap with the SDK's 2x gas headroom. Measured in `test/DefifaERC1155.t.sol`, a pay of 160 positions in one tier costs about 443k gas and 1,000 positions across 8 tiers about 1.63M. The store records counts once per tier, so cost grows with the number of tiers, not positions.
+Positions in an ERC-1155 game are balances, one per tier, so a payment mints a count per tier in one transfer. Per-position ERC-721 mints cost about 47k gas each, which caps one entry near 160 positions under Base's 2^24 per-transaction gas cap with the SDK's 2x gas headroom. Measured in `test/erc1155/DefifaERC1155.t.sol`, a pay of 160 positions in one tier costs about 443k gas and 1,000 positions across 8 tiers about 1.63M. The store records counts once per tier, so cost grows with the number of tiers, not positions.
 
-- Paid positions use token ID = tier ID. Reserve-minted positions use `tierId + RESERVE_TOKEN_ID_OFFSET` (`1 << 16`), so refunds still exclude them after transfers. `tierIdOf(id)` maps either ID back to its tier.
+- Paid positions use token ID = tier ID. Reserve-minted positions use `tierId + RESERVE_TOKEN_ID_OFFSET` (`1 << 16`), so refunds still reject them after transfers. `tierIdOf(id)` maps either ID back to its tier.
 - Both IDs count toward tier supply, attestation units, and cash-out weight. Attestation units are hook balances times the tier's `votingUnits`.
 - Pay metadata: `(address attestationDelegate, uint16[] tierIds, uint256[] counts)`, tier IDs strictly ascending. Cash-out metadata: `(uint256[] tokenIds, uint256[] amounts)`.
-- Mints skip the ERC-1155 receiver callback, as the earlier 721 `_mint` did, so no external call runs inside pay or cash-out. Transfers are standard safe transfers that call `onERC1155Received` / `onERC1155BatchReceived`. Approvals are `setApprovalForAll` only.
-- Games deployed before this change keep their ERC-721 hook; the ERC-1155 layout needs a new hook implementation and deployer deployment.
+- Mints run the ERC-1155 receiver acceptance check (`onERC1155Received` / `onERC1155BatchReceived`) after every state change, so a contract beneficiary that does not accept ERC-1155 makes the pay or reserve mint revert. The 721 hook's `_mint` calls no receiver. Transfers are standard safe transfers that call `onERC1155Received` / `onERC1155BatchReceived`. Approvals are `setApprovalForAll` only.
+- Errors are prefixed `Defifa1155Hook_`; shared-rule errors raised in `DefifaHookLib` keep the `DefifaHook_` prefix (for example `DefifaHook_BadTierOrder`).
 
 ## Accounting model
 
@@ -115,6 +124,7 @@ The hook's completion math is intentionally phase-sensitive:
 ## Safe change guide
 
 - Review `DefifaHook`, `DefifaGovernor`, and `DefifaDeployer` together for any nontrivial change.
+- A change to game rules usually belongs in `DefifaHookLib` so both hooks keep one formula; check `Defifa1155Hook` and `DefifaHook` together, and keep the selectors the shared deployer, governor and resolver call (`test/DefifaHookParity.t.sol`).
 - If phase semantics change, re-check mint, refund, scoring, ratification, fulfillment, and completion cash-out behavior together.
 - If attestation math changes, inspect tier semantics, delegation, quorum, and ratification thresholds together.
 - If completion claim math changes, re-check redeemed tracking, pending reserve dilution, and fee-token side claims in the same review.
@@ -127,16 +137,27 @@ The hook's completion math is intentionally phase-sensitive:
   `test/regression/FulfillmentBlocksRatification.t.sol`
 - pending reserve effects on completion fairness:
   `test/regression/PendingReserveSnapshotBypass.t.sol`
+- the ERC-1155 game: `test/erc1155/` (same file names as the 721 suite), including `test/erc1155/DefifaERC1155.t.sol`
+- both hooks expose the selectors the shared deployer, governor and resolver call:
+  `test/DefifaHookParity.t.sol`
+- count-based store records match the per-position originals:
+  `test/DefifaTiersHookStore.t.sol`
 
 ## Source map
 
 - `src/DefifaDeployer.sol`
 - `src/DefifaGovernor.sol`
 - `src/DefifaHook.sol`
+- `src/Defifa1155Hook.sol`
 - `src/libraries/DefifaHookLib.sol`
+- `src/libraries/Defifa1155HookLib.sol`
+- `src/DefifaTiersHookStore.sol`
 - `src/DefifaTokenUriResolver.sol`
 - `test/DefifaGovernor.t.sol`
 - `test/DefifaHookRegressions.t.sol`
 - `test/DefifaFeeAccounting.t.sol`
 - `test/regression/FulfillmentBlocksRatification.t.sol`
 - `test/regression/PendingReserveSnapshotBypass.t.sol`
+- `test/erc1155/DefifaERC1155.t.sol`
+- `test/DefifaHookParity.t.sol`
+- `test/DefifaTiersHookStore.t.sol`

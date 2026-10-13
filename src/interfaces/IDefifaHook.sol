@@ -3,12 +3,9 @@ pragma solidity ^0.8.0;
 
 import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
+import {IJB721Hook} from "@bananapus/721-hook-v6/src/interfaces/IJB721Hook.sol";
 import {JB721TierConfig} from "@bananapus/721-hook-v6/src/structs/JB721TierConfig.sol";
 import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
-import {IJBCashOutHook} from "@bananapus/core-v6/src/interfaces/IJBCashOutHook.sol";
-import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
-import {IJBPayHook} from "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
-import {IJBRulesetDataHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
 import {IJBRulesets} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 
@@ -17,32 +14,31 @@ import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
 import {IDefifaGamePhaseReporter} from "./IDefifaGamePhaseReporter.sol";
 import {IDefifaGamePotReporter} from "./IDefifaGamePotReporter.sol";
 
-/// @notice The hook interface for Defifa games: an ERC-1155 game-piece hook with game-specific attestation
-/// delegation, scorecard-based cash-out weights, and token claiming.
-/// @dev Each tier has two ERC-1155 token IDs. Paid positions use the tier ID itself. Reserve-minted positions use
-/// `tierId + RESERVE_TOKEN_ID_OFFSET`, so refunds can exclude them after transfers. Both IDs count toward the tier's
-/// supply, attestation power, and cash-out weight.
-interface IDefifaHook is IJBRulesetDataHook, IJBPayHook, IJBCashOutHook {
-    /// @notice Emitted when positions are minted from a contribution.
-    /// @param tierId The tier the positions were minted from.
-    /// @param beneficiary The address that received the positions.
-    /// @param count The number of positions minted in the tier.
+/// @notice The hook interface for Defifa games, extending the 721 hook with game-specific attestation delegation,
+/// scorecard-based cash-out weights, and token claiming.
+interface IDefifaHook is IJB721Hook {
+    /// @notice Emitted when an NFT is minted from a contribution.
+    /// @param tokenId The token ID of the minted NFT.
+    /// @param tierId The tier the NFT was minted from.
+    /// @param beneficiary The address that received the NFT.
     /// @param totalAmountContributed The total amount contributed in the minting transaction.
     /// @param caller The address that triggered the mint.
     event Mint(
+        uint256 indexed tokenId,
         uint256 indexed tierId,
         address indexed beneficiary,
-        uint256 count,
         uint256 totalAmountContributed,
         address caller
     );
 
-    /// @notice Emitted when reserved positions are minted.
-    /// @param tierId The tier the reserved positions were minted from.
-    /// @param beneficiary The address that received the reserved positions.
-    /// @param count The number of reserved positions minted.
+    /// @notice Emitted when a reserved token is minted.
+    /// @param tokenId The token ID of the minted reserved token.
+    /// @param tierId The tier the reserved token was minted from.
+    /// @param beneficiary The address that received the reserved token.
     /// @param caller The address that triggered the mint.
-    event MintReservedToken(uint256 indexed tierId, address indexed beneficiary, uint256 count, address caller);
+    event MintReservedToken(
+        uint256 indexed tokenId, uint256 indexed tierId, address indexed beneficiary, address caller
+    );
 
     /// @notice Emitted when a delegate's attestation balance changes for a tier.
     /// @param delegate The delegate whose attestation balance changed.
@@ -98,16 +94,10 @@ interface IDefifaHook is IJBRulesetDataHook, IJBPayHook, IJBCashOutHook {
     /// @return True if cash-out weights are set.
     function cashOutWeightIsSet() external view returns (bool);
 
-    /// @notice The cash-out weight of one position of a token ID, based on its tier's scorecard weight.
-    /// @param tokenId The token ID to look up (paid or reserve ID).
-    /// @return The cash-out weight of a single position.
+    /// @notice The cash-out weight of a specific token based on its tier's scorecard weight.
+    /// @param tokenId The token ID to look up.
+    /// @return The cash-out weight.
     function cashOutWeightOf(uint256 tokenId) external view returns (uint256);
-
-    /// @notice The cumulative cash-out weight of the given positions.
-    /// @param tokenIds The token IDs (paid or reserve IDs).
-    /// @param amounts The number of positions of each token ID.
-    /// @return The cumulative cash-out weight.
-    function cashOutWeightOf(uint256[] memory tokenIds, uint256[] memory amounts) external view returns (uint256);
 
     /// @notice The address of the code origin contract used as an implementation for clones.
     /// @return The code origin address.
@@ -116,10 +106,6 @@ interface IDefifaHook is IJBRulesetDataHook, IJBPayHook, IJBCashOutHook {
     /// @notice The contract-level metadata URI (used by marketplaces for collection-level info).
     /// @return The contract URI string.
     function contractURI() external view returns (string memory);
-
-    /// @notice The directory of terminals and controllers for projects.
-    /// @return The directory contract.
-    function DIRECTORY() external view returns (IJBDirectory);
 
     /// @notice The current supply of a specific tier.
     /// @param tierId The ID of the tier.
@@ -134,10 +120,15 @@ interface IDefifaHook is IJBRulesetDataHook, IJBPayHook, IJBCashOutHook {
     /// @return The Defifa ERC-20 token.
     function DEFIFA_TOKEN() external view returns (IERC20);
 
-    /// @notice The cumulative mint price of all paid and reserved positions. Decremented on burns/refunds. Used as the
+    /// @notice The cumulative mint price of all paid and reserved NFTs. Decremented on burns/refunds. Used as the
     /// participation metric — immune to `addToBalanceOf` inflation because only actual mints increment it.
     /// @return The total mint cost in the game's payment token.
     function totalMintCost() external view returns (uint256);
+
+    /// @notice The first owner of a given token ID.
+    /// @param tokenId The token ID.
+    /// @return The address of the first owner.
+    function firstOwnerOf(uint256 tokenId) external view returns (address);
 
     /// @notice The game phase reporter for this hook.
     /// @return The game phase reporter contract.
@@ -184,25 +175,14 @@ interface IDefifaHook is IJBRulesetDataHook, IJBPayHook, IJBCashOutHook {
     /// @return The total attestation units.
     function getTierTotalAttestationUnitsOf(uint256 tier) external view returns (uint256);
 
-    /// @notice The ID used when parsing pay and cash-out metadata.
-    /// @return The address of the metadata ID target.
-    function METADATA_ID_TARGET() external view returns (address);
-
-    /// @notice The name of the game-piece collection.
-    /// @return The name.
-    function name() external view returns (string memory);
+    /// @notice Whether a token was minted through reserves rather than paid for.
+    /// @param tokenId The ID of the token to check.
+    /// @return True if the token was minted as a reserve.
+    function isReserveMint(uint256 tokenId) external view returns (bool);
 
     /// @notice The pricing currency used by this hook.
     /// @return The currency identifier.
     function pricingCurrency() external view returns (uint256);
-
-    /// @notice The ID of the project (game) this hook belongs to.
-    /// @return The project ID.
-    function projectId() external view returns (uint256);
-
-    /// @notice The offset added to a tier ID to form the token ID of its reserve-minted positions.
-    /// @return The offset.
-    function RESERVE_TOKEN_ID_OFFSET() external view returns (uint256);
 
     /// @notice The rulesets contract used by this hook.
     /// @return The rulesets contract.
@@ -211,10 +191,6 @@ interface IDefifaHook is IJBRulesetDataHook, IJBPayHook, IJBCashOutHook {
     /// @notice The 721 tiers hook store used by this hook.
     /// @return The store contract.
     function store() external view returns (IJB721TiersHookStore);
-
-    /// @notice The symbol of the game-piece collection.
-    /// @return The symbol.
-    function symbol() external view returns (string memory);
 
     /// @notice The cash-out weights for all tiers (up to 128).
     /// @return The array of tier cash-out weights.
@@ -225,25 +201,12 @@ interface IDefifaHook is IJBRulesetDataHook, IJBPayHook, IJBCashOutHook {
     /// @return The tier name.
     function tierNameOf(uint256 tierId) external view returns (string memory);
 
-    /// @notice The tier a token ID belongs to.
-    /// @dev Reverts for token IDs outside both the paid and reserve ranges.
-    /// @param tokenId The token ID (paid or reserve ID).
-    /// @return The tier ID.
-    function tierIdOf(uint256 tokenId) external pure returns (uint256);
-
-    /// @notice Get the claimable Defifa and base protocol tokens for a set of positions.
-    /// @param tokenIds The token IDs to check (paid or reserve IDs).
-    /// @param amounts The number of positions of each token ID.
+    /// @notice Get the claimable Defifa and base protocol tokens for a set of token IDs.
+    /// @param tokenIds The token IDs to check.
     /// @return The claimable Defifa token amount and base protocol token amount.
-    function tokensClaimableFor(
-        uint256[] memory tokenIds,
-        uint256[] memory amounts
-    )
-        external
-        view
-        returns (uint256, uint256);
+    function tokensClaimableFor(uint256[] memory tokenIds) external view returns (uint256, uint256);
 
-    /// @notice The number of positions redeemed from a specific tier.
+    /// @notice The number of tokens redeemed from a specific tier.
     /// @param tierId The tier ID.
     /// @return The number of tokens redeemed.
     function tokensRedeemedFrom(uint256 tierId) external view returns (uint256);
@@ -254,8 +217,8 @@ interface IDefifaHook is IJBRulesetDataHook, IJBPayHook, IJBCashOutHook {
 
     /// @notice Initialize the hook with game-specific configuration.
     /// @param gameId The ID of the game.
-    /// @param name The name of the game-piece collection.
-    /// @param symbol The symbol of the game-piece collection.
+    /// @param name The name of the NFT collection.
+    /// @param symbol The symbol of the NFT collection.
     /// @param rulesets The rulesets contract.
     /// @param baseUri The base URI for token metadata.
     /// @param tokenUriResolver The token URI resolver.
@@ -285,13 +248,13 @@ interface IDefifaHook is IJBRulesetDataHook, IJBPayHook, IJBCashOutHook {
     )
         external;
 
-    /// @notice Mint reserved positions for multiple tiers.
+    /// @notice Mint reserved tokens for multiple tiers.
     /// @param mintReservesForTiersData The configuration for which tiers to mint reserves for.
     function mintReservesFor(JB721TiersMintReservesConfig[] memory mintReservesForTiersData) external;
 
-    /// @notice Mint reserved positions for a specific tier.
+    /// @notice Mint reserved tokens for a specific tier.
     /// @param tierId The tier ID to mint reserves for.
-    /// @param count The number of reserved positions to mint.
+    /// @param count The number of reserved tokens to mint.
     function mintReservesFor(uint256 tierId, uint256 count) external;
 
     /// @notice Set the cash-out weights for tiers. Only callable by the game's governor (owner).

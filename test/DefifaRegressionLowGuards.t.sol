@@ -7,7 +7,7 @@ import {DefifaGovernor} from "../src/DefifaGovernor.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
-import {DefifaTiersHookStore} from "../src/DefifaTiersHookStore.sol";
+import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
@@ -114,7 +114,7 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _protocolFeeProjectId,
             baseProtocolProjectId: _defifaProjectId,
-            hookStore: new DefifaTiersHookStore(),
+            hookStore: new JB721TiersHookStore(),
             trustedForwarder: address(0)
         });
         hook.transferOwnership(address(deployer));
@@ -193,7 +193,7 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
     function testRevert_setTierDelegateTo_zeroAddress() external {
         _setupGame(4, 1 ether);
 
-        // _users[0] owns a position in tier 1 during the MINT phase.
+        // _users[0] owns an NFT in tier 1 during the MINT phase.
         vm.prank(_users[0]);
         vm.expectPartialRevert(DefifaHook.DefifaHook_DelegateAddressZero.selector);
         _nft.setTierDelegateTo({delegatee: address(0), tierId: 1});
@@ -297,10 +297,8 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
         uint16[] memory m = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
-        uint256[] memory counts = new uint256[](1);
-        counts[0] = 1;
         bytes[] memory data = new bytes[](1);
-        data[0] = abi.encode(user, m, counts);
+        data[0] = abi.encode(user, m);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metadataHelper().getId("pay", address(hook));
         vm.prank(user);

@@ -8,7 +8,7 @@ import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../../src/structs/DefifaTierParams.sol";
 
-import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
+import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
@@ -98,7 +98,7 @@ contract TierCapMismatchTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: defifaProjectId,
             baseProtocolProjectId: protocolFeeProjectId,
-            hookStore: new DefifaTiersHookStore(),
+            hookStore: new JB721TiersHookStore(),
             trustedForwarder: address(0)
         });
 
@@ -147,5 +147,24 @@ contract TierCapMismatchTest is JBTest, TestBaseWorkflow {
             scorecardTimeout: 7 days,
             timelockDuration: 0
         });
+    }
+
+    function _mintTier(uint256 gameId, uint16 tierId, uint256 amount) internal {
+        address buyer = address(bytes20(keccak256(abi.encodePacked("buyer", tierId))));
+        vm.deal(buyer, amount);
+
+        uint16[] memory tierIds = new uint16[](1);
+        tierIds[0] = tierId;
+
+        bytes[] memory payloads = new bytes[](1);
+        payloads[0] = abi.encode(address(0), tierIds);
+
+        bytes4[] memory ids = new bytes4[](1);
+        ids[0] = metadataHelper().getId("pay", address(hookCodeOrigin));
+
+        bytes memory metadata = metadataHelper().createMetadata(ids, payloads);
+
+        vm.prank(buyer);
+        jbMultiTerminal().pay{value: amount}(gameId, JBConstants.NATIVE_TOKEN, amount, buyer, 0, "", metadata);
     }
 }

@@ -7,7 +7,7 @@ import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
-import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
+import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
@@ -106,7 +106,7 @@ contract AttestationDoubleCountTest is JBTest, TestBaseWorkflow {
             registry: new JBAddressRegistry(),
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new DefifaTiersHookStore(),
+            hookStore: new JB721TiersHookStore(),
             trustedForwarder: address(0)
         });
 
@@ -125,9 +125,7 @@ contract AttestationDoubleCountTest is JBTest, TestBaseWorkflow {
         vm.deal(payer, 1 ether);
         uint16[] memory tierIds = new uint16[](1);
         tierIds[0] = 1;
-        uint256[] memory counts = new uint256[](1);
-        counts[0] = 1;
-        bytes memory metadata = _buildPayMetadata(abi.encode(address(0), tierIds, counts));
+        bytes memory metadata = _buildPayMetadata(abi.encode(address(0), tierIds));
 
         vm.prank(payer);
         jbMultiTerminal().pay{value: 1 ether}({
@@ -145,11 +143,9 @@ contract AttestationDoubleCountTest is JBTest, TestBaseWorkflow {
         assertGt(totalUnitsBefore, 0, "tier should have nonzero attestation units");
         assertEq(beneficiaryUnitsBefore, totalUnitsBefore, "beneficiary receives delegated units after mint");
 
-        assertEq(nft.balanceOf(beneficiary, 1), 1, "beneficiary holds the minted position");
+        uint256 tokenId = 1_000_000_001;
         vm.prank(beneficiary);
-        nft.safeTransferFrom(beneficiary, recipient, 1, 1, "");
-        assertEq(nft.balanceOf(beneficiary, 1), 0, "beneficiary no longer holds the position");
-        assertEq(nft.balanceOf(recipient, 1), 1, "recipient holds the position");
+        nft.transferFrom(beneficiary, recipient, tokenId);
 
         uint256 beneficiaryUnitsAfter = nft.getTierAttestationUnitsOf(beneficiary, 1);
         uint256 recipientUnitsAfter = nft.getTierAttestationUnitsOf(recipient, 1);
@@ -158,7 +154,7 @@ contract AttestationDoubleCountTest is JBTest, TestBaseWorkflow {
         // Attestation units go to beneficiary on mint, then move to recipient on transfer.
         // Total units stay constant, beneficiary loses units, recipient gains them.
         assertEq(totalUnitsAfter, totalUnitsBefore, "total tier units stay constant");
-        assertEq(beneficiaryUnitsAfter, 0, "beneficiary loses attestation units after transferring the position");
+        assertEq(beneficiaryUnitsAfter, 0, "beneficiary loses attestation units after transferring NFT");
         assertEq(recipientUnitsAfter, totalUnitsAfter, "recipient receives full attestation units from transfer");
         // No double-counting: sum of individual units equals total.
         assertEq(

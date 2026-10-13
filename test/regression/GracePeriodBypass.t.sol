@@ -8,7 +8,7 @@ import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaScorecardState} from "../../src/enums/DefifaScorecardState.sol";
-import {DefifaTiersHookStore} from "../../src/DefifaTiersHookStore.sol";
+import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
 
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
@@ -129,7 +129,7 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
             registry: _registry,
             defifaProjectId: _defifaProjectId,
             baseProtocolProjectId: _protocolFeeProjectId,
-            hookStore: new DefifaTiersHookStore(),
+            hookStore: new JB721TiersHookStore(),
             trustedForwarder: address(0)
         });
 
@@ -162,9 +162,7 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
             uint16[] memory rawMetadata = new uint16[](1);
             // forge-lint: disable-next-line(unsafe-typecast)
             rawMetadata[0] = uint16(i + 1);
-            uint256[] memory counts = new uint256[](1);
-            counts[0] = 1;
-            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, counts));
+            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata));
 
             vm.prank(_users[i]);
             jbMultiTerminal().pay{value: 1 ether}(
