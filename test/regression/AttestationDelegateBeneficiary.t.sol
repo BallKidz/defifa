@@ -212,12 +212,50 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
         assertEq(payerDelegate, address(0), "Payer should have no delegation when payer != beneficiary");
     }
 
+    /// @notice A reserve mint with nothing to mint, in a tier with no reserve beneficiary, must not delegate the
+    /// zero address. Mints move units from the zero address's delegate, so a delegated zero address would charge the
+    /// default delegate for every later mint in the tier and revert pays on underflow.
+    function test_emptyReserveMintDoesNotDelegateTheZeroAddress() public {
+        address oracle = address(bytes20(keccak256("oracle")));
+        address beneficiary = address(bytes20(keccak256("beneficiary3")));
+        (uint256 _projectId, DefifaHook _nft) = _launchGameWith(oracle);
+
+        // COUNTDOWN, when reserve minting is not paused.
+        vm.prank(address(bytes20(keccak256("stranger"))));
+        _nft.mintReservesFor(1, 0);
+        assertEq(_nft.getTierDelegateOf(address(0), 1), address(0), "zero address has no delegate");
+
+        vm.warp(_mintPhaseStart);
+        uint16[] memory tierIds = new uint16[](1);
+        tierIds[0] = 1;
+        bytes memory metadata = _buildPayMetadata(abi.encode(address(0), tierIds));
+        vm.deal(beneficiary, 1 ether);
+        vm.prank(beneficiary);
+        jbMultiTerminal().pay{value: 1 ether}({
+            projectId: _projectId,
+            token: JBConstants.NATIVE_TOKEN,
+            amount: 1 ether,
+            beneficiary: beneficiary,
+            minReturnedTokens: 0,
+            memo: "",
+            metadata: metadata
+        });
+
+        address delegate = _nft.getTierDelegateOf(beneficiary, 1);
+        assertEq(_nft.getTierAttestationUnitsOf(delegate, 1), 1 ether, "the payer's delegate holds the units");
+        assertEq(_nft.getTierTotalAttestationUnitsOf(1), 1 ether, "tier total");
+    }
+
     // ----- Internal helpers ------
 
     /// @dev MINT phase starts at `start - mintPeriodDuration - refundPeriodDuration`.
     uint256 internal _mintPhaseStart;
 
     function _launchGame() internal returns (uint256 projectId, DefifaHook nft) {
+        return _launchGameWith(address(0));
+    }
+
+    function _launchGameWith(address defaultAttestationDelegate) internal returns (uint256 projectId, DefifaHook nft) {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](2);
         for (uint256 i = 0; i < 2; i++) {
             tierParams[i] = DefifaTierParams({
@@ -242,7 +280,7 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
             splits: new JBSplit[](0),
             attestationStartTime: 0,
             attestationGracePeriod: 100_381,
-            defaultAttestationDelegate: address(0), // No default delegate -- should fall back to beneficiary
+            defaultAttestationDelegate: defaultAttestationDelegate,
             tiers: tierParams,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),

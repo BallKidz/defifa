@@ -6,6 +6,8 @@ import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
+import {DefifaHookLib} from "../../src/libraries/DefifaHookLib.sol";
+import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaScorecardState} from "../../src/enums/DefifaScorecardState.sol";
 import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
@@ -250,6 +252,15 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         _nft.mintReservesFor(reserveConfigs);
         assertEq(_nft.balanceOf(reserveBeneficiary), 1, "reserve NFT should be minted");
 
+        // A refund pays nothing for a reserve mint, so refund-phase pricing rejects it.
+        uint256[] memory reserveIds = new uint256[](1);
+        reserveIds[0] = (1 * 1_000_000_000) + 2;
+        IJB721TiersHookStore hookStore = _nft.store();
+        vm.expectRevert(abi.encodeWithSelector(DefifaHookLib.DefifaHook_CantRefundReserveMint.selector, reserveIds[0]));
+        DefifaHookLib.computeCumulativeMintPriceForCashOut({
+            tokenIds: reserveIds, hookStore: hookStore, hook: address(_nft), excludeReserveMints: true
+        });
+
         // Now player cashes out.
         uint256 beforePlayerBalance = player.balance;
         _cashOut(player, 1, 1);
@@ -400,8 +411,7 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
     function _cashOut(address user, uint256 tid, uint256 tnum) internal {
         bytes memory meta = _cashOutMeta(tid, tnum);
         vm.prank(user);
-        jbMultiTerminal()
-            .cashOutTokensOf({
+        jbMultiTerminal().cashOutTokensOf({
             holder: user,
             projectId: _pid,
             cashOutCount: 0,

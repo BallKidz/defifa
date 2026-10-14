@@ -974,7 +974,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         for (uint256 i; i < 5; i++) {
             scEven[i].cashOutWeight = tw / 5;
         }
-        _gov.submitScorecardFor(_gameId, scEven);
+        uint256 scEvenId = _gov.submitScorecardFor(_gameId, scEven);
 
         // Concentrated scorecard (80/5/5/5/5).
         DefifaTierCashOutWeight[] memory scConc = _buildScorecard(5);
@@ -983,28 +983,22 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         scConc[2].cashOutWeight = (tw * 5) / 100;
         scConc[3].cashOutWeight = (tw * 5) / 100;
         scConc[4].cashOutWeight = (tw * 5) / 100;
-        _gov.submitScorecardFor(_gameId, scConc);
+        uint256 scConcId = _gov.submitScorecardFor(_gameId, scConc);
 
         // Winner-take-all scorecard.
         // forge-lint: disable-next-line(mixed-case-variable)
         DefifaTierCashOutWeight[] memory scWTA = _buildScorecard(5);
         scWTA[0].cashOutWeight = tw;
-        _gov.submitScorecardFor(_gameId, scWTA);
+        // forge-lint: disable-next-line(mixed-case-variable)
+        uint256 scWTAId = _gov.submitScorecardFor(_gameId, scWTA);
 
-        // Attest all users to each scorecard and compare attestation counts needed.
-        // The even scorecard should need the least total attestation (lowest quorum).
-        // Winner-take-all should need the most (highest quorum).
-        // We verify this by checking that even scorecard reaches SUCCEEDED with fewer attestors.
-        // Since all users attest equally, the quorum snapshot determines pass/fail.
-
-        // All three should pass when all users attest (quorum reachability guarantee).
-        // The key metric: adjustedQuorum is monotonically increasing with concentration.
-        // We can verify this indirectly by checking that the even scorecard's state after 3/5 attestors
-        // may differ from the concentrated one's state after 3/5 attestors.
-
-        // For now, just verify the ordering holds: even passes, WTA is hardest.
-        // This is covered by FV-4 (reachability) — here we just verify relative ordering holds.
-        assertTrue(true, "concentration penalty monotonicity verified by FV-4 + FV-6 together");
+        // The quorum each scorecard snapshots grows with concentration.
+        uint256 evenQuorum = _quorumSnapshotOf(scEvenId);
+        uint256 concQuorum = _quorumSnapshotOf(scConcId);
+        uint256 wtaQuorum = _quorumSnapshotOf(scWTAId);
+        assertGt(evenQuorum, _gov.quorum(_gameId), "even scorecard pays a small penalty");
+        assertGt(concQuorum, evenQuorum, "concentrated needs more than even");
+        assertGt(wtaQuorum, concQuorum, "winner-take-all needs the most");
     }
 
     /// @notice FV-7: Penalty is exactly zero for a perfectly equal distribution (maxShare = 1/N).
@@ -1317,5 +1311,12 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         for (uint256 i; i < n; i++) {
             sc[i].cashOutWeight = tw / n;
         }
+    }
+
+    /// @notice Reads a scorecard's `quorumSnapshot`, the second slot of `DefifaScorecard` in `_scorecardOf` (slot 4,
+    /// after `Ownable._owner` and three mappings).
+    function _quorumSnapshotOf(uint256 scorecardId) internal view returns (uint256) {
+        bytes32 gameSlot = keccak256(abi.encode(_gameId, uint256(4)));
+        return uint256(vm.load(address(_gov), bytes32(uint256(keccak256(abi.encode(scorecardId, gameSlot))) + 1)));
     }
 }

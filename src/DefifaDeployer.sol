@@ -211,7 +211,8 @@ contract DefifaDeployer is
         JBAccountingContext memory context = terminal.accountingContextForTokenOf({projectId: gameId, token: token});
 
         // Get the current balance from the terminal's store.
-        uint256 pot = IJBMultiTerminal(address(terminal)).STORE()
+        uint256 pot = IJBMultiTerminal(address(terminal))
+            .STORE()
             .balanceOf({terminal: address(terminal), projectId: gameId, token: token});
 
         // Add any fulfilled commitments.

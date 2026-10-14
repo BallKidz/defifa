@@ -611,11 +611,17 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // Keep a reference to the reserved token beneficiary.
         address reservedTokenBeneficiary = hookStore.reserveBeneficiaryOf({hook: address(this), tierId: tierId});
 
-        // Get a reference to the old delegate.
-        address oldDelegate = _tierDelegation[reservedTokenBeneficiary][tierId];
+        // Cap count by the refund-adjusted pending reserves to prevent inflating totalMintCost
+        // from already-refunded mints whose reserve liability no longer exists.
+        uint256 adjusted = adjustedPendingReservesFor(tierId);
+        if (count > adjusted) count = adjusted;
+
+        // Nothing to mint, or no one to mint to. Returning before any delegation write keeps a call with nothing to
+        // mint from setting delegation state, including for the zero address.
+        if (count == 0 || reservedTokenBeneficiary == address(0)) return;
 
         // Set the delegate as the beneficiary if the beneficiary hasn't already set a delegate.
-        if (oldDelegate == address(0)) {
+        if (_tierDelegation[reservedTokenBeneficiary][tierId] == address(0)) {
             _delegateTier({
                 account: reservedTokenBeneficiary,
                 delegatee: defaultAttestationDelegate != address(0)
@@ -624,11 +630,6 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
                 tierId: tierId
             });
         }
-
-        // Cap count by the refund-adjusted pending reserves to prevent inflating totalMintCost
-        // from already-refunded mints whose reserve liability no longer exists.
-        uint256 adjusted = adjustedPendingReservesFor(tierId);
-        if (count > adjusted) count = adjusted;
 
         // Record the minted reserves for the tier.
         uint256[] memory tokenIds = hookStore.recordMintReservesFor({tierId: tierId, count: count});
@@ -1142,7 +1143,8 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         // to Carol, Carol's attestation units auto-delegate to Carol (not Bob). However, Alice's delegation
         // to Bob persists — if Alice later receives another token, her units still go to Bob. This matches
         // ERC5805Votes behavior where delegation is an account-level setting, not a token-level one.
-        address toDelegate = _tierDelegation[to][tierId];
+        // Mints have no source delegate and burns no destination delegate: the zero address never holds delegation.
+        address toDelegate = to == address(0) ? address(0) : _tierDelegation[to][tierId];
         if (toDelegate == address(0) && to != address(0)) {
             toDelegate = to;
             _tierDelegation[to][tierId] = to;
@@ -1151,7 +1153,10 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
 
         // Move delegated attestations.
         _moveTierDelegateAttestations({
-            from: _tierDelegation[from][tierId], to: toDelegate, tierId: tierId, amount: amount
+            from: from == address(0) ? address(0) : _tierDelegation[from][tierId],
+            to: toDelegate,
+            tierId: tierId,
+            amount: amount
         });
     }
 

@@ -2,7 +2,9 @@
 pragma solidity 0.8.28;
 
 import {IERC20Metadata} from "@openzeppelin/contracts/token/ERC20/extensions/IERC20Metadata.sol";
+import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC721Metadata} from "@openzeppelin/contracts/token/ERC721/extensions/IERC721Metadata.sol";
+import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
 import {mulDiv} from "@prb/math/src/Common.sol";
 
@@ -16,11 +18,12 @@ import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
 import {DefifaFontImporter} from "./libraries/DefifaFontImporter.sol";
 import {DefifaGamePhase} from "./enums/DefifaGamePhase.sol";
+import {IDefifa1155Hook} from "./interfaces/IDefifa1155Hook.sol";
 import {IDefifaHook} from "./interfaces/IDefifaHook.sol";
 import {IDefifaTokenUriResolver} from "./interfaces/IDefifaTokenUriResolver.sol";
 
-/// @notice Generates on-chain SVG token URIs for Defifa game NFTs. Each NFT image shows the tier name, game phase,
-/// and current cash-out value. Uses an on-chain typeface for rendering text within the SVG.
+/// @notice Generates on-chain SVG token URIs for Defifa game NFTs and ERC-1155 game positions. Each NFT image shows the
+/// tier name, game phase, and current cash-out value. Uses an on-chain typeface for rendering text within the SVG.
 contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolver {
     using Strings for uint256;
 
@@ -118,9 +121,14 @@ contract DefifaTokenUriResolver is IDefifaTokenUriResolver, IJB721TokenUriResolv
         string memory potText;
 
         {
-            // Get a reference to the tier.
-            JB721Tier memory tier =
-                hook.store().tierOfTokenId({hook: address(hook), tokenId: tokenId, includeResolvedUri: false});
+            // Get a reference to the tier. An ERC-1155 game maps its paid and reserve token IDs to the tier itself.
+            JB721Tier memory tier = hook.store().tierOf({
+                hook: address(hook),
+                id: IERC165(address(hook)).supportsInterface(type(IERC1155).interfaceId)
+                    ? IDefifa1155Hook(address(hook)).tierIdOf(tokenId)
+                    : hook.store().tierIdOfToken(tokenId),
+                includeResolvedUri: false
+            });
 
             // Set the tier's name (escaped for JSON/SVG safety).
             string memory rawTeam = hook.tierNameOf(tier.id);

@@ -316,14 +316,14 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: address(usdc),
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: cashOutMetadata
-        });
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: address(usdc),
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: cashOutMetadata
+            });
     }
 
     function _refundUsdc(address user, uint256 tid) internal {
@@ -334,14 +334,14 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: address(usdc),
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: cashOutMetadata
-        });
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: address(usdc),
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: cashOutMetadata
+            });
     }
 
     // =========================================================================

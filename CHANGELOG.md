@@ -8,12 +8,16 @@ This is a V5-to-V6 migration changelog, not a package release log or commit hist
 
 - `DefifaDeployer`
 - `DefifaGovernor`
-- `DefifaHook`
+- `DefifaHook` (ERC-721 game)
+- `Defifa1155Hook` (ERC-1155 game)
+- `DefifaTiersHookStore`
 - `DefifaTokenUriResolver`
 - Defifa enums, interfaces, libraries, and structs under `src/`
 
 ## Summary
 
+- Added the ERC-1155 game type next to the ERC-721 game. `Defifa1155Hook` (with `IDefifa1155Hook` and `Defifa1155HookLib`) holds positions as OpenZeppelin `ERC1155` balances, one per tier, so a payment mints a count per tier in one transfer. Per-position ERC-721 mints cost about 47k gas each, which caps one entry near 160 positions under Base's 2^24 per-transaction gas cap with the SDK's 2x gas headroom; the ERC-1155 game pays for 1,000 positions across 8 tiers in about 1.63M gas. `DefifaHook` remains the ERC-721 game. `DefifaDeployer` and `DefifaGovernor` are hook-agnostic, and each game type gets its own deployer plus governor pair. Both pairs share one `DefifaTiersHookStore` (`JB721TiersHookStore` plus count-based `recordMintCounts`, `recordBurnCounts` and `recordTransferForTier(tierId, from, to, count)`) and one `DefifaTokenUriResolver`, which resolves the tier by ERC-165. `DefifaHookLib` exposes `computeTierCashOutWeight` and an internal `tokensClaimFor` so both hooks use one formula. Both hooks fix a delegation bug: a reserve mint with nothing to mint, or in a tier without a reserve beneficiary, could set `_tierDelegation[address(0)]`, which later mints then charged as the default delegate, reverting pays. `mintReservesFor` now returns before any delegation write in that case, and mints and burns never read the zero address's delegate.
+- Refund-phase cash-outs (MINT, REFUND, NO_CONTEST) that include a reserve-minted position now revert with `DefifaHook_CantRefundReserveMint(tokenId)` (`Defifa1155Hook_CantRefundReserveMint(tokenId)` in the ERC-1155 game) instead of pricing it at 0. Skipping it left its notional cost in `totalMintCost` and counted it in `refundedBurnsFrom`. Reserves exist only from SCORING on, so in practice this applies in NO_CONTEST. This changes the ERC-721 game's behavior: holders must leave reserve NFTs out of refund cash-outs.
 - `DefifaDelegate` is now `DefifaHook`. Integrations should update both naming and ABI assumptions.
 - `DefifaProjectOwner` was removed. The canonical fee project ownership path now belongs to the V6 revnet / `REVOwner` setup rather than a Defifa-specific sink contract.
 - Chain-specific configuration was removed from the main deployer flow where values are deterministic or canonical. V6 binds those dependencies through constructor immutables and deterministic deployment inputs.
@@ -24,6 +28,12 @@ This is a V5-to-V6 migration changelog, not a package release log or commit hist
 
 - Replaced interface and contract naming:
   - `IDefifaDelegate` / `DefifaDelegate` -> `IDefifaHook` / `DefifaHook`
+- Added ERC-1155 game surface (`IDefifa1155Hook` extends `IJBRulesetDataHook`, `IJBPayHook`, `IJBCashOutHook`; it is not an `IJB721Hook`):
+  - compared with `IDefifaHook`: no `firstOwnerOf`, `isReserveMint`, `tokenURI`, `totalCashOutWeight()` (use the `TOTAL_CASHOUT_WEIGHT` constant), or ERC-721 `ownerOf` / `transferFrom` / `approve`
+  - adds `uri`, `name`, `symbol`, `tierIdOf`, `RESERVE_TOKEN_ID_OFFSET`, `METADATA_ID_TARGET`, `cashOutWeightOf(uint256[] tokenIds, uint256[] amounts)`, and `tokensClaimableFor(uint256[] tokenIds, uint256[] amounts)`; `cashOutWeightOf(uint256)` is the weight of one position
+  - `Mint(uint256 indexed tierId, address indexed beneficiary, uint256 count, uint256 totalAmountContributed, address caller)` and `MintReservedToken(uint256 indexed tierId, address indexed beneficiary, uint256 count, address caller)` carry a tier ID and count; ERC-1155 `TransferSingle` / `TransferBatch` and `ApprovalForAll` replace ERC-721 `Transfer` and `Approval`
+  - errors are prefixed `Defifa1155Hook_` (for example `Defifa1155Hook_InvalidPay`, `Defifa1155Hook_Unauthorized(tokenId, amount, balance, holder)`, `Defifa1155Hook_LengthMismatch`, `Defifa1155Hook_InvalidTokenId`, `Defifa1155Hook_ZeroAmount`, `Defifa1155Hook_CantRefundReserveMint`); repeated or unordered pay tiers revert `DefifaHook_BadTierOrder` from `DefifaHookLib`
+  - `initialize` takes `_gameName` / `_gameSymbol` where `DefifaHook` takes `_name` / `_symbol`
 - Removed surface:
   - `DefifaProjectOwner`
   - deployer chain-constant setter paths that are now constructor/deterministic inputs
@@ -35,6 +45,7 @@ This is a V5-to-V6 migration changelog, not a package release log or commit hist
   - `MintReservedToken`
   - governor scorecard events such as `ScorecardSubmitted`, `ScorecardAttested`, and `ScorecardRatified`
 - Added or migration-sensitive errors include:
+  - `DefifaHook_CantRefundReserveMint`
   - `DefifaHook_CashoutWeightsAlreadySet`
   - `DefifaHook_GameIsntScoringYet`
   - `DefifaHook_InvalidCashoutWeights`
@@ -44,7 +55,7 @@ This is a V5-to-V6 migration changelog, not a package release log or commit hist
 
 ## Machine-Checked ABI Coverage
 
-Generated from Foundry `out/**/*.json` artifacts, filtered to this repo's own runtime source roots and excluding tests, scripts, and dependencies.
+Generated from Foundry `out/**/*.json` artifacts before the ERC-1155 game type was added (`Defifa1155Hook`, `IDefifa1155Hook`, `Defifa1155HookLib`, `DefifaTiersHookStore` and `IDefifaTiersHookStore` are not counted; see the ABI section above), filtered to this repo's own runtime source roots and excluding tests, scripts, and dependencies.
 
 - V5 comparison package: `defifa-v5`.
 - Own-source ABI artifacts compared: V6 `12`, V5 `19`.
@@ -101,6 +112,7 @@ Shared ABI artifacts checked with no ABI item changes:
 ## Migration Notes
 
 - Replace every `DefifaDelegate` reference with `DefifaHook` and regenerate ABI types.
+- ERC-1155 games: paid positions use token ID = tier ID; reserve-minted positions use `tierId + RESERVE_TOKEN_ID_OFFSET` (`1 << 16`) so refunds reject them after transfers. Both count toward supply, attestation units, and cash-out weight; `tierIdOf(id)` maps back. Encode pay metadata as `(address attestationDelegate, uint16[] tierIds, uint256[] counts)` with tier IDs strictly ascending (collapse repeated tiers into counts), and cash-out metadata as `(uint256[] tokenIds, uint256[] amounts)`. The store's per-holder views count a tier's paid and reserve IDs together; read a single ID with `hook.balanceOf(account, id)`. Mints run the ERC-1155 receiver acceptance check after every state change, so a contract beneficiary must implement `onERC1155Received` / `onERC1155BatchReceived` or the pay (or that reserve mint) reverts; transfers are standard safe transfers that call receivers, and approvals are `setApprovalForAll` only. Detect the game type (ERC-165 `IERC1155`) before encoding metadata, and index ERC-721 and ERC-1155 games separately.
 - Re-check any scorecard, attestation, or cash-out indexing code against the V6 events. V5 scorecard assumptions are not selector- or payload-stable.
 - Do not depend on `DefifaProjectOwner` in V6 deployments.
 - `DefifaDeployer` now implements `IJBPayerTracker` and `ERC2771Context`. Its constructor accepts a `trustedForwarder`, and while forwarding a project-creation fee to `JBProjects.createFor`, it advertises the resolved fee payer (the `launchGameWith` ERC-2771 caller) through the transient `originalPayer` getter, so a `pay`-routing fee receiver credits the player who paid rather than the deployer or forwarder. Regenerate ABI types to pick up the constructor and ABI changes.

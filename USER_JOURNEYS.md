@@ -15,8 +15,9 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 ## Key surfaces
 
 - `DefifaDeployer.launchGameWith(...)`: launches a Defifa game as a JB project and wires hook, governor, splits, and lifecycle timing
-- `DefifaHook.afterPayRecordedWith(...)`: mints outcome NFTs when players pay during the mintable phase
-- `DefifaHook.beforeCashOutRecordedWith(...)` and `afterCashOutRecordedWith(...)`: define refund, winning-piece redemption, and fee-token claim behavior
+- `DefifaHook.afterPayRecordedWith(...)`: mints outcome NFTs when players pay during the mintable phase (ERC-721 game)
+- `Defifa1155Hook.afterPayRecordedWith(...)`: mints outcome positions (ERC-1155 balances, token ID = tier ID) when players pay during the mintable phase (ERC-1155 game)
+- `beforeCashOutRecordedWith(...)` and `afterCashOutRecordedWith(...)` on either hook: define refund, winning-piece redemption, and fee-token claim behavior
 - `DefifaGovernor.submitScorecardFor(...)`, `attestToScorecardFrom(...)`, `revokeAttestationFrom(...)`, `ratifyScorecardFrom(...)`: scorecard governance lifecycle
 - `DefifaDeployer.fulfillCommitmentsOf(...)` and `triggerNoContestFor(...)`: finalize commitments after ratification or unlock refund-oriented no-contest recovery
 
@@ -36,8 +37,8 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 **Main Flow**
 
 1. Prepare launch data with timing, tiers, splits, fee-project settings, terminal, and governance params.
-2. Call `DefifaDeployer.launchGameWith(...)`.
-3. The deployer resolves the ERC-2771 caller, advertises that account as the creation-fee payer while reserving the JB project, clones and initializes `DefifaHook`, initializes the governor state, and stores the game's immutable ops data.
+2. Call `launchGameWith(...)` on the `DefifaDeployer` for the chosen game type: the ERC-721 deployer clones `DefifaHook`, the ERC-1155 deployer clones `Defifa1155Hook`.
+3. The deployer resolves the ERC-2771 caller, advertises that account as the creation-fee payer while reserving the JB project, clones and initializes the game hook, initializes the governor state, and stores the game's immutable ops data.
 4. The game advances through its documented phase sequence.
 
 **Failure Modes**
@@ -65,6 +66,8 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 
 1. Pay the game project during the mint window.
 2. `DefifaHook` mints the selected outcome NFT tier.
+
+   In an ERC-1155 game, pay with metadata `(address attestationDelegate, uint16[] tierIds, uint256[] counts)`, tier IDs strictly ascending, one count per tier. `Defifa1155Hook` records the counts in the store and mints `counts[i]` of token ID `tierIds[i]` to the beneficiary, one balance per tier. The ERC-1155 receiver check runs last, so a contract beneficiary without `onERC1155Received` / `onERC1155BatchReceived` makes the pay revert.
 3. Delegation and mint-cost accounting are updated.
 4. Reserved mints and pending reserves continue to matter for later governance and settlement.
 
@@ -72,10 +75,11 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 
 - mint is attempted in the wrong phase
 - assumptions about attestation power ignore pending reserves or tier weighting
+- ERC-1155 pay metadata repeats a tier or is out of order (`DefifaHook_BadTierOrder`), has a zero count, or uses mismatched lengths
 
 **Postconditions**
 
-- the player holds game pieces that later affect governance and settlement
+- the player holds game pieces that later affect governance and settlement; in an ERC-1155 game they read as `hook.balanceOf(player, tierId)` and move with `safeTransferFrom` / `safeBatchTransferFrom` or `setApprovalForAll`
 
 ## Journey 3: Submit and ratify a scorecard
 
@@ -121,7 +125,7 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 1. Read the ratified outcome.
 2. Call `fulfillCommitmentsOf(...)`.
 3. Queue the completion ruleset and finalize the promised commitment flow.
-4. Let winning-piece holders redeem under the installed cash-out weights.
+4. Let winning-piece holders redeem under the installed cash-out weights. In an ERC-1155 game, cash-out metadata is `(uint256[] tokenIds, uint256[] amounts)` over paid IDs and `tierId + RESERVE_TOKEN_ID_OFFSET` reserve IDs.
 
 **Failure Modes**
 
@@ -162,7 +166,7 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 
 - this repo is trusted for game-specific phase logic, governance, and settlement weighting
 - terminal accounting still comes from `nana-core-v6`
-- shared tier-storage behavior still comes from `nana-721-hook-v6`
+- shared tier-storage behavior still comes from `nana-721-hook-v6`, through `DefifaTiersHookStore` (the upstream store plus count-based records) for both game types
 
 ## Hand-offs
 

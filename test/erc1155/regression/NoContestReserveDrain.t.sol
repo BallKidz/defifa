@@ -1,0 +1,230 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.28;
+
+import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
+import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
+
+import {DefifaDeployer} from "../../../src/DefifaDeployer.sol";
+import {DefifaGovernor} from "../../../src/DefifaGovernor.sol";
+import {Defifa1155Hook} from "../../../src/Defifa1155Hook.sol";
+import {DefifaTokenUriResolver} from "../../../src/DefifaTokenUriResolver.sol";
+import {DefifaGamePhase} from "../../../src/enums/DefifaGamePhase.sol";
+import {DefifaLaunchProjectData} from "../../../src/structs/DefifaLaunchProjectData.sol";
+import {DefifaTierParams} from "../../../src/structs/DefifaTierParams.sol";
+import {DefifaTiersHookStore} from "../../../src/DefifaTiersHookStore.sol";
+import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
+import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
+import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
+import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
+import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
+import {JBTerminalConfig} from "@bananapus/core-v6/src/structs/JBTerminalConfig.sol";
+import {JBRulesetConfig} from "@bananapus/core-v6/src/structs/JBRulesetConfig.sol";
+import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
+import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
+import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
+import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
+import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
+import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
+
+contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
+    uint256 internal _protocolFeeProjectId;
+    uint256 internal _defifaProjectId;
+
+    DefifaDeployer internal _deployer;
+    Defifa1155Hook internal _hookImpl;
+    DefifaGovernor internal _governorImpl;
+
+    address internal _projectOwner = address(bytes20(keccak256("projectOwner")));
+    address internal _player = address(bytes20(keccak256("player")));
+    address internal _reserveBeneficiary = address(bytes20(keccak256("reserveBeneficiary")));
+
+    function setUp() public virtual override {
+        super.setUp();
+
+        JBAccountingContext[] memory tokens = new JBAccountingContext[](1);
+        tokens[0] = JBAccountingContext({token: JBConstants.NATIVE_TOKEN, decimals: 18, currency: JBCurrencyIds.ETH});
+
+        JBTerminalConfig[] memory terminalConfigs = new JBTerminalConfig[](1);
+        terminalConfigs[0] = JBTerminalConfig({terminal: jbMultiTerminal(), accountingContextsToAccept: tokens});
+
+        JBRulesetConfig[] memory rulesetConfigs = new JBRulesetConfig[](1);
+        rulesetConfigs[0] = JBRulesetConfig({
+            mustStartAtOrAfter: 0,
+            duration: 10 days,
+            weight: 1e18,
+            weightCutPercent: 0,
+            approvalHook: IJBRulesetApprovalHook(address(0)),
+            metadata: JBRulesetMetadata({
+                reservedPercent: 0,
+                cashOutTaxRate: 0,
+                baseCurrency: JBCurrencyIds.ETH,
+                pausePay: false,
+                pauseCreditTransfers: false,
+                allowOwnerMinting: false,
+                allowSetCustomToken: false,
+                allowTerminalMigration: false,
+                allowSetTerminals: false,
+                allowSetController: false,
+                allowAddAccountingContext: false,
+                allowAddPriceFeed: false,
+                ownerMustSendPayouts: false,
+                holdFees: false,
+                scopeCashOutsToLocalBalances: true,
+                useDataHookForPay: true,
+                useDataHookForCashOut: true,
+                dataHook: address(0),
+                metadata: 0
+            }),
+            splitGroups: new JBSplitGroup[](0),
+            fundAccessLimitGroups: new JBFundAccessLimitGroup[](0)
+        });
+
+        _protocolFeeProjectId =
+            jbController().launchProjectFor(address(_projectOwner), "", rulesetConfigs, terminalConfigs, "");
+        vm.prank(_projectOwner);
+        address nanaToken =
+            address(jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+
+        _defifaProjectId =
+            jbController().launchProjectFor(address(_projectOwner), "", rulesetConfigs, terminalConfigs, "");
+        vm.prank(_projectOwner);
+        address defifaToken = address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+
+        _hookImpl = new Defifa1155Hook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
+        _governorImpl = new DefifaGovernor(jbController(), address(this));
+        _deployer = new DefifaDeployer({
+            hookCodeOrigin: address(_hookImpl),
+            tokenUriResolver: new DefifaTokenUriResolver(address(this)),
+            governor: _governorImpl,
+            controller: jbController(),
+            registry: new JBAddressRegistry(),
+            defifaProjectId: _defifaProjectId,
+            baseProtocolProjectId: _protocolFeeProjectId,
+            hookStore: new DefifaTiersHookStore(),
+            trustedForwarder: address(0)
+        });
+
+        _hookImpl.transferOwnership(address(_deployer));
+        _governorImpl.transferOwnership(address(_deployer));
+    }
+
+    /// @notice Reserve minting is blocked while the game is in NO_CONTEST. Without this guard, reserve mints would
+    /// inflate `totalMintCost` and revive a game that failed `minParticipation` past the NO_CONTEST check before
+    /// `triggerNoContestFor` latches the failure.
+    function test_noContestBlocksReserveMint() external {
+        DefifaLaunchProjectData memory data = _launchData();
+        uint256 projectId = _deployer.launchGameWith(data);
+
+        vm.warp(data.start - data.mintPeriodDuration - data.refundPeriodDuration);
+        vm.deal(_player, 1 ether);
+
+        uint16[] memory tierIds = new uint16[](1);
+        tierIds[0] = 1;
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
+        vm.prank(_player);
+        jbMultiTerminal().pay{value: 1 ether}(
+            projectId,
+            JBConstants.NATIVE_TOKEN,
+            1 ether,
+            _player,
+            0,
+            "",
+            _buildPayMetadata(abi.encode(_player, tierIds, counts))
+        );
+
+        vm.warp(data.start + 1);
+        (, JBRulesetMetadata memory metadata) = jbController().currentRulesetOf(projectId);
+        Defifa1155Hook hook = Defifa1155Hook(metadata.dataHook);
+        assertEq(uint256(_deployer.currentGamePhaseOf(projectId)), uint256(DefifaGamePhase.NO_CONTEST));
+
+        JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
+        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
+        vm.expectRevert(
+            abi.encodeWithSelector(
+                Defifa1155Hook.Defifa1155Hook_ReservedTokenMintingBlockedInNoContest.selector, projectId, 1
+            )
+        );
+        hook.mintReservesFor(reserveConfigs);
+
+        _deployer.triggerNoContestFor(projectId);
+
+        // The paid player can still get their full refund through the no-contest path.
+        assertEq(hook.balanceOf(_player, 1), 1, "player holds the paid position");
+        uint256 balanceBefore = _player.balance;
+        _cashOut(projectId, _player, 1, 1);
+
+        assertTrue(_player.balance > balanceBefore, "player received refund");
+        assertEq(hook.balanceOf(_player, 1), 0, "player position burned");
+    }
+
+    function _cashOut(uint256 projectId, address holder, uint256 tokenId, uint256 amount) internal {
+        uint256[] memory tokenIds = new uint256[](1);
+        tokenIds[0] = tokenId;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = amount;
+        bytes memory cashOutMetadata = _buildCashOutMetadata(tokenIds, amounts);
+
+        vm.prank(holder);
+        jbMultiTerminal()
+            .cashOutTokensOf(holder, projectId, 0, JBConstants.NATIVE_TOKEN, 0, payable(holder), cashOutMetadata);
+    }
+
+    function _launchData() internal view returns (DefifaLaunchProjectData memory) {
+        DefifaTierParams[] memory tierParams = new DefifaTierParams[](1);
+        tierParams[0] = DefifaTierParams({
+            reservedRate: 1,
+            reservedTokenBeneficiary: _reserveBeneficiary,
+            encodedIpfsUri: bytes32(0),
+            shouldUseReservedTokenBeneficiaryAsDefault: false,
+            name: "SOLE"
+        });
+
+        return DefifaLaunchProjectData({
+            name: "DEFIFA",
+            projectUri: "",
+            contractUri: "",
+            baseUri: "",
+            tiers: tierParams,
+            tierPrice: 1 ether,
+            token: JBAccountingContext({token: JBConstants.NATIVE_TOKEN, decimals: 18, currency: JBCurrencyIds.ETH}),
+            mintPeriodDuration: 1 days,
+            refundPeriodDuration: 1 days,
+            start: uint48(block.timestamp + 3 days),
+            splits: new JBSplit[](0),
+            attestationStartTime: 0,
+            attestationGracePeriod: 1 days,
+            defaultAttestationDelegate: address(0),
+            defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
+            terminal: jbMultiTerminal(),
+            minParticipation: 3 ether,
+            scorecardTimeout: type(uint32).max,
+            timelockDuration: 0
+        });
+    }
+
+    function _buildPayMetadata(bytes memory decodedData) internal view returns (bytes memory) {
+        bytes4[] memory ids = new bytes4[](1);
+        ids[0] = metadataHelper().getId("pay", address(_hookImpl));
+        bytes[] memory datas = new bytes[](1);
+        datas[0] = decodedData;
+        return metadataHelper().createMetadata(ids, datas);
+    }
+
+    function _buildCashOutMetadata(
+        uint256[] memory tokenIds,
+        uint256[] memory amounts
+    )
+        internal
+        view
+        returns (bytes memory)
+    {
+        bytes4[] memory ids = new bytes4[](1);
+        ids[0] = metadataHelper().getId("cashOut", address(_hookImpl));
+        bytes[] memory datas = new bytes[](1);
+        datas[0] = abi.encode(tokenIds, amounts);
+        return metadataHelper().createMetadata(ids, datas);
+    }
+}

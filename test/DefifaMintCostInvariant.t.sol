@@ -95,14 +95,17 @@ contract MintCostHandler is Test {
         data[0] = abi.encode(user, m);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metaHelper.getId("pay", hookCodeOrigin);
+        // Build metadata before vm.prank so the external call to createMetadata doesn't consume the prank.
+        bytes memory metadata = metaHelper.createMetadata(ids, data);
 
+        uint256 balanceBefore = nft.balanceOf(user);
         vm.prank(user);
-        terminal.pay{value: tierPrice}(
-            pid, JBConstants.NATIVE_TOKEN, tierPrice, user, 0, "", metaHelper.createMetadata(ids, data)
-        );
+        terminal.pay{value: tierPrice}(pid, JBConstants.NATIVE_TOKEN, tierPrice, user, 0, "", metadata);
+        assertEq(nft.balanceOf(user), balanceBefore + 1, "minted NFT held");
 
-        uint256 nb = store.numberOfBurnedFor(address(nft), tierId);
-        uint256 tokenNumber = tier.initialSupply - tier.remainingSupply + 1 + nb;
+        // The store numbers a tier's tokens by mint order; burns do not free numbers.
+        uint256 tokenNumber = tier.initialSupply - tier.remainingSupply + 1;
+        assertEq(nft.ownerOf((tierId * 1_000_000_000) + tokenNumber), user, "tracked token ID");
 
         liveTokens.push(TokenInfo({holder: user, tierId: tierId, tokenNumber: tokenNumber}));
 
@@ -124,18 +127,22 @@ contract MintCostHandler is Test {
         data[0] = abi.encode(cid);
         bytes4[] memory bids = new bytes4[](1);
         bids[0] = metaHelper.getId("cashOut", hookCodeOrigin);
+        bytes memory metadata = metaHelper.createMetadata(bids, data);
 
+        uint256 holderBalanceBefore = info.holder.balance;
         vm.prank(info.holder);
         JBMultiTerminal(address(terminal))
             .cashOutTokensOf({
-            holder: info.holder,
-            projectId: pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(info.holder),
-            metadata: metaHelper.createMetadata(bids, data)
-        });
+                holder: info.holder,
+                projectId: pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(info.holder),
+                metadata: metadata
+            });
+
+        assertEq(info.holder.balance, holderBalanceBefore + tierPrice, "exact refund");
 
         expectedMintCost -= tierPrice;
         burnCount++;
@@ -167,9 +174,6 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
     DefifaHook hookImpl;
     DefifaGovernor governor;
     DefifaHook nft;
-
-    /// @dev Storage slot of _totalMintCost in DefifaHook (from `forge inspect DefifaHook storage-layout`).
-    uint256 constant TOTAL_MINT_COST_SLOT = 141;
 
     uint8 constant N_TIERS = 4;
     uint256 constant TIER_PRICE = 1 ether;
@@ -296,9 +300,16 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
     }
 
-    /// @notice Read _totalMintCost directly from storage.
+    /// @notice Read totalMintCost from the hook.
     function _readTotalMintCost() internal view returns (uint256) {
-        return uint256(vm.load(address(nft), bytes32(TOTAL_MINT_COST_SLOT)));
+        return nft.totalMintCost();
+    }
+
+    /// @notice Every run must mint and refund. A failing handler call is discarded (fail_on_revert = false), so without
+    /// this check an always-reverting handler would leave the invariants holding over an empty game.
+    function afterInvariant() external view {
+        assertGt(handler.mintCount(), 0, "no mint succeeded");
+        assertGt(handler.burnCount(), 0, "no refund succeeded");
     }
 
     /// @notice INVARIANT: _totalMintCost always equals the handler's tracked expected value.

@@ -274,14 +274,17 @@ contract DefifaFunctionalProperties is Test {
     }
 
     function _readStart(uint256 packed) internal pure returns (uint256) {
+        // forge-lint: disable-next-line(unsafe-typecast)
         return uint256(uint48(packed));
     }
 
     function _readGrace(uint256 packed) internal pure returns (uint256) {
+        // forge-lint: disable-next-line(unsafe-typecast)
         return uint256(uint48(packed >> 48));
     }
 
     function _readTimelock(uint256 packed) internal pure returns (uint256) {
+        // forge-lint: disable-next-line(unsafe-typecast)
         return uint256(uint48(packed >> 96));
     }
 

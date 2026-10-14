@@ -24,6 +24,9 @@ library DefifaHookLib {
     /// @notice Thrown when tier IDs are not provided in strict ascending order.
     error DefifaHook_BadTierOrder(uint256 previousTierId, uint256 tierId);
 
+    /// @notice Thrown when a refund includes a reserve mint.
+    error DefifaHook_CantRefundReserveMint(uint256 tokenId);
+
     /// @notice Thrown when a tier ID does not match a stored tier, exceeds the maximum tier ID, or is not in category
     /// 0.
     error DefifaHook_InvalidTierId(uint256 tierId, uint256 actualTierId, uint256 maxTierId, uint256 category);
@@ -50,6 +53,35 @@ library DefifaHookLib {
 
     /// @notice The total cash-out weight that can be divided among tiers.
     uint256 internal constant _TOTAL_CASHOUT_WEIGHT = 1_000_000_000_000_000_000;
+
+    //*********************************************************************//
+    // ------------------------- internal helpers ------------------------ //
+    //*********************************************************************//
+
+    /// @notice The fee tokens claimable for burned tokens, proportional to what they cost to mint.
+    /// @param cumulativeMintPrice The mint price of the burned tokens.
+    /// @param totalMintCost The cumulative mint cost.
+    /// @param defifaBalance The current $DEFIFA balance.
+    /// @param baseProtocolBalance The current $BASE_PROTOCOL balance.
+    /// @return defifaTokenAmount The claimable $DEFIFA amount.
+    /// @return baseProtocolTokenAmount The claimable $BASE_PROTOCOL amount.
+    function tokensClaimFor(
+        uint256 cumulativeMintPrice,
+        uint256 totalMintCost,
+        uint256 defifaBalance,
+        uint256 baseProtocolBalance
+    )
+        internal
+        pure
+        returns (uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount)
+    {
+        // If nothing was paid to mint, no fee tokens can be claimed.
+        if (totalMintCost == 0) return (0, 0);
+
+        // Calculate the user's claimable amount proportional to what they paid.
+        defifaTokenAmount = mulDiv({x: defifaBalance, y: cumulativeMintPrice, denominator: totalMintCost});
+        baseProtocolTokenAmount = mulDiv({x: baseProtocolBalance, y: cumulativeMintPrice, denominator: totalMintCost});
+    }
 
     //*********************************************************************//
     // -------------------------- public views --------------------------- //
@@ -204,9 +236,33 @@ library DefifaHookLib {
         view
         returns (uint256)
     {
-        // Keep a reference to the token's tier ID.
-        uint256 tierId = hookStore.tierIdOfToken(tokenId);
+        return computeTierCashOutWeight({
+            tierId: hookStore.tierIdOfToken(tokenId),
+            hookStore: hookStore,
+            hook: hook,
+            tierCashOutWeights: tierCashOutWeights,
+            tokensRedeemedFrom: tokensRedeemedFrom
+        });
+    }
 
+    /// @notice Compute the cash-out weight of a single token in a tier.
+    /// @param tierId The tier ID.
+    /// @param hookStore The 721 tiers hook store.
+    /// @param hook The hook address.
+    /// @param tierCashOutWeights The tier cash-out weights array.
+    /// @param tokensRedeemedFrom The mapping of tokens redeemed per tier.
+    /// @return The cash-out weight.
+    function computeTierCashOutWeight(
+        uint256 tierId,
+        IJB721TiersHookStore hookStore,
+        address hook,
+        uint256[128] storage tierCashOutWeights,
+        mapping(uint256 => uint256) storage tokensRedeemedFrom
+    )
+        public
+        view
+        returns (uint256)
+    {
         // Keep a reference to the tier.
         JB721Tier memory tier = hookStore.tierOf({hook: hook, id: tierId, includeResolvedUri: false});
 
@@ -287,7 +343,11 @@ library DefifaHookLib {
     {
         uint256 numberOfTokenIds = tokenIds.length;
         for (uint256 i; i < numberOfTokenIds; i++) {
-            if (excludeReserveMints && IDefifaHook(hook).isReserveMint(tokenIds[i])) continue;
+            // A refund pays nothing for a reserve mint, so burning one would leave its cost in `totalMintCost` and
+            // count it as a refunded paid mint.
+            if (excludeReserveMints && IDefifaHook(hook).isReserveMint(tokenIds[i])) {
+                revert DefifaHook_CantRefundReserveMint(tokenIds[i]);
+            }
             cumulativeMintPrice += hookStore.tierOfTokenId({
                 hook: hook, tokenId: tokenIds[i], includeResolvedUri: false
             }).price;
@@ -347,9 +407,12 @@ library DefifaHookLib {
             }).price;
         }
 
-        // Calculate the user's claimable amount proportional to what they paid.
-        defifaTokenAmount = mulDiv({x: defifaBalance, y: cumulativeMintPrice, denominator: totalMintCost});
-        baseProtocolTokenAmount = mulDiv({x: baseProtocolBalance, y: cumulativeMintPrice, denominator: totalMintCost});
+        return tokensClaimFor({
+            cumulativeMintPrice: cumulativeMintPrice,
+            totalMintCost: totalMintCost,
+            defifaBalance: defifaBalance,
+            baseProtocolBalance: baseProtocolBalance
+        });
     }
 
     /// @notice Computes the total mint cost of all pending reserve NFTs across all tiers.

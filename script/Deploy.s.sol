@@ -4,7 +4,8 @@ pragma solidity 0.8.28;
 import {Script} from "forge-std/Script.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
-import {JB721TiersHookStore} from "@bananapus/721-hook-v6/src/JB721TiersHookStore.sol";
+import {DefifaTiersHookStore} from "../src/DefifaTiersHookStore.sol";
+import {Defifa1155Hook} from "../src/Defifa1155Hook.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
@@ -105,15 +106,41 @@ contract DeployMainnet is Script, Sphinx {
     }
 
     function deploy() public sphinx {
+        // Both game types share one tiers store and one token URI resolver.
+        DefifaTokenUriResolver tokenUriResolver = new DefifaTokenUriResolver{salt: _salt}(safeAddress());
+        if (address(tokenUriResolver.typeface()) == address(0)) tokenUriResolver.setChainSpecificConstants(_typeface);
+        DefifaTiersHookStore hookStore = new DefifaTiersHookStore{salt: _salt}();
+
+        // ERC-721 games: one token per position.
         DefifaHook hook = new DefifaHook{salt: _salt}({
             directory: core.directory, defifaToken: defifaToken, baseProtocolToken: baseProtocolToken
         });
-        DefifaTokenUriResolver tokenUriResolver = new DefifaTokenUriResolver{salt: _salt}(safeAddress());
-        if (address(tokenUriResolver.typeface()) == address(0)) tokenUriResolver.setChainSpecificConstants(_typeface);
-        DefifaGovernor governor = new DefifaGovernor{salt: _salt}({controller: core.controller, owner: safeAddress()});
-        JB721TiersHookStore hookStore = new JB721TiersHookStore{salt: _salt}();
-        DefifaDeployer deployer = new DefifaDeployer{salt: _salt}({
-            hookCodeOrigin: address(hook),
+        _deployGameDeployer({
+            hookCodeOrigin: address(hook), tokenUriResolver: tokenUriResolver, hookStore: hookStore, salt: _salt
+        });
+
+        // ERC-1155 games: positions are balances, one token ID per tier. Each deployer owns its own governor, so the
+        // ERC-1155 pair needs its own salt.
+        bytes32 salt1155 = keccak256(abi.encode(_salt, "ERC1155"));
+        Defifa1155Hook hook1155 = new Defifa1155Hook{salt: salt1155}({
+            directory: core.directory, defifaToken: defifaToken, baseProtocolToken: baseProtocolToken
+        });
+        _deployGameDeployer({
+            hookCodeOrigin: address(hook1155), tokenUriResolver: tokenUriResolver, hookStore: hookStore, salt: salt1155
+        });
+    }
+
+    function _deployGameDeployer(
+        address hookCodeOrigin,
+        DefifaTokenUriResolver tokenUriResolver,
+        DefifaTiersHookStore hookStore,
+        bytes32 salt
+    )
+        internal
+    {
+        DefifaGovernor governor = new DefifaGovernor{salt: salt}({controller: core.controller, owner: safeAddress()});
+        DefifaDeployer deployer = new DefifaDeployer{salt: salt}({
+            hookCodeOrigin: hookCodeOrigin,
             tokenUriResolver: tokenUriResolver,
             governor: governor,
             controller: core.controller,
