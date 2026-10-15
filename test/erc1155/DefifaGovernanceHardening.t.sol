@@ -319,9 +319,9 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
 
-        // headroom = baseQuorum - MAX = 2e9 - 1e9 = 1e9 (minus rounding buffer 4 = 999999996).
+        // headroom = baseQuorum - MAX = 2e9 - 1e9 = 1e9.
         // maxShare² = mulDiv(tw, tw, tw) = tw. penalty = mulDiv(headroom, tw, tw) = headroom.
-        // adjustedQuorum = baseQuorum + headroom ≈ 2e9 + 1e9 = ~3e9.
+        // adjustedQuorum = baseQuorum + headroom - baseQuorum / 5000 (rounding margin) = 3e9 - 4e5.
         // Max BWA = 3 * MAX (users 1-3, each with ~MAX power) ≈ 3e9.
         // Quorum should be reachable but tight.
 
@@ -698,7 +698,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         // --- Verify concentration-adjusted quorum is higher than base ---
         // maxShare = 50%, headroom = baseQuorum - MAX, penalty = headroom * maxShare².
         uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
-        uint256 headroom = baseQuorum > maxPower + 4 ? baseQuorum - maxPower - 4 : 0;
+        uint256 headroom = baseQuorum > maxPower ? baseQuorum - maxPower : 0;
         uint256 maxShareSquared = mulDiv(sc[0].cashOutWeight, sc[0].cashOutWeight, tw);
         uint256 expectedPenalty = mulDiv(headroom, maxShareSquared, tw);
         assertGt(expectedPenalty, 0, "concentration penalty should be positive");
@@ -959,6 +959,75 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         );
     }
 
+    /// @notice FV-5b: A winner-take-all scorecard submitted as one entry stays reachable when every tier has several
+    /// holders with uneven counts, so BWA floors once or twice per (delegate, tier) pair.
+    /// @dev Mirrors Base game 28: 21 tiers, quorumSnapshot 19,999,999,999 against 19,999,999,987 total BWA.
+    function test_fv_quorum_reachable_crowdedTiersSparseScorecard() external {
+        _setupCrowdedGame(21, 0);
+        _toScoring();
+
+        DefifaTierCashOutWeight[] memory sc = new DefifaTierCashOutWeight[](1);
+        sc[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT()});
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+
+        assertLe(_quorumSnapshotOf(scorecardId), _totalBWA(scorecardId), "quorum must not exceed unanimous BWA");
+
+        for (uint256 i; i < _users.length; i++) {
+            vm.prank(_users[i]);
+            try _gov.attestToScorecardFrom(_gameId, scorecardId) {} catch {}
+        }
+        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+
+        DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
+        assertTrue(
+            state == DefifaScorecardState.SUCCEEDED || state == DefifaScorecardState.QUEUED,
+            "unanimous attestation must reach quorum"
+        );
+    }
+
+    /// @notice FV-5c: Fuzz reachability over tier count, holders per tier, uneven counts, weight split and sparse or
+    /// full scorecard arrays.
+    /// forge-config: default.fuzz.runs = 256
+    function test_fv_fuzz_quorum_reachable_crowdedTiers(
+        uint8 nTiers,
+        uint256 seed,
+        uint256 winnerSeed,
+        bool sparse
+    )
+        external
+    {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        nTiers = uint8(bound(nTiers, 3, 21));
+        _setupCrowdedGame(nTiers, seed);
+        _toScoring();
+
+        // Quorum is tightest near winner-take-all; lower concentration leaves headroom * (1 - maxShare²) of slack.
+        // The next tier takes a share of at most 1e-8, often zero.
+        uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
+        uint256[] memory weights = new uint256[](nTiers);
+        uint256 winner = winnerSeed % nTiers;
+        weights[(winner + 1) % nTiers] = bound(winnerSeed >> 8, 0, tw / 1e8);
+        weights[winner] = tw - weights[(winner + 1) % nTiers];
+
+        uint256 entries;
+        for (uint256 i; i < nTiers; i++) {
+            if (!sparse || weights[i] != 0) entries++;
+        }
+        DefifaTierCashOutWeight[] memory sc = new DefifaTierCashOutWeight[](entries);
+        entries = 0;
+        for (uint256 i; i < nTiers; i++) {
+            if (!sparse || weights[i] != 0) {
+                sc[entries++] = DefifaTierCashOutWeight({id: i + 1, cashOutWeight: weights[i]});
+            }
+        }
+
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+
+        assertLe(_quorumSnapshotOf(scorecardId), _totalBWA(scorecardId), "fuzz: quorum must not exceed unanimous BWA");
+    }
+
     // =========================================================================
     // FORMAL VERIFICATION: CONCENTRATION PENALTY PROPERTIES
     // =========================================================================
@@ -1021,7 +1090,6 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         // Compute expected penalty.
         uint256 headroom = baseQuorum - maxPower;
-        if (headroom > 8) headroom -= 8;
         uint256 maxWeight = tw / 8;
         uint256 maxShareSquared = mulDiv(maxWeight, maxWeight, tw);
         uint256 expectedPenalty = mulDiv(headroom, maxShareSquared, tw);
@@ -1214,6 +1282,33 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         }
     }
 
+    /// @notice Launches a game where each tier has 1 to 6 self-delegated holders, each holding 1 to 3 tokens.
+    function _setupCrowdedGame(uint8 nTiers, uint256 seed) internal {
+        DefifaLaunchProjectData memory d = _launchData(nTiers, 1 ether);
+        (_pid, _nft, _gov) = _launch(d);
+        vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
+        delete _users;
+        for (uint256 t = 1; t <= nTiers; t++) {
+            uint256 holders = 1 + uint256(keccak256(abi.encode(seed, t))) % 6;
+            for (uint256 h; h < holders; h++) {
+                address user = _addr(_users.length);
+                _users.push(user);
+                uint256 count = 1 + uint256(keccak256(abi.encode(seed, t, h))) % 3;
+                _mintCount(user, t, count, 1 ether);
+                _delegateSelf(user, t);
+                vm.warp(block.timestamp + 1);
+            }
+        }
+    }
+
+    /// @notice The scorecard's BWA power if every holder attests.
+    // forge-lint: disable-next-line(mixed-case-function)
+    function _totalBWA(uint256 scorecardId) internal view returns (uint256 total) {
+        for (uint256 i; i < _users.length; i++) {
+            total += _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
+        }
+    }
+
     function _toScoring() internal {
         vm.warp(_tsReader.ts() + 3 days + 1);
     }
@@ -1281,12 +1376,17 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
     }
 
     function _mint(address user, uint256 tid, uint256 amt) internal {
+        _mintCount(user, tid, 1, amt);
+    }
+
+    function _mintCount(address user, uint256 tid, uint256 count, uint256 price) internal {
+        uint256 amt = count * price;
         vm.deal(user, amt);
         uint16[] memory m = new uint16[](1);
         // forge-lint: disable-next-line(unsafe-typecast)
         m[0] = uint16(tid);
         uint256[] memory counts = new uint256[](1);
-        counts[0] = 1;
+        counts[0] = count;
         bytes[] memory data = new bytes[](1);
         data[0] = abi.encode(user, m, counts);
         bytes4[] memory ids = new bytes4[](1);
