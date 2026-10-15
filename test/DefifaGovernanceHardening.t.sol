@@ -318,9 +318,9 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
 
-        // headroom = baseQuorum - MAX = 2e9 - 1e9 = 1e9 (minus rounding buffer 4 = 999999996).
+        // headroom = baseQuorum - MAX = 2e9 - 1e9 = 1e9.
         // maxShare² = mulDiv(tw, tw, tw) = tw. penalty = mulDiv(headroom, tw, tw) = headroom.
-        // adjustedQuorum = baseQuorum + headroom ≈ 2e9 + 1e9 = ~3e9.
+        // adjustedQuorum = baseQuorum + headroom - baseQuorum / 5000 (rounding margin) = 3e9 - 4e5.
         // Max BWA = 3 * MAX (users 1-3, each with ~MAX power) ≈ 3e9.
         // Quorum should be reachable but tight.
 
@@ -697,7 +697,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         // --- Verify concentration-adjusted quorum is higher than base ---
         // maxShare = 50%, headroom = baseQuorum - MAX, penalty = headroom * maxShare².
         uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
-        uint256 headroom = baseQuorum > maxPower + 4 ? baseQuorum - maxPower - 4 : 0;
+        uint256 headroom = baseQuorum > maxPower ? baseQuorum - maxPower : 0;
         uint256 maxShareSquared = mulDiv(sc[0].cashOutWeight, sc[0].cashOutWeight, tw);
         uint256 expectedPenalty = mulDiv(headroom, maxShareSquared, tw);
         assertGt(expectedPenalty, 0, "concentration penalty should be positive");
@@ -1089,7 +1089,6 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         // Compute expected penalty.
         uint256 headroom = baseQuorum - maxPower;
-        if (headroom > 8) headroom -= 8;
         uint256 maxWeight = tw / 8;
         uint256 maxShareSquared = mulDiv(maxWeight, maxWeight, tw);
         uint256 expectedPenalty = mulDiv(headroom, maxShareSquared, tw);

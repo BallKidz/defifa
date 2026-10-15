@@ -22,6 +22,7 @@ This is a V5-to-V6 migration changelog, not a package release log or commit hist
 - `DefifaProjectOwner` was removed. The canonical fee project ownership path now belongs to the V6 revnet / `REVOwner` setup rather than a Defifa-specific sink contract.
 - Chain-specific configuration was removed from the main deployer flow where values are deterministic or canonical. V6 binds those dependencies through constructor immutables and deterministic deployment inputs.
 - Scorecard and attestation handling is stricter. V6 snapshots attestation power before submission and rejects duplicate or malformed scorecard state more explicitly.
+- The concentration-adjusted quorum is capped `MAX_ATTESTATION_POWER_TIER / 10_000` per eligible tier below the maximum BWA, so unanimous attestation reaches it even when BWA truncates per (delegate, tier) pair. The earlier allowance of one unit per submitted tier weight left winner-take-all scorecards in tiers with several holders unable to reach quorum.
 - Game launch and commitment accounting are aligned with the V6 Juicebox and 721 hook stack, including tier cash-out weights and V6 hook events.
 
 ## ABI, Event, and Error Changes

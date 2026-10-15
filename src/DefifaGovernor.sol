@@ -425,15 +425,13 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Headroom = max achievable BWA - base quorum = (N-2) * MAX / 2.
         // This is the gap honest attestors can fill above base quorum.
         // maxShare² is nonlinear: gentle for moderate concentration, steep for extreme.
-        // The penalty can never exceed headroom, so quorum is always reachable by non-beneficiaries.
+        // The result is capped below max BWA by a rounding margin, so quorum stays reachable by non-beneficiaries.
         uint256 baseQuorum = quorum(gameId);
         uint256 adjustedQuorum = baseQuorum;
 
         if (baseQuorum >= MAX_ATTESTATION_POWER_TIER) {
             // headroom = maxBWA - baseQuorum = (N-1)*MAX - N*MAX/2 = (N-2)*MAX/2.
             uint256 headroom = baseQuorum - MAX_ATTESTATION_POWER_TIER;
-            // Subtract numberOfTierWeights to account for per-tier mulDiv truncation in BWA.
-            if (headroom > numberOfTierWeights) headroom -= numberOfTierWeights;
 
             // Find the largest tier weight.
             uint256 totalCashOutWeight = IDefifaHook(metadata.dataHook).TOTAL_CASHOUT_WEIGHT();
@@ -450,6 +448,13 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
 
             // Penalty fills headroom proportional to concentration².
             adjustedQuorum += mulDiv({x: headroom, y: maxShareSquared, denominator: totalCashOutWeight});
+
+            // BWA floors twice per attesting (delegate, tier) pair, losing < 2 units per pair, so unanimous
+            // attestation can fall short of maxBWA by up to 2 units per pair. Keep quorum
+            // MAX_ATTESTATION_POWER_TIER / 10_000 per eligible tier (baseQuorum / 5000 in total) below maxBWA,
+            // which covers an average of up to 50,000 attesting delegates per eligible tier.
+            uint256 reachableQuorum = baseQuorum + headroom - baseQuorum / 5000;
+            if (adjustedQuorum > reachableQuorum) adjustedQuorum = reachableQuorum;
         }
 
         scorecard.quorumSnapshot = adjustedQuorum;
