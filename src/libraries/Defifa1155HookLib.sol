@@ -37,19 +37,6 @@ library Defifa1155HookLib {
     uint256 internal constant RESERVE_TOKEN_ID_OFFSET = 1 << 16;
 
     //*********************************************************************//
-    // -------------------------- internal views ------------------------- //
-    //*********************************************************************//
-
-    /// @notice The tier a token ID belongs to.
-    /// @dev Paid positions use the tier ID; reserve-minted positions use `tierId + RESERVE_TOKEN_ID_OFFSET`.
-    /// @param tokenId The token ID.
-    /// @return tierId The tier ID.
-    function tierIdOf(uint256 tokenId) internal pure returns (uint256 tierId) {
-        tierId = tokenId > RESERVE_TOKEN_ID_OFFSET ? tokenId - RESERVE_TOKEN_ID_OFFSET : tokenId;
-        if (tierId == 0 || tierId >= RESERVE_TOKEN_ID_OFFSET) revert Defifa1155Hook_InvalidTokenId(tokenId);
-    }
-
-    //*********************************************************************//
     // -------------------------- public views --------------------------- //
     //*********************************************************************//
 
@@ -272,5 +259,18 @@ library Defifa1155HookLib {
         }
 
         hookStore.recordBurnCounts({tierIds: tierIds, counts: amounts});
+    }
+
+    //*********************************************************************//
+    // ------------------------- internal views -------------------------- //
+    //*********************************************************************//
+
+    /// @notice The tier a token ID belongs to.
+    /// @dev Paid positions use the tier ID; reserve-minted positions use `tierId + RESERVE_TOKEN_ID_OFFSET`.
+    /// @param tokenId The token ID.
+    /// @return tierId The tier ID.
+    function tierIdOf(uint256 tokenId) internal pure returns (uint256 tierId) {
+        tierId = tokenId > RESERVE_TOKEN_ID_OFFSET ? tokenId - RESERVE_TOKEN_ID_OFFSET : tokenId;
+        if (tierId == 0 || tierId >= RESERVE_TOKEN_ID_OFFSET) revert Defifa1155Hook_InvalidTokenId(tokenId);
     }
 }

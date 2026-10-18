@@ -55,35 +55,6 @@ library DefifaHookLib {
     uint256 internal constant _TOTAL_CASHOUT_WEIGHT = 1_000_000_000_000_000_000;
 
     //*********************************************************************//
-    // ------------------------- internal helpers ------------------------ //
-    //*********************************************************************//
-
-    /// @notice The fee tokens claimable for burned tokens, proportional to what they cost to mint.
-    /// @param cumulativeMintPrice The mint price of the burned tokens.
-    /// @param totalMintCost The cumulative mint cost.
-    /// @param defifaBalance The current $DEFIFA balance.
-    /// @param baseProtocolBalance The current $BASE_PROTOCOL balance.
-    /// @return defifaTokenAmount The claimable $DEFIFA amount.
-    /// @return baseProtocolTokenAmount The claimable $BASE_PROTOCOL amount.
-    function tokensClaimFor(
-        uint256 cumulativeMintPrice,
-        uint256 totalMintCost,
-        uint256 defifaBalance,
-        uint256 baseProtocolBalance
-    )
-        internal
-        pure
-        returns (uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount)
-    {
-        // If nothing was paid to mint, no fee tokens can be claimed.
-        if (totalMintCost == 0) return (0, 0);
-
-        // Calculate the user's claimable amount proportional to what they paid.
-        defifaTokenAmount = mulDiv({x: defifaBalance, y: cumulativeMintPrice, denominator: totalMintCost});
-        baseProtocolTokenAmount = mulDiv({x: baseProtocolBalance, y: cumulativeMintPrice, denominator: totalMintCost});
-    }
-
-    //*********************************************************************//
     // -------------------------- public views --------------------------- //
     //*********************************************************************//
 
@@ -567,5 +538,34 @@ library DefifaHookLib {
         });
 
         return (defifaAmount != 0 || baseProtocolAmount != 0);
+    }
+
+    //*********************************************************************//
+    // ------------------------- internal views -------------------------- //
+    //*********************************************************************//
+
+    /// @notice The fee tokens claimable for burned tokens, proportional to what they cost to mint.
+    /// @param cumulativeMintPrice The mint price of the burned tokens.
+    /// @param totalMintCost The cumulative mint cost.
+    /// @param defifaBalance The current $DEFIFA balance.
+    /// @param baseProtocolBalance The current $BASE_PROTOCOL balance.
+    /// @return defifaTokenAmount The claimable $DEFIFA amount.
+    /// @return baseProtocolTokenAmount The claimable $BASE_PROTOCOL amount.
+    function tokensClaimFor(
+        uint256 cumulativeMintPrice,
+        uint256 totalMintCost,
+        uint256 defifaBalance,
+        uint256 baseProtocolBalance
+    )
+        internal
+        pure
+        returns (uint256 defifaTokenAmount, uint256 baseProtocolTokenAmount)
+    {
+        // If nothing was paid to mint, no fee tokens can be claimed.
+        if (totalMintCost == 0) return (0, 0);
+
+        // Calculate the user's claimable amount proportional to what they paid.
+        defifaTokenAmount = mulDiv({x: defifaBalance, y: cumulativeMintPrice, denominator: totalMintCost});
+        baseProtocolTokenAmount = mulDiv({x: baseProtocolBalance, y: cumulativeMintPrice, denominator: totalMintCost});
     }
 }
