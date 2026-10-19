@@ -143,7 +143,8 @@ contract TierCapMismatchTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: 7 days,
-            timelockDuration: 0
+            timelockDuration: 0,
+            enforceDefaultAttestationDelegate: false
         });
     }
 }

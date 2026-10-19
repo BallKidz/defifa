@@ -196,7 +196,8 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: minParticipation,
             scorecardTimeout: scorecardTimeout,
-            timelockDuration: 0
+            timelockDuration: 0,
+            enforceDefaultAttestationDelegate: false
         });
     }
 

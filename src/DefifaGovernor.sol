@@ -523,11 +523,13 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// measured in seconds.
     /// @param attestationGracePeriod The amount of time that must go by before a scorecard can be ratified.
     /// @param timelockDuration The cooling period after quorum is met before a scorecard can be ratified.
+    /// @param enforceDefaultAttestationDelegate Whether only the default attestation delegate can attest.
     function initializeGame(
         uint256 gameId,
         uint256 attestationStartTime,
         uint256 attestationGracePeriod,
-        uint256 timelockDuration
+        uint256 timelockDuration,
+        bool enforceDefaultAttestationDelegate
     )
         public
         virtual
@@ -566,6 +568,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         packed |= attestationGracePeriod << 48;
         // timelock duration in bits 96-143 (48 bits).
         packed |= timelockDuration << 96;
+        // enforce-default-delegate flag in bit 144, so the game's governance settings stay in one slot.
+        if (enforceDefaultAttestationDelegate) packed |= uint256(1) << 144;
 
         // Store the packed value.
         _packedScorecardInfoOf[gameId] = packed;
@@ -575,6 +579,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             attestationStartTime: attestationStartTime,
             attestationGracePeriod: attestationGracePeriod,
             timelockDuration: timelockDuration,
+            enforceDefaultAttestationDelegate: enforceDefaultAttestationDelegate,
             caller: msg.sender
         });
     }
@@ -599,6 +604,14 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     function attestationStartTimeOf(uint256 gameId) public view override returns (uint256) {
         // attestation start time in bits 0-47 (48 bits).
         return uint256(uint48(_packedScorecardInfoOf[gameId]));
+    }
+
+    /// @notice Whether a game counts only its default attestation delegate's attestations.
+    /// @param gameId The ID of the game.
+    /// @return enforced True if only the default attestation delegate can attest.
+    function enforcesDefaultAttestationDelegate(uint256 gameId) public view override returns (bool enforced) {
+        // enforce-default-delegate flag in bit 144.
+        enforced = (_packedScorecardInfoOf[gameId] >> 144) & 1 == 1;
     }
 
     /// @notice Gets an account's attestation power given a number of tiers to look through.

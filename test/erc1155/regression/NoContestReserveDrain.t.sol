@@ -199,7 +199,8 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 3 ether,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            enforceDefaultAttestationDelegate: false
         });
     }
 

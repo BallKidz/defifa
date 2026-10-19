@@ -158,7 +158,8 @@ contract OneTierZeroTimeoutLockTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: 0,
-            timelockDuration: 0
+            timelockDuration: 0,
+            enforceDefaultAttestationDelegate: false
         });
     }
 }

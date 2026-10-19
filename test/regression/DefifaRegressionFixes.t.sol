@@ -313,7 +313,8 @@ contract DefifaRegressionFixesTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: scorecardTimeout,
-            timelockDuration: timelockDuration
+            timelockDuration: timelockDuration,
+            enforceDefaultAttestationDelegate: false
         });
     }
 
@@ -370,7 +371,8 @@ contract DefifaRegressionFixesTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            enforceDefaultAttestationDelegate: false
         });
     }
 

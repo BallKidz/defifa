@@ -35,9 +35,13 @@ import {DefifaTierParams} from "./DefifaTierParams.sol";
 /// Compared against the hook's `totalMintCost` (immune to `addToBalanceOf` inflation). If below this when scoring
 /// would begin, the game enters NO_CONTEST. Set to 0 to disable.
 /// @custom:member scorecardTimeout The maximum time (in seconds) after the scoring phase begins for a scorecard to be
-/// ratified. If exceeded, the game enters NO_CONTEST. Set to 0 to disable.
+/// ratified. If exceeded, the game enters NO_CONTEST. Must be nonzero.
 /// @custom:member timelockDuration The cooling period (in seconds) that must elapse after a scorecard reaches quorum
 /// (anchored to the later of quorum being met or the grace period ending) before that scorecard can be ratified.
+/// @custom:member enforceDefaultAttestationDelegate Whether only the `defaultAttestationDelegate` can attest. When set,
+/// the default delegate attests with every eligible tier's full power and every other account's attestation counts
+/// for nothing, so the delegate alone decides the result through the normal submit, attest, grace period and ratify
+/// flow. Requires a nonzero `defaultAttestationDelegate`.
 struct DefifaLaunchProjectData {
     string name;
     string projectUri;
@@ -58,4 +62,5 @@ struct DefifaLaunchProjectData {
     uint256 minParticipation;
     uint32 scorecardTimeout;
     uint256 timelockDuration;
+    bool enforceDefaultAttestationDelegate;
 }

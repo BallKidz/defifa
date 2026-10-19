@@ -962,7 +962,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            enforceDefaultAttestationDelegate: false
         });
         (uint256 _projectId, Defifa1155Hook _nft,) = createDefifaProject(_launchData);
         // Wait until the phase 1 start
@@ -1244,7 +1245,8 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            enforceDefaultAttestationDelegate: false
         });
     }
 

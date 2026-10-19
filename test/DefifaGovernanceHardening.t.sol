@@ -4,6 +4,8 @@ pragma solidity 0.8.28;
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
+import {IDefifaGovernor} from "../src/interfaces/IDefifaGovernor.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
@@ -1253,6 +1255,53 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
     // SETUP + PRIMITIVE HELPERS
     // =========================================================================
 
+    //*********************************************************************//
+    // ------------------- enforced default delegate --------------------- //
+    //*********************************************************************//
+
+    /// @notice The default attestation delegate used by the enforced-delegate tests.
+    address internal constant _DELEGATE = address(uint160(uint256(keccak256("enforcedDelegate"))));
+
+    function test_enforced_flagWithoutDefaultDelegateReverts() public {
+        DefifaLaunchProjectData memory d = _launchData(2, 1 ether);
+        d.enforceDefaultAttestationDelegate = true;
+        vm.expectPartialRevert(DefifaDeployer.DefifaDeployer_InvalidGameConfiguration.selector);
+        deployer.launchGameWith(d);
+    }
+
+    function test_enforced_flagIsStoredWithoutDisturbingTiming() public {
+        DefifaLaunchProjectData memory d = _launchDataWithTimelock(2, 1 ether, 7 days);
+        d.defaultAttestationDelegate = _DELEGATE;
+        d.enforceDefaultAttestationDelegate = true;
+        (_pid, _nft, _gov) = _launch(d);
+        assertTrue(_gov.enforcesDefaultAttestationDelegate(_pid), "flag stored");
+        assertEq(_gov.attestationStartTimeOf(_pid), block.timestamp, "start time kept");
+        assertEq(_gov.attestationGracePeriodOf(_pid), d.attestationGracePeriod, "grace period kept");
+        assertEq(_gov.timelockDurationOf(_pid), 7 days, "timelock kept");
+    }
+
+    function test_enforced_flagOffIsReportedOff() public {
+        _setupGame(2, 1 ether);
+        assertFalse(_gov.enforcesDefaultAttestationDelegate(_gameId), "flag off");
+    }
+
+    function test_enforced_gameInitializedCarriesTheFlag() public {
+        DefifaLaunchProjectData memory d = _launchData(2, 1 ether);
+        d.defaultAttestationDelegate = _DELEGATE;
+        d.enforceDefaultAttestationDelegate = true;
+        vm.recordLogs();
+        (_pid, _nft, _gov) = _launch(d);
+        Vm.Log[] memory logs = vm.getRecordedLogs();
+        bool found;
+        for (uint256 i; i < logs.length; i++) {
+            if (logs[i].topics[0] != IDefifaGovernor.GameInitialized.selector) continue;
+            (,,, bool enforced,) = abi.decode(logs[i].data, (uint256, uint256, uint256, bool, address));
+            assertTrue(enforced, "event carries the flag");
+            found = true;
+        }
+        assertTrue(found, "GameInitialized emitted");
+    }
+
     function _setupGame(uint8 nTiers, uint256 tierPrice) internal {
         DefifaLaunchProjectData memory d = _launchData(nTiers, tierPrice);
         (_pid, _nft, _gov) = _launch(d);
@@ -1353,7 +1402,8 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: timelockDuration
+            timelockDuration: timelockDuration,
+            enforceDefaultAttestationDelegate: false
         });
     }
 

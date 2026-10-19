@@ -13,12 +13,14 @@ interface IDefifaGovernor {
     /// @param attestationStartTime The timestamp when attestation begins.
     /// @param attestationGracePeriod The grace period after attestation begins.
     /// @param timelockDuration The timelock duration after quorum is met.
+    /// @param enforceDefaultAttestationDelegate Whether only the default attestation delegate can attest.
     /// @param caller The address that initialized the game.
     event GameInitialized(
         uint256 indexed gameId,
         uint256 attestationStartTime,
         uint256 attestationGracePeriod,
         uint256 timelockDuration,
+        bool enforceDefaultAttestationDelegate,
         address caller
     );
 
@@ -83,6 +85,11 @@ interface IDefifaGovernor {
     /// @param gameId The ID of the game.
     /// @return The scorecard ID.
     function defaultAttestationDelegateProposalOf(uint256 gameId) external view returns (uint256);
+
+    /// @notice Whether a game counts only its default attestation delegate's attestations.
+    /// @param gameId The ID of the game.
+    /// @return enforced True if only the default attestation delegate can attest.
+    function enforcesDefaultAttestationDelegate(uint256 gameId) external view returns (bool enforced);
 
     /// @notice Get the attestation weight for an account at a specific timestamp.
     /// @param gameId The ID of the game.
@@ -168,11 +175,13 @@ interface IDefifaGovernor {
     /// @param attestationStartTime The timestamp when attestation begins.
     /// @param attestationGracePeriod The grace period duration in seconds.
     /// @param timelockDuration The timelock duration after quorum is met, in seconds.
+    /// @param enforceDefaultAttestationDelegate Whether only the default attestation delegate can attest.
     function initializeGame(
         uint256 gameId,
         uint256 attestationStartTime,
         uint256 attestationGracePeriod,
-        uint256 timelockDuration
+        uint256 timelockDuration,
+        bool enforceDefaultAttestationDelegate
     )
         external;
 

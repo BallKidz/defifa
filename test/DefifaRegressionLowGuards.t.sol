@@ -129,13 +129,21 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
         // First initialization should succeed.
         uint256 gameId = 42;
         _standaloneGov.initializeGame({
-            gameId: gameId, attestationStartTime: block.timestamp, attestationGracePeriod: 2 days, timelockDuration: 0
+            gameId: gameId,
+            attestationStartTime: block.timestamp,
+            attestationGracePeriod: 2 days,
+            timelockDuration: 0,
+            enforceDefaultAttestationDelegate: false
         });
 
         // Second initialization for the same gameId should revert.
         vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_AlreadyInitialized.selector);
         _standaloneGov.initializeGame({
-            gameId: gameId, attestationStartTime: block.timestamp, attestationGracePeriod: 2 days, timelockDuration: 0
+            gameId: gameId,
+            attestationStartTime: block.timestamp,
+            attestationGracePeriod: 2 days,
+            timelockDuration: 0,
+            enforceDefaultAttestationDelegate: false
         });
     }
 
@@ -163,7 +171,11 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
 
         vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
         _standaloneGov.initializeGame({
-            gameId: 99, attestationStartTime: overflowStartTime, attestationGracePeriod: 2 days, timelockDuration: 0
+            gameId: 99,
+            attestationStartTime: overflowStartTime,
+            attestationGracePeriod: 2 days,
+            timelockDuration: 0,
+            enforceDefaultAttestationDelegate: false
         });
     }
 
@@ -181,7 +193,8 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
             gameId: 100,
             attestationStartTime: block.timestamp,
             attestationGracePeriod: overflowGracePeriod,
-            timelockDuration: 0
+            timelockDuration: 0,
+            enforceDefaultAttestationDelegate: false
         });
     }
 
@@ -274,7 +287,8 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            enforceDefaultAttestationDelegate: false
         });
     }
 

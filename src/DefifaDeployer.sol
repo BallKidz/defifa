@@ -72,7 +72,8 @@ contract DefifaDeployer is
     error DefifaDeployer_CantFulfillYet(uint256 gameId);
 
     /// @notice Thrown when launching a game with non-sequential phase timestamps, no mint duration, more than 128
-    /// tiers, no scorecard timeout, or a scorecard timeout shorter than the full ratification window.
+    /// tiers, no scorecard timeout, a scorecard timeout shorter than the full ratification window, or an enforced
+    /// default attestation delegate that is the zero address.
     error DefifaDeployer_InvalidGameConfiguration(
         uint256 start, uint256 mintPeriodDuration, uint256 refundPeriodDuration, uint256 tierCount
     );
@@ -493,6 +494,19 @@ contract DefifaDeployer is
             });
         }
 
+        // An enforced default delegate is the only account that can attest, so it must exist.
+        if (
+            launchProjectData.enforceDefaultAttestationDelegate
+                && launchProjectData.defaultAttestationDelegate == address(0)
+        ) {
+            revert DefifaDeployer_InvalidGameConfiguration({
+                start: launchProjectData.start,
+                mintPeriodDuration: launchProjectData.mintPeriodDuration,
+                refundPeriodDuration: launchProjectData.refundPeriodDuration,
+                tierCount: launchProjectData.tiers.length
+            });
+        }
+
         // Reject ERC-20 games with a zero currency. A zero baseCurrency would cause payout limit lookups
         // in fulfillCommitmentsOf to silently fail, skipping all commitment payouts.
         if (launchProjectData.token.token != JBConstants.NATIVE_TOKEN && launchProjectData.token.currency == 0) {
@@ -635,7 +649,8 @@ contract DefifaDeployer is
             gameId: gameId,
             attestationStartTime: uint256(launchProjectData.attestationStartTime),
             attestationGracePeriod: uint256(launchProjectData.attestationGracePeriod),
-            timelockDuration: launchProjectData.timelockDuration
+            timelockDuration: launchProjectData.timelockDuration,
+            enforceDefaultAttestationDelegate: launchProjectData.enforceDefaultAttestationDelegate
         });
 
         // Transfer ownership to the specified owner.
