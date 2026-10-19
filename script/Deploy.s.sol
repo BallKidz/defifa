@@ -52,7 +52,7 @@ contract DeployScript is Script, Sphinx {
     bytes32 private constant _1155_DEPLOYER_SALT = "Defifa1155DeployerV6_";
 
     function configureSphinx() public override {
-        sphinxConfig.projectName = "defifa-v6";
+        sphinxConfig.projectName = "V6";
         sphinxConfig.mainnets = ["ethereum", "optimism", "base", "arbitrum"];
         sphinxConfig.testnets = ["ethereum_sepolia", "optimism_sepolia", "base_sepolia", "arbitrum_sepolia"];
     }
