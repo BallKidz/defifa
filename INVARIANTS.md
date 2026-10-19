@@ -15,7 +15,7 @@ For the cryptoeconomic model (pot formation, prize distribution formula, fee pip
 | COMPLETE | `cashOutWeightIsSet == true` on hook | weighted reclaim by ratified tier weights |
 | NO_CONTEST | `noContestTriggeredFor[gameId]` OR `totalMintCost < minParticipation` OR `block.timestamp > scoringStart + scorecardTimeout` (latched via `triggerNoContestFor`) | full refund at mint price after `triggerNoContestFor` queues the refund ruleset |
 
-NO_CONTEST is reported by the view as soon as the condition is met; the on-chain ruleset only flips when `triggerNoContestFor` is called. The view-vs-state gap is the documented reason holders should check the active ruleset before cashing out (`DefifaDeployer.sol:278-320`, `DefifaDeployer.sol:665-728`).
+NO_CONTEST is reported by the view as soon as the condition is met; the on-chain ruleset only flips when `triggerNoContestFor` is called. The view-vs-state gap is the documented reason holders should check the active ruleset before cashing out (`DefifaDeployer.sol:279-321`, `DefifaDeployer.sol:680-743`).
 
 ---
 
@@ -25,44 +25,50 @@ NO_CONTEST is reported by the view as soon as the condition is met; the on-chain
 
 - **MINT phase issuance.** A `pay()` during MINT charges `tierPrice` per position (uniform across tiers so attestation power is equal). The ERC-721 game mints one NFT per tier ID in the metadata-encoded `(attestationDelegate, uint16[] tierIdsToMint)`, tier IDs non-decreasing (`DefifaHook_BadTierOrder`, `DefifaHookLib.sol:111-158`). The ERC-1155 game mints `counts[i]` positions of each tier in the metadata-encoded `(attestationDelegate, uint16[] tierIds, uint256[] counts)` as one balance per tier (token ID = tier ID); tier IDs must be strictly ascending (`DefifaHook_BadTierOrder`), counts non-zero (`Defifa1155Hook_ZeroAmount`), and lengths equal (`Defifa1155Hook_LengthMismatch`) (`Defifa1155HookLib.sol:66-93`). Overspending (`leftoverAmount != 0`) reverts with `DefifaHook_Overspending` / `Defifa1155Hook_Overspending` — payer cannot accidentally over-fund. (`DefifaHook.sol:1135`, `Defifa1155Hook.sol:1158`)
 - **Currency lock-in.** Payment currency must equal the `pricingCurrency` baked into the hook at `initialize`; mismatched currency reverts `DefifaHook_WrongCurrency` / `Defifa1155Hook_WrongCurrency`. (`DefifaHook.sol:1070-1074`, `Defifa1155Hook.sol:1087-1091`)
-- **No mints outside MINT.** All non-MINT rulesets carry `pausePay=true` (`DefifaDeployer.sol:697`, `DefifaDeployer.sol:903`, `DefifaDeployer.sol:962`, `DefifaDeployer.sol:1018`). REFUND, SCORING, COMPLETE, and NO_CONTEST refund cycles all reject `pay`.
+- **No mints outside MINT.** All non-MINT rulesets carry `pausePay=true` (`DefifaDeployer.sol:712`, `DefifaDeployer.sol:918`, `DefifaDeployer.sol:977`, `DefifaDeployer.sol:1033`). REFUND, SCORING, COMPLETE, and NO_CONTEST refund cycles all reject `pay`.
 - **REFUND-phase reclaim.** During REFUND, surplus equals balance (no payout limits), so cash-out at the prevailing cash-out tax (0% for non-COMPLETE phases per `setTierCashOutWeightsTo` gating) returns each holder their proportional share of the pot — effectively the mint price for paid positions. Reserve-minted positions cannot be refunded: a MINT/REFUND/NO_CONTEST cash-out that includes one reverts (`DefifaHook_CantRefundReserveMint` / `Defifa1155Hook_CantRefundReserveMint`), including after transfer, so its notional cost never stays in `totalMintCost` or counts as a refunded burn. Reserves exist only from SCORING on, so in practice this applies in NO_CONTEST. ERC-721 reserve NFTs are flagged `isReserveMint` (`DefifaHook.sol:360-367`, `DefifaHookLib.sol:319-321`); ERC-1155 reserve positions live under token ID `tierId + RESERVE_TOKEN_ID_OFFSET` (`Defifa1155Hook.sol:397-404`, `Defifa1155HookLib.sol:182-184`).
-- **NO_CONTEST refund.** Once `triggerNoContestFor` runs, the queued ruleset has no payout limits and `cashOutTaxRate=0`, enabling cash-out at mint price. Anyone can trigger this — players are not at the mercy of the deployer. (`DefifaDeployer.sol:665-728`)
+- **NO_CONTEST refund.** Once `triggerNoContestFor` runs, the queued ruleset has no payout limits and `cashOutTaxRate=0`, enabling cash-out at mint price. Anyone can trigger this — players are not at the mercy of the deployer. (`DefifaDeployer.sol:680-743`)
 - **COMPLETE-phase weighted reclaim.** After scorecard ratification, the hook's `beforeCashOutRecordedWith` substitutes the ratified per-tier `cashOutWeight` for raw token count, so winning tiers reclaim more pot per position than losers. Total reclaim is bounded by `TOTAL_CASHOUT_WEIGHT = 1e18` for accounting precision (`DefifaHook.sol:95, 374-381`, `Defifa1155Hook.sol:116, 412-418`).
 - **Cash-out burns the positions.** The ERC-721 hook's `afterCashOutRecordedWith` requires `context.holder` to own each token ID, burns it, and decrements `totalMintCost` (`DefifaHook.sol:752-781, 815`). The ERC-1155 hook checks the holder's balance for each `(tokenId, amount)`, burns them with `_burnBatch`, records the burns in the store, and decrements `totalMintCost` (`Defifa1155Hook.sol:785-808, 839`).
 - **0-weight-tier protection against accidental burns.** Positions whose tier received 0 cash-out weight (losing teams) revert with `DefifaHook_NothingToClaim` / `Defifa1155Hook_NothingToClaim` if neither reclaim nor fee tokens would be distributed — protecting holders from burning for nothing. (`DefifaHook.sol:808-812`, `Defifa1155Hook.sol:832-836`)
 - **Fee-token (`$DEFIFA`/`$BASE_PROTOCOL`) claims.** On COMPLETE-phase cash-out, holders also receive their pro-rata share of the fee-project tokens delivered to the hook during `fulfillCommitmentsOf`. Share = `cumulativeMintPrice / (totalMintCost + pendingReserveMintCost)`. Reserves are accounted in the denominator so paid holders cannot claim a disproportionate share before reserves mint. Both hooks compute the share with `DefifaHookLib.tokensClaimFor` (`DefifaHookLib.sol:554-570`). (`DefifaHook.sol:797-801`, `Defifa1155Hook.sol:821-825`)
 - **Reserve mints are permissionless and capped.** `mintReservesFor` mints to the pre-configured reserve beneficiary only, capped at `adjustedPendingReservesFor(tier)`. No caller can mint more than the tier's reserve frequency entitles. (`DefifaHook.sol:644-645`, `Defifa1155Hook.sol:698-699`)
 - **Empty reserve mints write no delegation.** `mintReservesFor` returns before any delegation write when the capped count is 0 or the tier has no reserve beneficiary, and mints and burns never read or write the zero address's tier delegate. A reserve-mint call with nothing to mint therefore cannot set `_tierDelegation[address(0)]`, which later pays would otherwise charge as the source delegate and revert. (`DefifaHook.sol:649, 1175, 1184`, `Defifa1155Hook.sol:703, 1198, 1207`)
-- **Game configuration sanity.** `launchGameWith` reverts if start/mint/refund durations are inconsistent, if `tiers.length > 128`, if `scorecardTimeout == 0`, if ERC-20 games supply `currency=0`, or if `scorecardTimeout` is too short to ever allow ratification (`attestationDelay + gracePeriod + timelock`). (`DefifaDeployer.sol:436-523`)
-- **Frozen tier price.** All tiers launch with the same `tierPrice`, `discountPercent=0`, `cantIncreaseDiscountPercent=true`, `cantBeRemoved=true`, `allowOwnerMint=false`. Operator cannot drop in cheap tiers post-launch or admin-mint into a winning tier. (`DefifaDeployer.sol:562-583`)
+- **Game configuration sanity.** `launchGameWith` reverts if start/mint/refund durations are inconsistent, if `tiers.length > 128`, if `scorecardTimeout == 0`, if `enforceDefaultAttestationDelegate` is set without a `defaultAttestationDelegate`, if ERC-20 games supply `currency=0`, or if `scorecardTimeout` is too short to ever allow ratification (`attestationDelay + gracePeriod + timelock`). (`DefifaDeployer.sol:437-537`)
+- **Frozen tier price.** All tiers launch with the same `tierPrice`, `discountPercent=0`, `cantIncreaseDiscountPercent=true`, `cantBeRemoved=true`, `allowOwnerMint=false`. Operator cannot drop in cheap tiers post-launch or admin-mint into a winning tier. (`DefifaDeployer.sol:576-597`)
 
 ### A.2 Attesters (governance participants)
 
 - **BWA snapshot one second before submission.** Voting power is read at `scorecard.snapshotTimestamp` = submission timestamp − 1. Checkpoints are `block.timestamp`-keyed and same-timestamp writes overwrite in place, so reading before the submission block excludes any mint or transfer that shares that block, in either order relative to submission — neither a post-submission `mintReservesFor` nor a same-block `transferFrom` / `safeTransferFrom` can grant or move attestation power for that scorecard. `attestationsBegin` is still advanced to the next timestamp so the attestation window opens in a later block than submission (`DefifaGovernor.sol` `attestToScorecardFrom` and `submitScorecardFor`).
-- **Benefit-Weighted Attestation (BWA) reduces beneficiary power.** Each tier's attestation power is scaled by `(totalCashOutWeight - tierWeight) / totalCashOutWeight`. A tier with 100% of the scorecard weight receives 0 attestation power on that scorecard — beneficiaries **cannot self-attest at full power** (`DefifaGovernor.sol:747-751`). Zero-power attestations revert (`DefifaGovernor.sol:195-199`).
-- **Concentration-adjusted quorum.** Base quorum is 50% of `eligibleTierWeights × MAX_ATTESTATION_POWER_TIER`. When the scorecard concentrates weight on one tier, quorum is raised by `headroom × maxShare²`, and the result is capped at `baseQuorum + headroom - baseQuorum / 5000`, a rounding margin of `MAX_ATTESTATION_POWER_TIER / 10_000` per eligible tier below max BWA. BWA loses < 2 units per attesting (delegate, tier) pair, so unanimous non-beneficiary attestation reaches quorum while attesting delegates average at most 50,000 per eligible tier (`DefifaGovernor.sol:424-460`).
-- **Minimum grace period (1 day).** Enforced at `initializeGame`; prevents instant-ratification attacks (`DefifaGovernor.sol:74, 543-548`).
-- **Timelock anchors to the later of grace-period end or quorum-reached time.** A late-arriving quorum still gets the full cooling period (`DefifaGovernor.sol:852-855`).
-- **One attestation per (account, scorecard).** Re-attestation reverts `AlreadyAttested`. Revocation requires prior attestation (`DefifaGovernor.sol:183-186, 274-277`).
-- **Revocation disabled once QUEUED.** Only `ACTIVE`-state attestations are revocable; this kills the attest/revoke griefing loop while still allowing course-correction during open debate. Quorum-reached timestamp resets to 0 if revocation drops the count below quorum (`DefifaGovernor.sol:265-292`).
-- **Single ratification per game.** `ratifiedScorecardIdOf[gameId] != 0` reverts subsequent submissions and ratifications with `AlreadyRatified` (`DefifaGovernor.sol:227-230, 306-309`).
-- **Duplicate-scorecard rejection.** `_scorecardOf[gameId][scorecardId].attestationsBegin != 0` ⇒ `DuplicateScorecard`. The scorecard ID is the keccak of `(hook, calldata)`, so the same weight vector cannot be re-submitted (`DefifaGovernor.sol:350-354`).
-- **Submission rejects unrealizable weights.** A scorecard with `cashOutWeight > 0` for a tier with `currentSupplyOfTier == 0` reverts (`DefifaGovernor.sol:325-337`). Defends against scorecards that would route value to nobody.
+- **Benefit-Weighted Attestation (BWA) reduces beneficiary power.** Each tier's attestation power is scaled by `(totalCashOutWeight - tierWeight) / totalCashOutWeight`. A tier with 100% of the scorecard weight receives 0 attestation power on that scorecard — beneficiaries **cannot self-attest at full power** (`DefifaGovernor.sol:757-761`). Zero-power attestations revert (`DefifaGovernor.sol:203-207`).
+- **Concentration-adjusted quorum.** With N quorum-eligible tiers, the most attestation any scorecard can collect is `maxBWA = (N - 1) × MAX_ATTESTATION_POWER_TIER`, because a tier never attests to its own payout. At submission the governor snapshots `quorum = max(1, maxBWA × bps / 10_000)` with `bps = QUORUM_EVEN_BPS + (QUORUM_WINNER_TAKE_ALL_BPS - QUORUM_EVEN_BPS) × maxShare²`, where `maxShare` is the largest tier weight over `TOTAL_CASHOUT_WEIGHT`, `QUORUM_EVEN_BPS = 5_000` and `QUORUM_WINNER_TAKE_ALL_BPS = 7_500`. Quorum never exceeds 75% of `maxBWA`, so BWA rounding (under 2 units per attesting delegate and tier) cannot put it out of reach of unanimous non-beneficiary attestation; the floor of 1 keeps a one-tier game unratifiable. `quorum(gameId)` reports the even-split quorum (`DefifaGovernor.sol:432-455, 914-927`).
+
+  | Largest tier share | Even | 25% | 50% | 75% | 100% |
+  | --- | --- | --- | --- | --- | --- |
+  | Share of `maxBWA` needed | 50% | 51.6% | 56.25% | 64.1% | 75% |
+
+- **Enforced default delegate.** When a game launches with `enforceDefaultAttestationDelegate`, `getBWAAttestationWeight` returns 0 for every account except the hook's `defaultAttestationDelegate`, and that delegate's raw power in each tier is `MAX_ATTESTATION_POWER_TIER` whenever the tier has attestation units at the scorecard's snapshot, regardless of its own units, before BWA scaling. Its weight on any scorecard therefore equals that scorecard's full possible attestation, which meets every quorum, and no holder's delegation can change the result. The deployer rejects the flag without a nonzero default delegate, and the grace period, timelock and `scorecardTimeout` still apply (`DefifaGovernor.sol:716-718, 733-755`, `DefifaDeployer.sol:497-508`).
+- **Minimum grace period (1 day).** Enforced at `initializeGame`; prevents instant-ratification attacks (`DefifaGovernor.sol:74, 540-545`).
+- **Timelock anchors to the later of grace-period end or quorum-reached time.** A late-arriving quorum still gets the full cooling period (`DefifaGovernor.sol:827-830`).
+- **One attestation per (account, scorecard).** Re-attestation reverts `AlreadyAttested`. Revocation requires prior attestation (`DefifaGovernor.sol:191-194, 282-285`).
+- **Revocation disabled once QUEUED.** Only `ACTIVE`-state attestations are revocable; this kills the attest/revoke griefing loop while still allowing course-correction during open debate. Quorum-reached timestamp resets to 0 if revocation drops the count below quorum (`DefifaGovernor.sol:273-300`).
+- **Single ratification per game.** `ratifiedScorecardIdOf[gameId] != 0` reverts subsequent submissions and ratifications with `AlreadyRatified` (`DefifaGovernor.sol:235-238, 314-317`).
+- **Duplicate-scorecard rejection.** `_scorecardOf[gameId][scorecardId].attestationsBegin != 0` ⇒ `DuplicateScorecard`. The scorecard ID is the keccak of `(hook, calldata)`, so the same weight vector cannot be re-submitted (`DefifaGovernor.sol:359-362`).
+- **Submission rejects unrealizable weights.** A scorecard with `cashOutWeight > 0` for a tier with `currentSupplyOfTier == 0` reverts (`DefifaGovernor.sol:333-345`). Defends against scorecards that would route value to nobody.
 - **Reserve-mint snapshots.** On submission, the governor snapshots each tier's pending reserves and minted-unit total. Because attestation reads at `snapshotTimestamp` (before the submission block), a reserve minted at or after submission gains no numerator. The minted-unit snapshot additionally clamps the denominator for reads at a later timestamp (e.g. delayed-attestation games, where the snapshot timestamp passed to the view is in the future relative to submission), and the snapshotted pending reserves are added back so unminted reserves dilute exactly once (`DefifaGovernor.sol` `getBWAAttestationWeight`).
-- **Quorum eligibility includes pending reserves.** A tier with all paid tokens burned during REFUND but with pending reserves still contributes to quorum, so a burner cannot erase another participant's quorum contribution (`DefifaGovernor.sol:786-795`).
+- **Quorum eligibility includes pending reserves.** A tier with all paid tokens burned during REFUND but with pending reserves still contributes to quorum, so a burner cannot erase another participant's quorum contribution (`DefifaGovernor.sol:899-907`).
 
 ### A.3 Protections against external interference
 
 - **No third-party can change cash-out weights.** `setTierCashOutWeightsTo` is `onlyOwner` (the governor) AND gated on `gamePhase == SCORING` AND single-shot (`cashOutWeightIsSet`). Even the governor can't re-score a game once set. (`DefifaHook.sol:840-861`, `Defifa1155Hook.sol:864-885`)
-- **No third-party can re-route fee splits.** Splits are written by the deployer once during `_buildSplits` for the scoring ruleset and never changed (`DefifaDeployer.sol:734-823`). The deployer permanently holds the game's `JBProjects` NFT (`DefifaDeployer.sol:531-532`).
-- **No third-party can mint admin pieces.** `allowOwnerMint=false` on every tier (`DefifaDeployer.sol:573`); the controller's `allowOwnerMinting=false` on every ruleset.
+- **No third-party can re-route fee splits.** Splits are written by the deployer once during `_buildSplits` for the scoring ruleset and never changed (`DefifaDeployer.sol:749-838`). The deployer permanently holds the game's `JBProjects` NFT (`DefifaDeployer.sol:545-546`).
+- **No third-party can mint admin pieces.** `allowOwnerMint=false` on every tier (`DefifaDeployer.sol:587`); the controller's `allowOwnerMinting=false` on every ruleset.
 - **Reserve mints blocked in NO_CONTEST.** Prevents a malicious reserve mint from inflating `totalMintCost` past `minParticipation` after the game has already failed the participation check, which would otherwise revive the game from NO_CONTEST → SCORING (`DefifaHook.sol:632-634`, `Defifa1155Hook.sol:686-688`).
 - **Delegate changes locked after MINT.** `setTierDelegateTo` / `setTierDelegatesTo` revert outside the MINT phase. This freezes voting power before scoring begins, so attestation can't be hot-swapped to a colluding delegate after scorecards drop (`DefifaHook.sol:873-875, 886-888`, `Defifa1155Hook.sol:897-899, 910-912`).
-- **`addToBalanceOf` cannot inflate participation.** `minParticipation` is checked against `totalMintCost` (incremented only by paid mints and reserve mints), not terminal balance — donations to the terminal cannot artificially satisfy the participation threshold (`DefifaDeployer.sol:302-309`).
-- **Front-run-resistant hook clone.** `cloneDeterministic` salts on `keccak256(_msgSender(), nonce)` so a different resolved caller produces a different address; a watcher cannot front-run `launchGameWith` to deploy a hook at the predicted address and DoS initialization. For trusted-forwarder calls, `_msgSender()` is the ERC-2771 signer, not the forwarder (`DefifaDeployer.sol:596-605`).
-- **Commitment fulfillment is single-shot.** `commitmentsFulfilledFor[gameId]` set BEFORE external calls; a re-entrant call returns early (`DefifaDeployer.sol:368-370`).
-- **NO_CONTEST trigger is single-shot.** `noContestTriggeredFor[gameId]` set BEFORE queuing the refund ruleset; a re-entrant call reverts `NoContestAlreadyTriggered` (`DefifaDeployer.sol:672-680`).
+- **`addToBalanceOf` cannot inflate participation.** `minParticipation` is checked against `totalMintCost` (incremented only by paid mints and reserve mints), not terminal balance — donations to the terminal cannot artificially satisfy the participation threshold (`DefifaDeployer.sol:303-310`).
+- **Front-run-resistant hook clone.** `cloneDeterministic` salts on `keccak256(_msgSender(), nonce)` so a different resolved caller produces a different address; a watcher cannot front-run `launchGameWith` to deploy a hook at the predicted address and DoS initialization. For trusted-forwarder calls, `_msgSender()` is the ERC-2771 signer, not the forwarder (`DefifaDeployer.sol:610-619`).
+- **Commitment fulfillment is single-shot.** `commitmentsFulfilledFor[gameId]` set BEFORE external calls; a re-entrant call returns early (`DefifaDeployer.sol:370-371`).
+- **NO_CONTEST trigger is single-shot.** `noContestTriggeredFor[gameId]` set BEFORE queuing the refund ruleset; a re-entrant call reverts `NoContestAlreadyTriggered` (`DefifaDeployer.sol:687-695`).
 
 ---
 
@@ -70,21 +76,21 @@ NO_CONTEST is reported by the view as soon as the condition is met; the on-chain
 
 ### B.1 DefifaDeployer bindings
 
-- **Dependency bindings are constructor `immutable`s, not a runtime setter.** `HOOK_CODE_ORIGIN`, `TOKEN_URI_RESOLVER`, `GOVERNOR`, `CONTROLLER`, `REGISTRY`, `DEFIFA_PROJECT_ID`, `BASE_PROTOCOL_PROJECT_ID`, `HOOK_STORE`, and the ERC-2771 `trustedForwarder` are all fixed at construction (`DefifaDeployer.sol:335-359`). These dependencies share unified CREATE2 addresses / canonical project IDs across chains, so nothing chain-specific remains to wire post-deploy — no address can mutate them after deployment.
+- **Dependency bindings are constructor `immutable`s, not a runtime setter.** `HOOK_CODE_ORIGIN`, `TOKEN_URI_RESOLVER`, `GOVERNOR`, `CONTROLLER`, `REGISTRY`, `DEFIFA_PROJECT_ID`, `BASE_PROTOCOL_PROJECT_ID`, `HOOK_STORE`, and the ERC-2771 `trustedForwarder` are all fixed at construction (`DefifaDeployer.sol:336-360`). These dependencies share unified CREATE2 addresses / canonical project IDs across chains, so nothing chain-specific remains to wire post-deploy — no address can mutate them after deployment.
 
-No caller can retro-edit any existing game's rulesets, splits, fee divisors, or tier configuration. The protocol-fee divisor (`BASE_PROTOCOL_FEE_DIVISOR = 40` ⇒ 2.5%) and Defifa-fee divisor (`DEFIFA_FEE_DIVISOR = 20` ⇒ 5%) are `constant` (`DefifaDeployer.sol:98, 102`).
+No caller can retro-edit any existing game's rulesets, splits, fee divisors, or tier configuration. The protocol-fee divisor (`BASE_PROTOCOL_FEE_DIVISOR = 40` ⇒ 2.5%) and Defifa-fee divisor (`DEFIFA_FEE_DIVISOR = 20` ⇒ 5%) are `constant` (`DefifaDeployer.sol:99, 103`).
 
 ### B.2 DefifaGovernor owner (governor as game-hook owner)
 
-- **`initializeGame(gameId, attestationStartTime, attestationGracePeriod, timelockDuration)`** — `onlyOwner` (the deployer, called from `launchGameWith`), one-time per game (`_packedScorecardInfoOf[gameId] != 0` reverts `AlreadyInitialized`). Enforces `attestationGracePeriod >= 1 day` and `uint48` bounds on each field (`DefifaGovernor.sol:526-580`).
+- **`initializeGame(gameId, attestationStartTime, attestationGracePeriod, timelockDuration, enforceDefaultAttestationDelegate)`** — `onlyOwner` (the deployer, called from `launchGameWith`), one-time per game (`_packedScorecardInfoOf[gameId] != 0` reverts `AlreadyInitialized`). Enforces `attestationGracePeriod >= 1 day` and `uint48` bounds on each field (`DefifaGovernor.sol:522-580`).
 
-The governor itself is the `owner` of every hook its deployer launches (`DefifaDeployer.sol:641-642`). This means the governor — and only the governor — can call `setTierCashOutWeightsTo` on those hooks. The governor's `ratifyScorecardFrom` is the **only** path that exercises this owner power, and it requires `state == SUCCEEDED` (`DefifaGovernor.sol:241-244`). The governor's own `Ownable` `owner` is set at deploy; that owner has no further authority over individual games once `initializeGame` has been called.
+The governor itself is the `owner` of every hook its deployer launches (`DefifaDeployer.sol:656-657`). This means the governor — and only the governor — can call `setTierCashOutWeightsTo` on those hooks. The governor's `ratifyScorecardFrom` is the **only** path that exercises this owner power, and it requires `state == SUCCEEDED` (`DefifaGovernor.sol:249-252`). The governor's own `Ownable` `owner` is set at deploy; that owner has no further authority over individual games once `initializeGame` has been called.
 
 ### B.3 Liveness guarantees
 
-- **Phase progression doesn't require any privileged action.** Phase transitions are pure functions of `block.timestamp` and ruleset cycle number (`DefifaDeployer.sol:278-320`). Anyone can call `fulfillCommitmentsOf` (after `cashOutWeightIsSet`), `triggerNoContestFor` (when conditions match), or `mintReservesFor`.
-- **Ratification triggers commitment fulfillment atomically.** `ratifyScorecardFrom` calls `IDefifaDeployer.fulfillCommitmentsOf(gameId)` after setting the cash-out weights, so the final ruleset is queued in the same tx that finalizes scoring (`DefifaGovernor.sol:253-255`). `fulfillCommitmentsOf` wraps `sendPayoutsOf` in try/catch and always queues the final ruleset (`DefifaDeployer.sol:402-417`).
-- **`scorecardTimeout` backstop.** If no scorecard ratifies in time, the game transitions to NO_CONTEST via the view; `triggerNoContestFor` then queues the refund ruleset (`DefifaDeployer.sol:311-317`, `DefifaDeployer.sol:665-728`).
+- **Phase progression doesn't require any privileged action.** Phase transitions are pure functions of `block.timestamp` and ruleset cycle number (`DefifaDeployer.sol:279-321`). Anyone can call `fulfillCommitmentsOf` (after `cashOutWeightIsSet`), `triggerNoContestFor` (when conditions match), or `mintReservesFor`.
+- **Ratification triggers commitment fulfillment atomically.** `ratifyScorecardFrom` calls `IDefifaDeployer.fulfillCommitmentsOf(gameId)` after setting the cash-out weights, so the final ruleset is queued in the same tx that finalizes scoring (`DefifaGovernor.sol:261-263`). `fulfillCommitmentsOf` wraps `sendPayoutsOf` in try/catch and always queues the final ruleset (`DefifaDeployer.sol:403-418`).
+- **`scorecardTimeout` backstop.** If no scorecard ratifies in time, the game transitions to NO_CONTEST via the view; `triggerNoContestFor` then queues the refund ruleset (`DefifaDeployer.sol:312-318`, `DefifaDeployer.sol:680-743`).
 
 ---
 
@@ -96,23 +102,23 @@ Owns every game's project NFT (`PROJECTS.createFor(this)` in `launchGameWith`). 
 
 **Permissionless game launch:**
 
-- **`launchGameWith(DefifaLaunchProjectData)` payable → gameId** — anyone, including through the configured ERC-2771 trusted forwarder. Forwards `msg.value` to `JBProjects.createFor` for the creation fee and advertises the resolved `_msgSender()` as `originalPayer` while `createFor` runs. Validates timing/tier/currency/timeout consistency; clones the Defifa hook via `cloneDeterministic` salted with `_msgSender() || nonce`; queues MINT (optional REFUND) and SCORING rulesets via `controller.launchRulesetsFor`; calls `governor.initializeGame`; transfers hook ownership to the governor; registers the clone in the address registry. (`DefifaDeployer.sol:426-653`)
+- **`launchGameWith(DefifaLaunchProjectData)` payable → gameId** — anyone, including through the configured ERC-2771 trusted forwarder. Forwards `msg.value` to `JBProjects.createFor` for the creation fee and advertises the resolved `_msgSender()` as `originalPayer` while `createFor` runs. Validates timing/tier/currency/timeout consistency; clones the Defifa hook via `cloneDeterministic` salted with `_msgSender() || nonce`; queues MINT (optional REFUND) and SCORING rulesets via `controller.launchRulesetsFor`; calls `governor.initializeGame` (passing `enforceDefaultAttestationDelegate`); transfers hook ownership to the governor; registers the clone in the address registry. (`DefifaDeployer.sol:427-668`)
   - **Invariant:** game ID reserved before hook deployment so an interleaving `createFor` cannot invalidate the salt. Project NFT permanently held by this contract.
 
 **Permissionless lifecycle triggers:**
 
-- **`fulfillCommitmentsOf(uint256 gameId)`** — anyone after `cashOutWeightIsSet`. Single-shot (`commitmentsFulfilledFor` set before external calls). Pays `pot × commitmentPercent / SPLITS_TOTAL_PERCENT` via `sendPayoutsOf`; queues the final ruleset (no payouts, surplus = balance). Wraps payout in try/catch; if payout fails, fee stays in pot and `fulfilledCommitmentsOf` resets to 0. Final ruleset always queued. (`DefifaDeployer.sol:367-420`)
+- **`fulfillCommitmentsOf(uint256 gameId)`** — anyone after `cashOutWeightIsSet`. Single-shot (`commitmentsFulfilledFor` set before external calls). Pays `pot × commitmentPercent / SPLITS_TOTAL_PERCENT` via `sendPayoutsOf`; queues the final ruleset (no payouts, surplus = balance). Wraps payout in try/catch; if payout fails, fee stays in pot and `fulfilledCommitmentsOf` resets to 0. Final ruleset always queued. (`DefifaDeployer.sol:368-421`)
   - **Invariant:** caller cannot route the fee elsewhere; recipients are the user splits + Defifa project + base-protocol project, all baked in at launch. Pot accounting via `currentGamePotOf(includeCommitments=true)` stays consistent regardless of payout success.
-- **`triggerNoContestFor(uint256 gameId)`** — anyone when `currentGamePhaseOf == NO_CONTEST` (i.e. participation failed or scorecard timeout elapsed). Single-shot via `noContestTriggeredFor`. Queues a `pausePay=true`, no-payout-limit, `cashOutTaxRate=0` ruleset that turns the entire balance into surplus, enabling refund cash-outs. (`DefifaDeployer.sol:665-728`)
+- **`triggerNoContestFor(uint256 gameId)`** — anyone when `currentGamePhaseOf == NO_CONTEST` (i.e. participation failed or scorecard timeout elapsed). Single-shot via `noContestTriggeredFor`. Queues a `pausePay=true`, no-payout-limit, `cashOutTaxRate=0` ruleset that turns the entire balance into surplus, enabling refund cash-outs. (`DefifaDeployer.sol:680-743`)
   - **Invariant:** cannot be called when scorecard ratified (`cashOutWeightIsSet` ⇒ phase = COMPLETE, not NO_CONTEST); cannot be called twice; queued ruleset uses the current ruleset's `dataHook`/`baseCurrency`.
 
 **Construction-time bindings:**
 
-- All Defifa dependencies (hook origin, URI resolver, governor, controller, registry, fee project IDs, hook store, and trusted forwarder) are constructor `immutable`s — there is no post-deploy setter to bind or rebind them. (`DefifaDeployer.sol:335-359`)
+- All Defifa dependencies (hook origin, URI resolver, governor, controller, registry, fee project IDs, hook store, and trusted forwarder) are constructor `immutable`s — there is no post-deploy setter to bind or rebind them. (`DefifaDeployer.sol:336-360`)
 
 **ERC-721 receipt:**
 
-- **`onERC721Received(...)`** — accepts any 721 (returns selector). Used during `createFor` to receive the game's `JBProjects` NFT. (`DefifaDeployer.sol:656-658`)
+- **`onERC721Received(...)`** — accepts any 721 (returns selector). Used during `createFor` to receive the game's `JBProjects` NFT. (`DefifaDeployer.sol:671-673`)
 
 **Views:** `currentGamePhaseOf`, `currentGamePotOf`, `nextPhaseNeedsQueueing`, `safetyParamsOf`, `timesFor`, `tokenOf`, `BASE_PROTOCOL_FEE_DIVISOR`, `DEFIFA_FEE_DIVISOR`, `defifaProjectId`, `baseProtocolProjectId`, `hookCodeOrigin`, `tokenUriResolver`, `governor`, `controller`, `registry`, `hookStore`, `fulfilledCommitmentsOf`, `commitmentsFulfilledFor`, `noContestTriggeredFor`.
 
@@ -122,17 +128,17 @@ One per deployer, so one per game type. Owns every hook clone its deployer launc
 
 **Owner-only (one-shot per game):**
 
-- **`initializeGame(gameId, attestationStartTime, attestationGracePeriod, timelockDuration)`** — `onlyOwner` (deployer, during `launchGameWith`). Reverts `AlreadyInitialized` on re-call; enforces `attestationGracePeriod >= MIN_ATTESTATION_GRACE_PERIOD (1 day)`; bounds each field to `uint48`. Packs into `_packedScorecardInfoOf[gameId]`. (`DefifaGovernor.sol:526-580`)
+- **`initializeGame(gameId, attestationStartTime, attestationGracePeriod, timelockDuration, enforceDefaultAttestationDelegate)`** — `onlyOwner` (deployer, during `launchGameWith`). Reverts `AlreadyInitialized` on re-call; enforces `attestationGracePeriod >= MIN_ATTESTATION_GRACE_PERIOD (1 day)`; bounds each field to `uint48`. Packs into `_packedScorecardInfoOf[gameId]`, with the enforce flag in bit 144. Emits `GameInitialized` with the flag. (`DefifaGovernor.sol:522-580`)
 
 **Permissionless during SCORING:**
 
-- **`submitScorecardFor(gameId, DefifaTierCashOutWeight[]) → scorecardId`** — anyone. Reverts if `ratifiedScorecardIdOf[gameId] != 0` or game not initialized or not in SCORING. Validates each weight via `DefifaHookLib.validateAndBuildWeights` (same validation the hook applies at ratification); ensures any `cashOutWeight > 0` tier has live ownership. Snapshots pending reserves and minted attestation units per tier (BWA denominator stability). Computes concentration-adjusted quorum (`baseQuorum + headroom × maxShare² / totalCashOutWeight`). Same hash twice reverts `DuplicateScorecard`. (`DefifaGovernor.sol:298-477`)
+- **`submitScorecardFor(gameId, DefifaTierCashOutWeight[]) → scorecardId`** — anyone. Reverts if `ratifiedScorecardIdOf[gameId] != 0` or game not initialized or not in SCORING. Validates each weight via `DefifaHookLib.validateAndBuildWeights` (same validation the hook applies at ratification); ensures any `cashOutWeight > 0` tier has live ownership. Snapshots pending reserves and minted attestation units per tier (BWA denominator stability). Computes concentration-adjusted quorum (`maxBWA × (QUORUM_EVEN_BPS + (QUORUM_WINNER_TAKE_ALL_BPS - QUORUM_EVEN_BPS) × maxShare²) / 10_000`, at least 1). Same hash twice reverts `DuplicateScorecard`. (`DefifaGovernor.sol:306-472`)
 - **`attestToScorecardFrom(gameId, scorecardId) → weight`** — anyone with BWA power > 0 during ACTIVE/SUCCEEDED/QUEUED. Reads voting power at `scorecard.snapshotTimestamp` (one second before submission). Zero-power callers revert `NotAllowed` (prevents zero-weight repeat). Records when quorum is first reached. (`DefifaGovernor.sol` `attestToScorecardFrom`)
-- **`revokeAttestationFrom(gameId, scorecardId)`** — prior attester only, ACTIVE state only. Decrements `attestations.count`; resets `_quorumReachedAtOf` if count drops below quorum. (`DefifaGovernor.sol:265-292`)
-- **`ratifyScorecardFrom(gameId, DefifaTierCashOutWeight[]) → scorecardId`** — anyone once `state == SUCCEEDED`. Reverts if already ratified. Stores `ratifiedScorecardIdOf`, low-level-calls `metadata.dataHook.setTierCashOutWeightsTo(tierWeights)` (the governor is the hook's owner), then calls `IDefifaDeployer.fulfillCommitmentsOf(gameId)`. (`DefifaGovernor.sol:219-258`)
+- **`revokeAttestationFrom(gameId, scorecardId)`** — prior attester only, ACTIVE state only. Decrements `attestations.count`; resets `_quorumReachedAtOf` if count drops below quorum. (`DefifaGovernor.sol:273-300`)
+- **`ratifyScorecardFrom(gameId, DefifaTierCashOutWeight[]) → scorecardId`** — anyone once `state == SUCCEEDED`. Reverts if already ratified. Stores `ratifiedScorecardIdOf`, low-level-calls `metadata.dataHook.setTierCashOutWeightsTo(tierWeights)` (the governor is the hook's owner), then calls `IDefifaDeployer.fulfillCommitmentsOf(gameId)`. (`DefifaGovernor.sol:227-266`)
   - **Invariant:** ratification and commitment fulfillment are atomic; cash-out weights set exactly once per game.
 
-**Views:** `attestationCountOf`, `hasAttestedTo`, `scorecardIdOf`, `attestationGracePeriodOf`, `attestationStartTimeOf`, `getAttestationWeight`, `getBWAAttestationWeight`, `quorum`, `stateOf` (PENDING → ACTIVE → QUEUED/SUCCEEDED → RATIFIED/DEFEATED), `timelockDurationOf`, `MAX_ATTESTATION_POWER_TIER`, `MIN_ATTESTATION_GRACE_PERIOD`, `CONTROLLER`, `defaultAttestationDelegateProposalOf`, `ratifiedScorecardIdOf`.
+**Views:** `attestationCountOf`, `hasAttestedTo`, `scorecardIdOf`, `attestationGracePeriodOf`, `attestationStartTimeOf`, `enforcesDefaultAttestationDelegate`, `getAttestationWeight`, `getBWAAttestationWeight`, `quorum`, `stateOf` (PENDING → ACTIVE → QUEUED/SUCCEEDED → RATIFIED/DEFEATED), `timelockDurationOf`, `MAX_ATTESTATION_POWER_TIER`, `MIN_ATTESTATION_GRACE_PERIOD`, `QUORUM_EVEN_BPS`, `QUORUM_WINNER_TAKE_ALL_BPS`, `CONTROLLER`, `defaultAttestationDelegateProposalOf`, `ratifiedScorecardIdOf`.
 
 ### C.3 DefifaHook — `defifa/src/DefifaHook.sol` (ERC-721 game)
 
@@ -217,20 +223,20 @@ Pure rendering surface — no privileged surface that affects game outcome or fu
 ## Section D — Cross-cutting invariants
 
 1. **Frozen game configuration.** Once `launchGameWith` returns, the per-game tier prices, reserve frequencies, fees, scorecard timeouts, and ruleset cadence (MINT → REFUND? → SCORING → COMPLETE/NO_CONTEST) are immutable.
-2. **Single ratification per game.** `DefifaGovernor.ratifiedScorecardIdOf[gameId] != 0` blocks further submissions and ratifications (`DefifaGovernor.sol:228, 307`). `cashOutWeightIsSet` on either hook blocks repeated `setTierCashOutWeightsTo` (`DefifaHook.sol:851`, `Defifa1155Hook.sol:875`).
-3. **Single commitment fulfillment per game.** `commitmentsFulfilledFor[gameId]` is set before any external call (`DefifaDeployer.sol:370`); re-entry returns early.
-4. **Single NO_CONTEST trigger per game.** `noContestTriggeredFor[gameId]` set before queuing the refund ruleset; `NoContestAlreadyTriggered` on second call (`DefifaDeployer.sol:673, 680`).
+2. **Single ratification per game.** `DefifaGovernor.ratifiedScorecardIdOf[gameId] != 0` blocks further submissions and ratifications (`DefifaGovernor.sol:236, 315`). `cashOutWeightIsSet` on either hook blocks repeated `setTierCashOutWeightsTo` (`DefifaHook.sol:851`, `Defifa1155Hook.sol:875`).
+3. **Single commitment fulfillment per game.** `commitmentsFulfilledFor[gameId]` is set before any external call (`DefifaDeployer.sol:371`); re-entry returns early.
+4. **Single NO_CONTEST trigger per game.** `noContestTriggeredFor[gameId]` set before queuing the refund ruleset; `NoContestAlreadyTriggered` on second call (`DefifaDeployer.sol:688, 695`).
 5. **Reserve mints blocked in NO_CONTEST.** Prevents reviving a failed `minParticipation` game by free-minting reserved face value (`DefifaHook.sol:632-634`, `Defifa1155Hook.sol:686-688`).
 6. **Delegate changes restricted to MINT.** Locks voting power before scoring opens (`DefifaHook.sol:873-875, 886-888`, `Defifa1155Hook.sol:897-899, 910-912`).
 7. **BWA snapshot one second before submission.** Excludes the whole submission block, blocking same-block mint/transfer-and-attest injection in either order (`DefifaGovernor.sol` `attestToScorecardFrom` / `submitScorecardFor`).
-8. **Beneficiaries cannot self-attest at full power.** BWA reduces tier power by `tierWeight / totalCashOutWeight`; zero-power attestations revert (`DefifaGovernor.sol:747-751, 195-199`).
-9. **Revocation disabled once QUEUED.** Kills attest/revoke griefing (`DefifaGovernor.sol:266-269`).
-10. **Atomic ratification + commitment.** `ratifyScorecardFrom` calls `fulfillCommitmentsOf` in the same tx, ensuring the COMPLETE ruleset is always queued after weights are set (`DefifaGovernor.sol:253-255`).
+8. **Beneficiaries cannot self-attest at full power.** BWA reduces tier power by `tierWeight / totalCashOutWeight`; zero-power attestations revert (`DefifaGovernor.sol:757-761, 203-207`).
+9. **Revocation disabled once QUEUED.** Kills attest/revoke griefing (`DefifaGovernor.sol:274-277`).
+10. **Atomic ratification + commitment.** `ratifyScorecardFrom` calls `fulfillCommitmentsOf` in the same tx, ensuring the COMPLETE ruleset is always queued after weights are set (`DefifaGovernor.sol:261-263`).
 11. **State-before-external-call ordering.** `commitmentsFulfilledFor`, `noContestTriggeredFor`, `ratifiedScorecardIdOf`, and `cashOutWeightIsSet` are all written BEFORE the external call that consumes them — re-entrancy cannot replay the action.
 12. **Permissionless settlement triggers extract no value beyond canonical allocation.** `fulfillCommitmentsOf`, `triggerNoContestFor`, `mintReservesFor`, `submitScorecardFor`, `attestToScorecardFrom`, `ratifyScorecardFrom` — caller's reward is exactly the gas-funded service to the game, never a redirected payout.
 13. **One-shot bindings.** `initialize` and `setTierCashOutWeightsTo` on either hook, `DefifaGovernor.initializeGame` — all irreversible. `DefifaDeployer`'s own dependencies are constructor `immutable`s (no setter at all).
-14. **Front-run-resistant clone deployment.** `cloneDeterministic` salt includes `_msgSender()`; a different resolved caller produces a different address (`DefifaDeployer.sol:601-605`).
-15. **Participation immune to balance inflation.** `minParticipation` checks `hook.totalMintCost`, not terminal balance — `addToBalanceOf` donations cannot satisfy the threshold (`DefifaDeployer.sol:302-309`).
+14. **Front-run-resistant clone deployment.** `cloneDeterministic` salt includes `_msgSender()`; a different resolved caller produces a different address (`DefifaDeployer.sol:615-619`).
+15. **Participation immune to balance inflation.** `minParticipation` checks `hook.totalMintCost`, not terminal balance — `addToBalanceOf` donations cannot satisfy the threshold (`DefifaDeployer.sol:303-310`).
 16. **Game-piece-only cash-out path.** `beforeCashOutRecordedWith` reverts if fungible project tokens are cashed out (`DefifaHook.sol:342`, `Defifa1155Hook.sol:375-377`). The hook is the sole cash-out surface for Defifa games.
 17. **No zero-address delegation.** Neither hook writes or reads `_tierDelegation[address(0)]` for mints, burns, or empty reserve mints (`DefifaHook.sol:649, 1175, 1184`, `Defifa1155Hook.sol:703, 1198, 1207`). Regression tests: `test/regression/AttestationDelegateBeneficiary.t.sol::test_emptyReserveMintDoesNotDelegateTheZeroAddress`, `test/erc1155/regression/ZeroAddressDelegation.t.sol`.
 18. **Shared selectors.** The shared deployer, governor and resolver call the hook only through selectors both hooks expose (`initialize`, `store`, `currentSupplyOfTier`, `adjustedPendingReservesFor`, `TOTAL_CASHOUT_WEIGHT`, `setTierCashOutWeightsTo`, and the attestation views). Gated by `test/DefifaHookParity.t.sol`.
@@ -250,30 +256,31 @@ These are NOT third-party attack vectors but are powers held by privileged addre
 - **`DefifaGovernor` Ownable owner** can call `initializeGame`. In production deployment this owner is the `DefifaDeployer` (called during `launchGameWith`). If the governor's owner were ever rotated to a non-deployer address, that address could bootstrap rogue scorecards for games it didn't deploy — but only games whose hook ownership it also controls, which would require breaking `DefifaDeployer.launchGameWith`'s `hook.transferOwnership(governor)` flow.
 - **`DefifaGovernor` as game-hook owner** is the **single ratifier** of every scorecard for games its deployer launched. The governor itself doesn't decide outcomes — it only enforces the BWA quorum + grace + timelock state machine. But the governor's *bytecode* is the source of truth for ratification rules; replacing the governor (via a controller-level migration or hook-ownership transfer) would change the rules. The deploy script intentionally leaves the governor in place and the hooks owned by it — there is no path in this codebase to rotate hook ownership away from the original governor.
 - **`DefifaDeployer` as `JBProjects` NFT holder** is the sole `ownerMustSendPayouts` invoker during SCORING (the SCORING ruleset sets `ownerMustSendPayouts=true`). `fulfillCommitmentsOf` is the deployer's `sendPayoutsOf` invocation — and it's permissionless. No human address has owner power over a Defifa game's payouts post-launch.
-- **`launchGameWith` caller** picks the `defaultAttestationDelegate`, `attestationStartTime`, `attestationGracePeriod`, `timelockDuration`, `minParticipation`, `scorecardTimeout`, splits, tier metadata, and reserve beneficiaries. Players opting into a game are trusting the launcher's parameters. The governor and hook enforce structural bounds (≥ 1-day grace period, ratification window must fit inside scorecard timeout, valid currency), but cannot detect launcher-chosen parameter combinations that economically disadvantage players (e.g. a launcher could allocate 100% of splits to themselves; the protocol's role is to make this fact verifiable on-chain at launch, not to prevent the launcher from offering it).
+- **`launchGameWith` caller** picks the `defaultAttestationDelegate`, whether to `enforceDefaultAttestationDelegate`, `attestationStartTime`, `attestationGracePeriod`, `timelockDuration`, `minParticipation`, `scorecardTimeout`, splits, tier metadata, and reserve beneficiaries. Players opting into a game are trusting the launcher's parameters. The governor and hook enforce structural bounds (≥ 1-day grace period, ratification window must fit inside scorecard timeout, valid currency), but cannot detect launcher-chosen parameter combinations that economically disadvantage players (e.g. a launcher could allocate 100% of splits to themselves; the protocol's role is to make this fact verifiable on-chain at launch, not to prevent the launcher from offering it).
 
 ---
 
 ## Section F — Key code references
 
-- Phase view: `defifa/src/DefifaDeployer.sol:278-320`
-- Game configuration validation: `defifa/src/DefifaDeployer.sol:436-523`
-- Front-run-resistant clone deploy: `defifa/src/DefifaDeployer.sol:596-605`
-- Project NFT custody: `defifa/src/DefifaDeployer.sol:531-532`
-- Commitment fulfillment single-shot: `defifa/src/DefifaDeployer.sol:367-420`
-- NO_CONTEST trigger single-shot + ruleset queue: `defifa/src/DefifaDeployer.sol:665-728`
-- Splits fee construction: `defifa/src/DefifaDeployer.sol:734-823`
-- SCORING ruleset (`ownerMustSendPayouts=true`): `defifa/src/DefifaDeployer.sol:933-991`
-- `minParticipation` check uses `totalMintCost`: `defifa/src/DefifaDeployer.sol:302-309`
-- Governor `initializeGame` (grace period + uint48 bounds): `defifa/src/DefifaGovernor.sol:526-580`
+- Phase view: `defifa/src/DefifaDeployer.sol:279-321`
+- Game configuration validation: `defifa/src/DefifaDeployer.sol:437-537`
+- Front-run-resistant clone deploy: `defifa/src/DefifaDeployer.sol:610-619`
+- Project NFT custody: `defifa/src/DefifaDeployer.sol:545-546`
+- Commitment fulfillment single-shot: `defifa/src/DefifaDeployer.sol:368-421`
+- NO_CONTEST trigger single-shot + ruleset queue: `defifa/src/DefifaDeployer.sol:680-743`
+- Splits fee construction: `defifa/src/DefifaDeployer.sol:749-838`
+- SCORING ruleset (`ownerMustSendPayouts=true`): `defifa/src/DefifaDeployer.sol:948-1006`
+- `minParticipation` check uses `totalMintCost`: `defifa/src/DefifaDeployer.sol:303-310`
+- Governor `initializeGame` (grace period + uint48 bounds + enforce flag): `defifa/src/DefifaGovernor.sol:522-580`
 - BWA snapshot at `scorecard.snapshotTimestamp` (submission − 1): set in `defifa/src/DefifaGovernor.sol` `submitScorecardFor`, read in `attestToScorecardFrom`
-- BWA self-attest guard (zero-power revert): `defifa/src/DefifaGovernor.sol:195-199`
-- BWA tier-weight reduction: `defifa/src/DefifaGovernor.sol:747-751`
-- Revocation gated to ACTIVE: `defifa/src/DefifaGovernor.sol:266-269`
-- Single ratification per game: `defifa/src/DefifaGovernor.sol:227-230, 306-309`
-- Concentration-adjusted quorum: `defifa/src/DefifaGovernor.sol:424-460`
-- Atomic ratify + fulfillCommitments: `defifa/src/DefifaGovernor.sol:253-255`
-- Submission rejects unrealizable weights: `defifa/src/DefifaGovernor.sol:325-337`
+- BWA self-attest guard (zero-power revert): `defifa/src/DefifaGovernor.sol:203-207`
+- BWA tier-weight reduction: `defifa/src/DefifaGovernor.sol:757-761`
+- Revocation gated to ACTIVE: `defifa/src/DefifaGovernor.sol:274-277`
+- Single ratification per game: `defifa/src/DefifaGovernor.sol:235-238, 314-317`
+- Concentration-adjusted quorum: `defifa/src/DefifaGovernor.sol:432-455, 914-927`
+- Enforced default delegate weight: `defifa/src/DefifaGovernor.sol:716-718, 733-755`; launch check: `defifa/src/DefifaDeployer.sol:497-508`
+- Atomic ratify + fulfillCommitments: `defifa/src/DefifaGovernor.sol:254-263`
+- Submission rejects unrealizable weights: `defifa/src/DefifaGovernor.sol:333-345`
 - Hook `setTierCashOutWeightsTo` (governor-only, SCORING-only, single-shot): `defifa/src/DefifaHook.sol:840-861`, `defifa/src/Defifa1155Hook.sol:864-885`
 - Hook `initialize` one-shot: `defifa/src/DefifaHook.sol:553-618`, `defifa/src/Defifa1155Hook.sol:605-672`
 - Reserve mints blocked in NO_CONTEST: `defifa/src/DefifaHook.sol:632-634`, `defifa/src/Defifa1155Hook.sol:686-688`

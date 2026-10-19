@@ -311,17 +311,14 @@ v^{\text{holder}} = \sum_{i \,:\, n_i^{\text{holder}} > 0} V_{\max} \cdot \frac{
 
 \subsection{Quorum and Ratification Conditions}
 
-\textbf{Quorum calculation.} The quorum required for scorecard ratification is:
+\textbf{Quorum calculation.} A tier never attests to its own payout (Section~9.2), so the most attestation any scorecard can collect is $V_{\text{BWA}} = (N - 1) \cdot V_{\max}$, where $N$ is the number of quorum-eligible tiers (tiers with circulating tokens or unminted pending reserves). Quorum is a share of $V_{\text{BWA}}$ that grows with the scorecard's concentration. With $\text{maxShare} = \max_i(w_i) / W_{\text{total}}$:
 \begin{equation}
-\boxed{Q = \frac{N_{\text{minted\_tiers}}}{2} \cdot V_{\max}}
+\boxed{Q(S) = \max\left(1,\ V_{\text{BWA}} \cdot \left(0.50 + 0.25 \cdot \text{maxShare}^2\right)\right)}
 \end{equation}
 
-where $N_{\text{minted\_tiers}}$ is the number of tiers that have at least one minted token.
+An even split needs 50\% of the possible attestation (\texttt{QUORUM\_EVEN\_BPS = 5\_000}) and winner-take-all needs 75\% (\texttt{QUORUM\_WINNER\_TAKE\_ALL\_BPS = 7\_500}). Section~9.4 gives the table and the trade-off behind these levels. Each scorecard's quorum is computed at submission and stored in \texttt{quorumSnapshot}; \texttt{quorum(gameId)} reports the even-split quorum, $V_{\text{BWA}} / 2$.
 
-\textbf{World Cup example.} All 32 tiers have minted tokens:
-$$Q = \frac{32}{2} \cdot 10^9 = 16 \times 10^9$$
-
-This requires the equivalent of 16 full tiers' worth of unanimous attestation. If the default delegate holds delegated power from a majority of minters across 16+ tiers, they can single-handedly meet quorum---which is exactly the intended fast path for games with trusted organizers.
+\textbf{World Cup example.} All 32 tiers have minted tokens, so $V_{\text{BWA}} = 31 \times 10^9$. An even scorecard needs $15.5 \times 10^9$; the World Cup scorecard (largest share 40\%) needs 54\%, about $16.7 \times 10^9$; a winner-take-all scorecard needs $23.25 \times 10^9$. A default delegate holding the delegated power of most minters across the losing tiers can meet quorum alone, which is the intended fast path for games with trusted organizers. A game can also make that path the only one (Section~9.1).
 
 \textbf{Ratification conditions.} A scorecard can be ratified when all three conditions are met:
 \begin{enumerate}[nosep]
@@ -364,7 +361,7 @@ The attestation model incorporates several defenses:
 
 \textbf{Defense 3: Mint-phase-only delegation.} Delegation is locked after the mint phase, preventing last-minute delegation changes during the scoring phase.
 
-\textbf{Defense 4: 50\% quorum across tiers.} Requiring half of all minted tiers' worth of attestation power means no coalition controlling fewer than half the minted tiers can unilaterally ratify a fraudulent scorecard.
+\textbf{Defense 4: 50\% to 75\% quorum.} Quorum is 50\% of the attestation possible for an even scorecard and 75\% for winner-take-all. A coalition must hold that share of the non-beneficiary tiers' attestation power to ratify a scorecard alone.
 
 \textbf{Defense 5: Scoring-phase-only submission.} Scorecard submission is restricted to the SCORING phase, preventing pre-accumulation of attestations during minting.
 
@@ -641,11 +638,17 @@ COMPLETE takes priority over NO\_CONTEST---a ratified scorecard is final. Once \
 
 The \texttt{defaultAttestationDelegate} provides a social fast-path for routine governance. Combined with the automated NO\_CONTEST triggers, this creates layered safety: delegate (fast-path social resolution) + timeout (hard backstop) + threshold (early exit for ghost games).
 
+\subsubsection{Enforced Default Delegate}
+
+A game launched with \texttt{enforceDefaultAttestationDelegate} counts only its default delegate's attestation: every other account has zero weight, and the delegate attests with each eligible tier's full power, $V_{\max}$ per tier with any attestation units, scaled by BWA. Its weight on any scorecard is that scorecard's full $V_{\text{BWA}}$, so it meets every quorum alone, and no holder's delegation choice can change the result. The deployer rejects the flag without a nonzero \texttt{defaultAttestationDelegate}.
+
+Everything else is the normal flow: anyone submits, attestation opens one second after submission, the grace period (at least 1 day) and any timelock apply, and anyone ratifies a \textsc{succeeded} scorecard. The grace period still gives players public notice before ratification, and \texttt{scorecardTimeout} ends an inactive delegate's game in NO\_CONTEST with full refunds. Players in an enforced game trust the delegate with the result, in exchange for a game that disengaged holders cannot stall.
+
 \subsection{Governance Attack Economics}
 
 \textbf{All governance systems are manipulatable with sufficient capital.} The relevant question is not \emph{whether} an attack is possible, but whether the \textbf{mechanism structurally prevents profit} regardless of how much the attacker spends. Making attacks ``more expensive'' is insufficient---a sufficiently capitalized adversary will pay any price. The defense must be structural, not economic.
 
-\subsubsection{The Scaling Problem (Current Design)}
+\subsubsection{The Scaling Problem (Without BWA)}
 
 The per-tier attestation power cap assigns equal $V_{\text{max}} = 10^9$ to every tier regardless of supply. An adversary buys 1~token in each of $\lceil N/2 \rceil$ sparse tiers at cost $C_{\text{attack}} = \lceil N/2 \rceil \cdot p$, while the pot scales as $B_{\text{pot}} = \sum_i n_i \cdot p$:
 \begin{equation}
@@ -706,7 +709,7 @@ Semi-finalists ($\times 2$) & 10\% each & $0.9 \times V_{\text{max}}$ each \\
 Other 28 tiers & $\approx$0\% & $\approx V_{\text{max}}$ each \\
 \midrule
 \textbf{Total available} & & $31 \times V_{\text{max}}$ \\
-\textbf{Quorum} & & $16 \times V_{\text{max}}$ \\
+\textbf{Quorum (largest share 40\%: 54\%)} & & $\approx 16.7 \times V_{\text{max}}$ \\
 \bottomrule
 \end{tabular}
 \end{table}
@@ -717,9 +720,9 @@ The truthful scorecard has nearly $2\times$ the attestation power needed. The de
 
 The attacker's fallback: buy into \emph{non-winning} tiers to accumulate attestation power for a fraudulent scorecard. But those purchases go \emph{into the pot}---the attacker enriches the treasury they are trying to steal.
 
-\textbf{Attacker buys 1 token in 16 sparse tiers (0.16~ETH):} winning tier contributes 0 power; 15 other sparse tiers contribute $15 \times V_{\text{max}}$; honest tiers $\approx 0.03 \times V_{\text{max}}$. Total $\approx 15.03 \times V_{\text{max}} < 16 \times V_{\text{max}} =$ quorum. \textbf{Fails}---one tier short because the winning tier is dead weight.
+\textbf{Attacker buys 1 token in 16 sparse tiers (0.16~ETH):} winning tier contributes 0 power; 15 other sparse tiers contribute $15 \times V_{\text{max}}$; honest tiers $\approx 0.03 \times V_{\text{max}}$. Total $\approx 15.03 \times V_{\text{max}} < 23.25 \times V_{\text{max}} =$ winner-take-all quorum (75\% of $31 \times V_{\text{max}}$). \textbf{Fails}---far short, because the winning tier is dead weight.
 
-\textbf{Attacker buys massively into honest tiers (80~ETH):} gains 50\% share in 16 honest tiers, adding $8 \times V_{\text{max}}$. Total $\approx 23 \times V_{\text{max}} >$ quorum. \textbf{Passes}---but invested 80~ETH to attack an 80~ETH pot. Net extraction = honest holders' original contribution. Attack cost now \textbf{scales linearly with the pot}---not because we made it expensive, but because the structure demands it.
+\textbf{Attacker buys massively into honest tiers ($\approx$87~ETH):} 542 tokens next to 500 honest tokens gives a 52\% share in 16 honest tiers, adding $8.32 \times V_{\text{max}}$. Total $\approx 23.32 \times V_{\text{max}} \geq$ quorum. \textbf{Passes}---but invested about 87~ETH to attack an 80~ETH pot. Net extraction = honest holders' original contribution. Attack cost now \textbf{scales linearly with the pot}---not because we made it expensive, but because the structure demands it.
 
 \subsubsection{Dead Token Economics: The Attack Tax}
 
@@ -870,40 +873,37 @@ Multiple scorecards can coexist in \textsc{queued}/\textsc{succeeded} simultaneo
 
 \subsubsection{Graduated Quorum by Scorecard Concentration}
 
-\textbf{Problem.} Base quorum is flat: $Q_{\text{base}} = N_{\text{eligible}} \times V_{\text{max}} / 2$ regardless of the scorecard's weight distribution. A ``steal everything'' scorecard faces the same quorum as a distributed one.
+\textbf{Problem.} A flat quorum treats a ``steal everything'' scorecard like a distributed one. Concentrated scorecards move the most value, so they should need the broadest agreement.
 
-\textbf{Mechanism.} Apply a concentration penalty based on the largest tier weight's squared share, scaled by the \emph{headroom}---the gap between maximum achievable BWA attestation and the base quorum:
+\textbf{Mechanism.} Quorum is a share of the most attestation possible, $V_{\text{BWA}} = (N-1) \times V_{\text{max}}$, rising with the largest tier weight's squared share:
 \begin{equation}
-\text{headroom} = Q_{\text{base}} - V_{\text{max}} = \frac{(N-2) \times V_{\text{max}}}{2}
+\text{bps}(S) = 5{,}000 + (7{,}500 - 5{,}000) \times \left(\frac{\max_i(w_i)}{W_{\text{total}}}\right)^2
 \end{equation}
 \begin{equation}
-Q(S) = \min\left(Q_{\text{base}} + \text{headroom} \times \left(\frac{\max_i(w_i)}{W_{\text{total}}}\right)^2,\ Q_{\text{base}} + \text{headroom} - \frac{N \times V_{\text{max}}}{10{,}000}\right)
+Q(S) = \max\left(1,\ \frac{V_{\text{BWA}} \times \text{bps}(S)}{10{,}000}\right)
 \end{equation}
-
-The second term is a rounding margin. BWA floors twice per attesting (delegate, tier) pair (\texttt{mulDiv} truncation), losing less than 2 units per pair. A margin of $V_{\text{max}} / 10{,}000$ per eligible tier covers an average of up to 50,000 attesting delegates per eligible tier. In a two-tier game headroom is zero, so the margin puts quorum 0.01\% of one tier's power below the base.
-
-\textbf{Properties:}
-\begin{itemize}[nosep]
-\item \textbf{Self-capping.} The adjusted quorum stays the rounding margin below the maximum achievable BWA, so unanimous non-beneficiary attestation reaches it.
-\item \textbf{Nonlinear.} $\text{maxShare}^2$ is quadratic: gentle for moderate concentration (25\% max $\to$ 6.25\% of headroom), steep for extreme (100\% max $\to$ 100\% of headroom).
-\item \textbf{No magic constants.} The formula derives entirely from game parameters.
-\end{itemize}
+where $5{,}000$ is \texttt{QUORUM\_EVEN\_BPS} and $7{,}500$ is \texttt{QUORUM\_WINNER\_TAKE\_ALL\_BPS}.
 
 \begin{table}[H]
 \centering
-\begin{tabular}{lll}
+\begin{tabular}{llllll}
 \toprule
-\textbf{Distribution} & \textbf{maxShare} & \textbf{Penalty (fraction of headroom)} \\
+\textbf{Largest tier share} & Even & 25\% & 50\% & 75\% & 100\% \\
 \midrule
-Equal across 32 tiers & 3.1\% & 0.1\% (essentially unchanged) \\
-World Cup (40/20/10/10/\ldots) & 40\% & 16\% \\
-Winner-take-all (100/0/\ldots) & 100\% & 100\% (quorum = max achievable BWA less the rounding margin) \\
+\textbf{Share of $V_{\text{BWA}}$ needed} & 50\% & 51.6\% & 56.25\% & 64.1\% & 75\% \\
 \bottomrule
 \end{tabular}
-\caption{Graduated quorum impact by scorecard concentration.}
+\caption{Quorum by scorecard concentration.}
 \end{table}
 
-Distributed scorecards are barely affected. Concentrated fraudulent scorecards face quadratically increasing quorum, up to the theoretical BWA maximum for winner-take-all.
+\textbf{Properties:}
+\begin{itemize}[nosep]
+\item \textbf{Always reachable.} Quorum never exceeds 75\% of $V_{\text{BWA}}$. BWA loses under 2 units per attesting (delegate, tier) pair to \texttt{mulDiv} truncation, far less than the 25\% margin, so unanimous non-beneficiary attestation always reaches quorum, including in two-tier games.
+\item \textbf{Nonlinear.} $\text{maxShare}^2$ is gentle for moderate concentration (the World Cup scorecard, largest share 40\%, needs 54\%) and steepest near winner-take-all.
+\item \textbf{Floor of 1.} A one-tier game has $V_{\text{BWA}} = 0$, so its quorum is 1 and no scorecard can ratify; it falls through to NO\_CONTEST.
+\end{itemize}
+
+\textbf{Trade-off.} The 75\% ceiling sets the cost of a fake winner-take-all. To force one, a coalition must hold 75\% of every losing tier's attestation power, and the only value it can take is the remaining 25\% of the losing stakes: at most a 33\% return on the capital it locks in losing tiers, before fees, and that capital is lost if honest holders outvote it. Silent holders never lower this cost, because quorum counts against the attestation possible, not the attestation cast. Default delegation covers passive holders, whose power goes to the default delegate unless they choose otherwise. A higher ceiling would raise the attack cost but let a small silent minority of a losing tier block a true winner-take-all result.
 
 \subsubsection{Attestation Withdrawal}
 
@@ -934,7 +934,7 @@ During \textsc{active}, the grace period is still running, giving honest holders
 
 \textbf{Storage approach.} The tier weights must be accessible during attestation. Storing weights in the scorecard struct is recommended: written once at submission ($O(N)$ storage, $\sim$400k gas for 128 tiers), read many times during attestation (zero additional calldata per attestation).
 
-\textbf{Quorum adjustment.} Under BWA, maximum possible attestation for any scorecard is $(N-1) \times V_{\text{max}}$ (the constant-total invariant). Base quorum is $N_{\text{eligible}} \times V_{\text{max}} / 2$, representing 50\% of raw power. The graduated quorum mechanism (Section 9.4.2) further adjusts this per-scorecard based on concentration, storing the result in \texttt{quorumSnapshot}.
+\textbf{Quorum adjustment.} Under BWA, maximum possible attestation for any scorecard is $(N-1) \times V_{\text{max}}$ (the constant-total invariant). Quorum is 50\% to 75\% of this maximum, set per scorecard by its concentration and stored in \texttt{quorumSnapshot}.
 
 \subsection{Governance Deadlock Analysis}
 

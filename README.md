@@ -145,6 +145,7 @@ references/
 - `DefifaGovernor` and `DefifaHook` must be read together
 - fee accounting and prize accounting are coupled
 - a timeout into `NO_CONTEST` is a real terminal state
+- a game launched with `enforceDefaultAttestationDelegate` takes its result from its `defaultAttestationDelegate` alone; read `DefifaGovernor.enforcesDefaultAttestationDelegate(gameId)` before showing holder attestation as meaningful
 - `NO_CONTEST` view state should not be shown as refund-ready until the relevant settlement path is actually available
 - games with many outcome tiers need curation around scorecard liveness and attestation overhead
 - the shared `JB721TiersHookStore` surface is an upstream ecosystem dependency, not a Defifa-only detail

@@ -45,4 +45,5 @@ Defifa is an onchain prediction game system built on Juicebox. This repo package
 - ERC-1155 positions: paid ID = tier ID, reserve ID = `tierId + RESERVE_TOKEN_ID_OFFSET`. Read holdings with `hook.balanceOf(account, id)`; the store's per-holder views count a tier's paid and reserve IDs together. ERC-1155 tests live in [`test/erc1155/`](./test/erc1155/) under the same file names as the 721 suite.
 - When a task mentions NFT rendering or metadata, confirm whether it belongs in [`src/DefifaTokenUriResolver.sol`](./src/DefifaTokenUriResolver.sol).
 - If you edit phase transitions, check lifecycle, governance, and fee-accounting tests together.
+- Launch data (`DefifaLaunchProjectData`) includes `enforceDefaultAttestationDelegate`: when set, only the `defaultAttestationDelegate` attests, with every eligible tier's full power, and the deployer rejects it without a delegate. Democratic quorum is 50% to 75% of `(N - 1) * MAX_ATTESTATION_POWER_TIER`, by the scorecard's largest share squared.
 - If ratification, attestation, or quorum behavior changes, re-read the review and regression tests before trusting a clean happy-path result.

@@ -36,7 +36,7 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 
 **Main Flow**
 
-1. Prepare launch data with timing, tiers, splits, fee-project settings, terminal, and governance params.
+1. Prepare launch data with timing, tiers, splits, fee-project settings, terminal, and governance params (attestation start, grace period, timelock, `defaultAttestationDelegate`, and `enforceDefaultAttestationDelegate`).
 2. Call `launchGameWith(...)` on the `DefifaDeployer` for the chosen game type: the ERC-721 deployer clones `DefifaHook`, the ERC-1155 deployer clones `Defifa1155Hook`.
 3. The deployer resolves the ERC-2771 caller, advertises that account as the creation-fee payer while reserving the JB project, clones and initializes the game hook, initializes the governor state, and stores the game's immutable ops data.
 4. The game advances through its documented phase sequence.
@@ -161,6 +161,34 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 **Postconditions**
 
 - the game moves onto the documented no-contest recovery track
+
+## Journey 6: Launch an enforced-delegate game
+
+**Actor:** game creator who will report the result.
+
+**Intent:** launch a game whose result always comes from one known address, so disengaged holders cannot stall scoring.
+
+**Preconditions**
+
+- the creator controls the address that will attest to the result, and players accept it as the game's oracle
+- the usual launch preconditions from Journey 1 hold
+
+**Main Flow**
+
+1. Prepare launch data as in Journey 1, with `defaultAttestationDelegate` set to the reporting address and `enforceDefaultAttestationDelegate = true`.
+2. Call `launchGameWith(...)`. The deployer passes the flag to `DefifaGovernor.initializeGame`, and `GameInitialized` records it; `enforcesDefaultAttestationDelegate(gameId)` reads it back.
+3. During SCORING, anyone submits the scorecard and the delegate attests to it. The delegate's attestation carries every eligible tier's full power, so it meets quorum alone; no other account's attestation counts.
+4. After the grace period (at least 1 day) and any timelock, anyone ratifies the SUCCEEDED scorecard.
+
+**Failure Modes**
+
+- the flag is set without a `defaultAttestationDelegate`: launch reverts with `DefifaDeployer_InvalidGameConfiguration`
+- the delegate never attests: the game reaches `scorecardTimeout` and falls through to no-contest refunds (Journey 5)
+- players expect their own attestations or redelegation to matter; in this game they do not
+
+**Postconditions**
+
+- the game's result is whatever scorecard the delegate attests to, after the public grace period
 
 ## Trust boundaries
 

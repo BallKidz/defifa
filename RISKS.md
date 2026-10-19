@@ -23,7 +23,7 @@ This file focuses on the game-theoretic, governance, and settlement risks in Def
 - **Deployer as project owner.** The deployer owns game projects and controls ruleset queuing and commitment fulfillment.
 - **External dependencies.** Core protocol and shared 721-store behavior remain upstream trust boundaries. Both game types record tiers through `DefifaTiersHookStore`, whose count-based records must stay equivalent to the upstream per-position ones. In an ERC-1155 game, the store's per-holder views count a tier's paid and reserve IDs together; use `hook.balanceOf(account, id)` to tell them apart.
 - **Terminal provenance is the launcher's responsibility.** The hook authenticates terminals via directory registration, not implementation identity. A game is only as trustworthy as the terminal its launcher chose. Users must verify a game's terminal before participating.
-- **Default attestation delegate.** If set, it can accumulate meaningful governance power across new minters.
+- **Default attestation delegate.** If set, it can accumulate meaningful governance power across new minters. In a game launched with `enforceDefaultAttestationDelegate`, it alone decides the result (§8.10).
 
 ## 2. Economic risks
 
@@ -99,7 +99,7 @@ This is conservative, but it prevents users from front-running reserve dilution 
 
 ### 8.6 One-tier games always resolve via no-contest
 
-A single-tier game cannot complete normal governance because the governance attestation model gives zero weight to holders of a tier that receives 100% of the scorecard, making quorum unreachable. This is expected: the game falls through to `NO_CONTEST` once `scorecardTimeout` elapses, and players recover their mint price via the permissionless `triggerNoContestFor()` refund path that queues a refund ruleset. This only works when `scorecardTimeout > 0` — a one-tier game launched with `scorecardTimeout = 0` would disable the timeout path entirely and leave funds permanently locked. `DefifaDeployer.launchGameWith` enforces this at the contract level: a one-tier game with `scorecardTimeout == 0` reverts with `DefifaDeployer_InvalidGameConfiguration`. Two-tier games are still rounding-fragile in the same direction and should also be launched with a nonzero `scorecardTimeout`, but this is not enforced because some two-tier configurations can still reach quorum.
+A single-tier game cannot complete normal governance because the governance attestation model gives zero weight to holders of a tier that receives 100% of the scorecard, making quorum unreachable. This is expected: the game falls through to `NO_CONTEST` once `scorecardTimeout` elapses, and players recover their mint price via the permissionless `triggerNoContestFor()` refund path that queues a refund ruleset. `DefifaDeployer.launchGameWith` rejects every game with `scorecardTimeout == 0` (`DefifaDeployer_InvalidGameConfiguration`), so this path always exists. A game with two or more eligible tiers can always reach quorum through unanimous non-beneficiary attestation (§8.9).
 
 ### 8.7 Commitment splits are responsible for never reverting
 
@@ -113,9 +113,20 @@ This means **a single bad split cannot block the others from being paid**, and t
 
 `DefifaHook.mintReservesFor` reverts with `DefifaHook_ReservedTokenMintingBlockedInNoContest` (`Defifa1155Hook_ReservedTokenMintingBlockedInNoContest` in the ERC-1155 game) once `currentGamePhaseOf` reports `NO_CONTEST`. Reserve mints inflate `totalMintCost` so reserved recipients can claim a proportional share of fee tokens. Without this block, a game that failed `minParticipation` could be revived back into a SCORING-eligible state via free notional face value (reserves bump `totalMintCost` over the threshold) before `triggerNoContestFor()` latches the failure into a refund ruleset. The block tightens the §8.4 trust assumption that pending reserves are folded into governance and fee accounting: that remains true while the game is live, but once a game has already failed participation the reserve channel is closed so the no-contest outcome is final.
 
-### 8.9 The quorum rounding margin has limits
+### 8.9 Quorum trade-off
 
-`submitScorecardFor` caps quorum `baseQuorum / 5000` below the maximum BWA so rounding never blocks a unanimous vote. Two consequences:
+A democratic scorecard needs 50% of the attestation possible, `(N - 1) * MAX_ATTESTATION_POWER_TIER`, when it splits evenly, rising by the largest tier share squared to 75% for winner-take-all (`QUORUM_EVEN_BPS`, `QUORUM_WINNER_TAKE_ALL_BPS`). The 75% ceiling keeps quorum reachable by unanimous non-beneficiary attestation despite BWA rounding, and lets a quarter of a losing side stay silent without stalling a true result. The cost is a bounded attack:
 
-- In a two-tier game headroom is zero, so quorum sits 0.01% of one tier's power below base quorum. A delegate holding just under half of the normalized voting power can pass a winner-take-all scorecard alone.
-- BWA loses less than 2 units per attesting (delegate, tier) pair, so the margin only covers an average of 50,000 attesting delegates per eligible tier. Beyond that, a highly concentrated scorecard can be unreachable even with unanimous attestation, and the game falls through to `NO_CONTEST` once `scorecardTimeout` elapses.
+- To force a fake winner-take-all, a coalition must hold 75% of every losing tier, and the most it can take is the remaining 25% of the losing stakes: at most a 33% return on that capital, before fees, which it loses if honest holders outvote it.
+- Silent holders never lower this cost, because quorum counts against the attestation possible, not the attestation cast.
+- Default delegation covers passive holders: their power goes to the default delegate unless they redelegate during MINT, so a passive majority is represented rather than absent.
+
+### 8.10 An enforced game's result is whatever its default delegate attests to
+
+When a game launches with `enforceDefaultAttestationDelegate`, only the default delegate's attestation counts, and it carries every eligible tier's full power, so the delegate alone can ratify any scorecard. Holders cannot change the result: their attestations have no weight, and delegating to someone else does nothing. Two protections remain:
+
+- The grace period (at least `MIN_ATTESTATION_GRACE_PERIOD`, 1 day) and any timelock still apply, so every scorecard is public before it can be ratified.
+- If the delegate never acts, `scorecardTimeout` (required for every game) ends the game in `NO_CONTEST` and players refund at mint price.
+
+Players entering an enforced game should treat the delegate as the oracle for the result. Frontends should show the flag (`DefifaGovernor.enforcesDefaultAttestationDelegate(gameId)`) and the delegate address before a player mints.
+
