@@ -1055,16 +1055,16 @@ The defense stack in Section 9.2 — BWA, dead token economics, and resilient ga
 
 **Mechanism.** Apply a concentration penalty based on the largest tier weight's squared share, scaled by the *headroom* — the gap between the maximum achievable BWA attestation and the base quorum:
 
-$$\text{headroom} = Q_{\text{base}} - V_{\text{max}} - N = \frac{(N-2) \times V_{\text{max}}}{2} - N$$
+$$\text{headroom} = Q_{\text{base}} - V_{\text{max}} = \frac{(N-2) \times V_{\text{max}}}{2}$$
 
 $$\text{maxShare} = \frac{\max_i(w_i)}{W_{\text{total}}}$$
 
-$$Q(S) = Q_{\text{base}} + \text{headroom} \times \text{maxShare}^2$$
+$$Q(S) = \min\left(Q_{\text{base}} + \text{headroom} \times \text{maxShare}^2,\ Q_{\text{base}} + \text{headroom} - \frac{N \times V_{\text{max}}}{10{,}000}\right)$$
 
-The $-N$ term accounts for per-tier integer rounding loss in the BWA computation (`mulDiv` truncation).
+The second term is a rounding margin. BWA floors twice per attesting (delegate, tier) pair (`mulDiv` truncation), losing less than 2 units per pair, so unanimous attestation can fall short of the theoretical maximum by up to twice the number of pairs. A margin of $V_{\text{max}} / 10{,}000$ per eligible tier covers an average of up to 50,000 attesting delegates per eligible tier. In a two-tier game headroom is zero, so the margin puts quorum 0.01% of one tier's power below the base.
 
 **Properties:**
-- **Self-capping.** The penalty can never exceed headroom, so the adjusted quorum is always reachable by non-beneficiary attestors.
+- **Self-capping.** The adjusted quorum stays the rounding margin below the maximum achievable BWA, so unanimous non-beneficiary attestation reaches it.
 - **Nonlinear.** maxShare² is quadratic: gentle for moderate concentration (25% max → 6.25% of headroom), steep for extreme concentration (100% max → 100% of headroom).
 - **No magic constants.** The formula derives entirely from game parameters — no configurable penalty factor.
 
@@ -1072,7 +1072,7 @@ The $-N$ term accounts for per-tier integer rounding loss in the BWA computation
 |:----|:----|:----|
 | Equal across 32 tiers | 3.1% | 0.1% (essentially unchanged) |
 | World Cup (40/20/10/10/...) | 40% | 16% |
-| Winner-take-all (100/0/...) | 100% | 100% (quorum = max achievable BWA) |
+| Winner-take-all (100/0/...) | 100% | 100% (quorum = max achievable BWA less the rounding margin) |
 
 **Effect.** Distributed scorecards reflecting real-world outcomes are barely affected. Concentrated fraudulent scorecards face quadratically increasing quorum requirements, up to the theoretical BWA maximum for winner-take-all.
 

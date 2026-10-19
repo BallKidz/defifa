@@ -874,17 +874,17 @@ Multiple scorecards can coexist in \textsc{queued}/\textsc{succeeded} simultaneo
 
 \textbf{Mechanism.} Apply a concentration penalty based on the largest tier weight's squared share, scaled by the \emph{headroom}---the gap between maximum achievable BWA attestation and the base quorum:
 \begin{equation}
-\text{headroom} = Q_{\text{base}} - V_{\text{max}} - N = \frac{(N-2) \times V_{\text{max}}}{2} - N
+\text{headroom} = Q_{\text{base}} - V_{\text{max}} = \frac{(N-2) \times V_{\text{max}}}{2}
 \end{equation}
 \begin{equation}
-Q(S) = Q_{\text{base}} + \text{headroom} \times \left(\frac{\max_i(w_i)}{W_{\text{total}}}\right)^2
+Q(S) = \min\left(Q_{\text{base}} + \text{headroom} \times \left(\frac{\max_i(w_i)}{W_{\text{total}}}\right)^2,\ Q_{\text{base}} + \text{headroom} - \frac{N \times V_{\text{max}}}{10{,}000}\right)
 \end{equation}
 
-The $-N$ term accounts for per-tier integer rounding loss in the BWA computation (\texttt{mulDiv} truncation).
+The second term is a rounding margin. BWA floors twice per attesting (delegate, tier) pair (\texttt{mulDiv} truncation), losing less than 2 units per pair. A margin of $V_{\text{max}} / 10{,}000$ per eligible tier covers an average of up to 50,000 attesting delegates per eligible tier. In a two-tier game headroom is zero, so the margin puts quorum 0.01\% of one tier's power below the base.
 
 \textbf{Properties:}
 \begin{itemize}[nosep]
-\item \textbf{Self-capping.} The penalty can never exceed headroom, so the adjusted quorum is always reachable by non-beneficiary attestors.
+\item \textbf{Self-capping.} The adjusted quorum stays the rounding margin below the maximum achievable BWA, so unanimous non-beneficiary attestation reaches it.
 \item \textbf{Nonlinear.} $\text{maxShare}^2$ is quadratic: gentle for moderate concentration (25\% max $\to$ 6.25\% of headroom), steep for extreme (100\% max $\to$ 100\% of headroom).
 \item \textbf{No magic constants.} The formula derives entirely from game parameters.
 \end{itemize}
@@ -897,7 +897,7 @@ The $-N$ term accounts for per-tier integer rounding loss in the BWA computation
 \midrule
 Equal across 32 tiers & 3.1\% & 0.1\% (essentially unchanged) \\
 World Cup (40/20/10/10/\ldots) & 40\% & 16\% \\
-Winner-take-all (100/0/\ldots) & 100\% & 100\% (quorum = max achievable BWA) \\
+Winner-take-all (100/0/\ldots) & 100\% & 100\% (quorum = max achievable BWA less the rounding margin) \\
 \bottomrule
 \end{tabular}
 \caption{Graduated quorum impact by scorecard concentration.}
