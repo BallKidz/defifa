@@ -32,7 +32,7 @@ The deployer and governor are hook-agnostic. They call the hook by selector, and
 | `DefifaHookLib` | Shared validation and weight math extracted from the hook, including the per-tier cash-out weight (`computeTierCashOutWeight`) and fee-token claim share (`tokensClaimFor`) both hooks use | Bytecode-management helper |
 | `Defifa1155HookLib` | ERC-1155 ID and amount logic (`tierIdOf`, `RESERVE_TOKEN_ID_OFFSET`, count-based attestation units, `(ids, amounts)` cash-out weight, mint price, claims, and burns); calls `DefifaHookLib` for shared rules | Bytecode-management helper |
 | `DefifaTiersHookStore` | `JB721TiersHookStore`, unchanged, plus count-based `recordMintCounts`, `recordBurnCounts` and `recordTransferForTier(tierId, from, to, count)` | Shared by both game types; required by the ERC-1155 hook |
-| `DefifaTokenUriResolver` | Dynamic token metadata and SVG rendering | Shared metadata layer; resolves the tier by ERC-165 (an ERC-1155 hook via `tierIdOf`, a 721 hook via `store.tierIdOfToken`) |
+| `DefifaTokenUriResolver` | Dynamic token metadata and SVG rendering | Shared metadata layer; resolves the tier with the hook's `tierIdOf`, which both game types implement |
 
 ## Trust boundaries
 

@@ -167,7 +167,7 @@ Per-game clone, extends `JB721Hook`; one NFT per position. Ownable; the deployer
 
 **Transfers:** `_update` reverts `DefifaHook_TransfersPaused` on paused transfers (burns allowed), records the first owner, moves attestation units, and records the transfer in the store. Mints use `_mint`, which calls no receiver. (`DefifaHook.sol:1168-1202`, `DefifaHook.sol:657, 976`)
 
-**Views:** `firstOwnerOf`, `getPastTierAttestationUnitsOf`, `getPastTierTotalAttestationUnitsOf`, `getTierAttestationUnitsOf`, `getTierDelegateOf`, `getTierTotalAttestationUnitsOf`, `tierCashOutWeights`, `tierNameOf`, `cashOutWeightOf` (single + batch), `currentSupplyOfTier`, `adjustedPendingReservesFor`, `supportsInterface`, `tokenURI`, `tokensClaimableFor`, `totalCashOutWeight`, `TOTAL_CASHOUT_WEIGHT`, `CODE_ORIGIN`, `DEFIFA_TOKEN`, `BASE_PROTOCOL_TOKEN`, `totalMintCost`, `amountRedeemed`, `baseURI`, `cashOutWeightIsSet`, `contractURI`, `defaultAttestationDelegate`, `gamePhaseReporter`, `gamePotReporter`, `isReserveMint`, `pricingCurrency`, `refundedBurnsFrom`, `rulesets`, `store`, `tokensRedeemedFrom`.
+**Views:** `firstOwnerOf`, `getPastTierAttestationUnitsOf`, `getPastTierTotalAttestationUnitsOf`, `getTierAttestationUnitsOf`, `getTierDelegateOf`, `getTierTotalAttestationUnitsOf`, `tierCashOutWeights`, `tierIdOf`, `tierNameOf`, `cashOutWeightOf` (single + batch), `currentSupplyOfTier`, `adjustedPendingReservesFor`, `supportsInterface`, `tokenURI`, `tokensClaimableFor`, `totalCashOutWeight`, `TOTAL_CASHOUT_WEIGHT`, `CODE_ORIGIN`, `DEFIFA_TOKEN`, `BASE_PROTOCOL_TOKEN`, `totalMintCost`, `amountRedeemed`, `baseURI`, `cashOutWeightIsSet`, `contractURI`, `defaultAttestationDelegate`, `gamePhaseReporter`, `gamePotReporter`, `isReserveMint`, `pricingCurrency`, `refundedBurnsFrom`, `rulesets`, `store`, `tokensRedeemedFrom`.
 
 ### C.4 Defifa1155Hook — `defifa/src/Defifa1155Hook.sol` (ERC-1155 game)
 
@@ -210,7 +210,7 @@ Per-game clone, an OpenZeppelin `ERC1155` game-piece hook (not `JB721Hook`/ERC-7
 
 ### C.6 DefifaTokenUriResolver — `defifa/src/DefifaTokenUriResolver.sol`
 
-Pure rendering surface — no privileged surface that affects game outcome or fund flow. Resolves tier-specific token URIs via `DefifaFontImporter` SVG composition. Reads from the hook's store + tier names; does not write any state that affects accounting. Shared by both game types: it picks the tier by ERC-165, mapping an ERC-1155 hook's ID with `tierIdOf` and a 721 hook's token ID with `store.tierIdOfToken` (`DefifaTokenUriResolver.sol:125-131`).
+Pure rendering surface — no privileged surface that affects game outcome or fund flow. Resolves tier-specific token URIs via `DefifaFontImporter` SVG composition. Reads from the hook's store + tier names; does not write any state that affects accounting. Shared by both game types: it maps a token ID to its tier with the hook's `tierIdOf`, which each hook implements (`DefifaTokenUriResolver.sol:120-122`).
 
 ---
 
@@ -299,6 +299,6 @@ These are NOT third-party attack vectors but are powers held by privileged addre
 - ERC-1155 mints end with the receiver acceptance check: `defifa/src/Defifa1155Hook.sol:997, 1004-1007`, `defifa/src/libraries/Defifa1155HookLib.sol:61-71` (`checkMintAcceptance`)
 - ERC-1155 transfer pause + attestation movement on transfers/burns: `defifa/src/Defifa1155Hook.sol:1194-1246`
 - Count-based store records: `defifa/src/DefifaTiersHookStore.sol:23-36, 46-117, 124-147`
-- Resolver tier lookup by ERC-165: `defifa/src/DefifaTokenUriResolver.sol:125-131`
+- Resolver tier lookup via `tierIdOf`: `defifa/src/DefifaTokenUriResolver.sol:120-122`
 
 For the game's economic model and rational-actor analysis, see `CRYPTO_ECON.md`.

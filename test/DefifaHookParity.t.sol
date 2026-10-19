@@ -13,7 +13,7 @@ import {IDefifaHook} from "../src/interfaces/IDefifaHook.sol";
 /// is overloaded, so the resolver's use of it is covered by `DefifaERC1155Test.test_uriResolvesBothTokenIdsOfATier`.
 contract DefifaHookParityTest is Test {
     function test_consumersCallTheSameSelectorsOnBothHooks() public pure {
-        bytes4[2][16] memory pairs = [
+        bytes4[2][17] memory pairs = [
             [DefifaHook.initialize.selector, Defifa1155Hook.initialize.selector],
             [IDefifaHook.setTierCashOutWeightsTo.selector, IDefifa1155Hook.setTierCashOutWeightsTo.selector],
             [IDefifaHook.TOTAL_CASHOUT_WEIGHT.selector, IDefifa1155Hook.TOTAL_CASHOUT_WEIGHT.selector],
@@ -34,6 +34,7 @@ contract DefifaHookParityTest is Test {
                 IDefifa1155Hook.getPastTierTotalAttestationUnitsOf.selector
             ],
             [IDefifaHook.store.selector, IDefifa1155Hook.store.selector],
+            [IDefifaHook.tierIdOf.selector, IDefifa1155Hook.tierIdOf.selector],
             [IDefifaHook.tierNameOf.selector, IDefifa1155Hook.tierNameOf.selector],
             [IDefifaHook.totalMintCost.selector, IDefifa1155Hook.totalMintCost.selector]
         ];

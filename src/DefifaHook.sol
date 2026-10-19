@@ -277,6 +277,13 @@ contract DefifaHook is JB721Hook, Ownable, IDefifaHook {
         return _tierCashOutWeights;
     }
 
+    /// @notice The tier a token ID belongs to.
+    /// @param tokenId The token ID.
+    /// @return The tier ID.
+    function tierIdOf(uint256 tokenId) external view override returns (uint256) {
+        return store.tierIdOfToken(tokenId);
+    }
+
     /// @notice The name of the tier with the specified ID.
     /// @param tierId The ID of the tier.
     function tierNameOf(uint256 tierId) external view override returns (string memory) {
