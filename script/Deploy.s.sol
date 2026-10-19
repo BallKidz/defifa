@@ -1,12 +1,11 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {CoreDeployment, CoreDeploymentLib} from "@bananapus/core-v6/script/helpers/CoreDeploymentLib.sol";
-import {
-    AddressRegistryDeployment,
-    AddressRegistryDeploymentLib
-} from "@bananapus/address-registry-v6/script/helpers/AddressRegistryDeploymentLib.sol";
+import {IJBAddressRegistry} from "@bananapus/address-registry-v6/src/interfaces/IJBAddressRegistry.sol";
+import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
+import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
 
+import {ERC2771Context} from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
 import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Sphinx} from "@sphinx-labs/contracts/contracts/foundry/SphinxPlugin.sol";
 import {Script} from "forge-std/Script.sol";
@@ -20,10 +19,13 @@ import {DefifaTiersHookStore} from "../src/DefifaTiersHookStore.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
 
 contract DeployScript is Script, Sphinx {
-    /// @notice tracks the deployment of the core contracts for the chain we are deploying to.
-    CoreDeployment core;
-    /// @notice tracks the deployment of the address registry for the chain we are deploying to.
-    AddressRegistryDeployment registry;
+    /// @notice The core controller and the address registry, at the same address on every chain. The rest of core
+    /// is read from the controller.
+    IJBController private constant _CONTROLLER = IJBController(0x3Fcec3572e84b624477BcfF4E2CF1f7dEAb648F1);
+    IJBAddressRegistry private constant _REGISTRY = IJBAddressRegistry(0x581bFD1eAD279E0a27B736e49494db3a7d85993C);
+
+    /// @notice The core directory, read from the controller.
+    IJBDirectory private directory;
 
     /// @notice The address that is allowed to forward calls to the terminal and controller on a users behalf.
     address private trustedForwarder;
@@ -56,25 +58,17 @@ contract DeployScript is Script, Sphinx {
     }
 
     function run() public {
-        // Get the deployment addresses for the nana CORE for this chain.
-        // We want to do this outside of the `sphinx` modifier.
-        core = CoreDeploymentLib.getDeployment(
-            vm.envOr("NANA_CORE_DEPLOYMENT_PATH", string("node_modules/@bananapus/core-v6/deployments/"))
-        );
-
-        registry = AddressRegistryDeploymentLib.getDeployment(
-            vm.envOr(
-                "NANA_ADDRESS_REGISTRY_DEPLOYMENT_PATH",
-                string("node_modules/@bananapus/address-registry-v6/deployments/")
-            )
-        );
+        // Read core from the controller. We want to do this outside of the `sphinx` modifier.
+        require(address(_CONTROLLER).code.length != 0, "Core controller is not deployed on this chain");
+        require(address(_REGISTRY).code.length != 0, "Address registry is not deployed on this chain");
+        directory = _CONTROLLER.DIRECTORY();
 
         // We use the same trusted forwarder as the core deployment.
-        trustedForwarder = core.controller.trustedForwarder();
+        trustedForwarder = ERC2771Context(address(_CONTROLLER)).trustedForwarder();
 
         // Both fee projects must have an ERC-20 on this chain.
-        defifaToken = IERC20(address(core.tokens.tokenOf(_DEFIFA_PROJECT_ID)));
-        baseProtocolToken = IERC20(address(core.tokens.tokenOf(_BASE_PROTOCOL_PROJECT_ID)));
+        defifaToken = IERC20(address(_CONTROLLER.TOKENS().tokenOf(_DEFIFA_PROJECT_ID)));
+        baseProtocolToken = IERC20(address(_CONTROLLER.TOKENS().tokenOf(_BASE_PROTOCOL_PROJECT_ID)));
         require(address(defifaToken) != address(0), "Defifa project has no token on this chain");
         require(address(baseProtocolToken) != address(0), "Base protocol project has no token on this chain");
 
@@ -132,13 +126,13 @@ contract DeployScript is Script, Sphinx {
             (address _hook, bool _hookIsDeployed) = _isDeployed({
                 salt: _HOOK_SALT,
                 creationCode: type(DefifaHook).creationCode,
-                arguments: abi.encode(core.directory, defifaToken, baseProtocolToken)
+                arguments: abi.encode(directory, defifaToken, baseProtocolToken)
             });
 
             // Deploy it if it has not been deployed yet.
             hook = !_hookIsDeployed
                 ? new DefifaHook{salt: _HOOK_SALT}({
-                    directory: core.directory, defifaToken: defifaToken, baseProtocolToken: baseProtocolToken
+                    directory: directory, defifaToken: defifaToken, baseProtocolToken: baseProtocolToken
                 })
                 : DefifaHook(_hook);
         }
@@ -158,13 +152,13 @@ contract DeployScript is Script, Sphinx {
             (address _hook1155, bool _hook1155IsDeployed) = _isDeployed({
                 salt: _1155_HOOK_SALT,
                 creationCode: type(Defifa1155Hook).creationCode,
-                arguments: abi.encode(core.directory, defifaToken, baseProtocolToken)
+                arguments: abi.encode(directory, defifaToken, baseProtocolToken)
             });
 
             // Deploy it if it has not been deployed yet.
             hook1155 = !_hook1155IsDeployed
                 ? new Defifa1155Hook{salt: _1155_HOOK_SALT}({
-                    directory: core.directory, defifaToken: defifaToken, baseProtocolToken: baseProtocolToken
+                    directory: directory, defifaToken: defifaToken, baseProtocolToken: baseProtocolToken
                 })
                 : Defifa1155Hook(_hook1155);
         }
@@ -200,12 +194,12 @@ contract DeployScript is Script, Sphinx {
             (address _governor, bool _governorIsDeployed) = _isDeployed({
                 salt: governorSalt,
                 creationCode: type(DefifaGovernor).creationCode,
-                arguments: abi.encode(core.controller, safeAddress())
+                arguments: abi.encode(_CONTROLLER, safeAddress())
             });
 
             // Deploy it if it has not been deployed yet.
             governor = !_governorIsDeployed
-                ? new DefifaGovernor{salt: governorSalt}({controller: core.controller, owner: safeAddress()})
+                ? new DefifaGovernor{salt: governorSalt}({controller: _CONTROLLER, owner: safeAddress()})
                 : DefifaGovernor(_governor);
         }
 
@@ -219,8 +213,8 @@ contract DeployScript is Script, Sphinx {
                     hookCodeOrigin,
                     tokenUriResolver,
                     governor,
-                    core.controller,
-                    registry.registry,
+                    _CONTROLLER,
+                    _REGISTRY,
                     _DEFIFA_PROJECT_ID,
                     _BASE_PROTOCOL_PROJECT_ID,
                     store,
@@ -234,8 +228,8 @@ contract DeployScript is Script, Sphinx {
                     hookCodeOrigin: hookCodeOrigin,
                     tokenUriResolver: tokenUriResolver,
                     governor: governor,
-                    controller: core.controller,
-                    registry: registry.registry,
+                    controller: _CONTROLLER,
+                    registry: _REGISTRY,
                     defifaProjectId: _DEFIFA_PROJECT_ID,
                     baseProtocolProjectId: _BASE_PROTOCOL_PROJECT_ID,
                     hookStore: store,
