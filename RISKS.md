@@ -112,3 +112,10 @@ This means **a single bad split cannot block the others from being paid**, and t
 ### 8.8 Reserve minting is blocked during NO_CONTEST
 
 `DefifaHook.mintReservesFor` reverts with `DefifaHook_ReservedTokenMintingBlockedInNoContest` (`Defifa1155Hook_ReservedTokenMintingBlockedInNoContest` in the ERC-1155 game) once `currentGamePhaseOf` reports `NO_CONTEST`. Reserve mints inflate `totalMintCost` so reserved recipients can claim a proportional share of fee tokens. Without this block, a game that failed `minParticipation` could be revived back into a SCORING-eligible state via free notional face value (reserves bump `totalMintCost` over the threshold) before `triggerNoContestFor()` latches the failure into a refund ruleset. The block tightens the §8.4 trust assumption that pending reserves are folded into governance and fee accounting: that remains true while the game is live, but once a game has already failed participation the reserve channel is closed so the no-contest outcome is final.
+
+### 8.9 The quorum rounding margin has limits
+
+`submitScorecardFor` caps quorum `baseQuorum / 5000` below the maximum BWA so rounding never blocks a unanimous vote. Two consequences:
+
+- In a two-tier game headroom is zero, so quorum sits 0.01% of one tier's power below base quorum. A delegate holding just under half of the normalized voting power can pass a winner-take-all scorecard alone.
+- BWA loses less than 2 units per attesting (delegate, tier) pair, so the margin only covers an average of 50,000 attesting delegates per eligible tier. Beyond that, a highly concentrated scorecard can be unreachable even with unanimous attestation, and the game falls through to `NO_CONTEST` once `scorecardTimeout` elapses.
