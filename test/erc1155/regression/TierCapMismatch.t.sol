@@ -26,7 +26,6 @@ import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRules
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
 contract TierCapMismatchTest is JBTest, TestBaseWorkflow {
@@ -81,14 +80,13 @@ contract TierCapMismatchTest is JBTest, TestBaseWorkflow {
         uint256 protocolFeeProjectId =
             jbController().launchProjectFor(projectOwner, "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
-        address nanaToken =
-            address(jbController().deployERC20For(protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+        jbController().deployERC20For(protocolFeeProjectId, "Bananapus", "NANA", bytes32(0));
 
         uint256 defifaProjectId = jbController().launchProjectFor(projectOwner, "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
-        address defifaToken = address(jbController().deployERC20For(defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+        jbController().deployERC20For(defifaProjectId, "Defifa", "DEFIFA", bytes32(0));
 
-        hookCodeOrigin = new Defifa1155Hook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
+        hookCodeOrigin = new Defifa1155Hook(jbDirectory(), jbTokens(), defifaProjectId, protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hookCodeOrigin),

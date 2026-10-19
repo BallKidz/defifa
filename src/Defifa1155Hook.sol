@@ -6,6 +6,7 @@ import {Checkpoints} from "@openzeppelin/contracts/utils/structs/Checkpoints.sol
 import {IERC165} from "@openzeppelin/contracts/utils/introspection/IERC165.sol";
 import {IJBCashOutHook} from "@bananapus/core-v6/src/interfaces/IJBCashOutHook.sol";
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 import {IJBPayHook} from "@bananapus/core-v6/src/interfaces/IJBPayHook.sol";
 import {IJBRulesetDataHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetDataHook.sol";
 import {IJBRulesets} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
@@ -56,8 +57,8 @@ contract Defifa1155Hook is ERC1155, Ownable, IDefifa1155Hook {
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
-    /// @notice Thrown when the Defifa token and base protocol token addresses are the same at construction.
-    error Defifa1155Hook_IdenticalTokens(address defifaToken, address baseProtocolToken);
+    /// @notice Thrown when the Defifa project and the base protocol project are the same at construction.
+    error Defifa1155Hook_IdenticalFeeProjects(uint256 projectId);
 
     /// @notice Thrown when a tier delegation specifies the zero address as the delegate.
     error Defifa1155Hook_DelegateAddressZero(uint256 tierId);
@@ -156,11 +157,19 @@ contract Defifa1155Hook is ERC1155, Ownable, IDefifa1155Hook {
     /// @notice The directory of terminals and controllers for projects.
     IJBDirectory public immutable override DIRECTORY;
 
-    /// @notice The $DEFIFA token that is expected to be issued from paying fees.
-    IERC20 public immutable override DEFIFA_TOKEN;
+    //*********************************************************************//
+    // --------------- internal immutable stored properties -------------- //
+    //*********************************************************************//
 
-    /// @notice The $BASE_PROTOCOL token that is expected to be issued from paying fees.
-    IERC20 public immutable override BASE_PROTOCOL_TOKEN;
+    /// @notice The project whose token, $BASE_PROTOCOL, is expected to be issued from paying fees.
+    uint256 internal immutable _BASE_PROTOCOL_PROJECT_ID;
+
+    /// @notice The project whose token, $DEFIFA, is expected to be issued from paying fees.
+    uint256 internal immutable _DEFIFA_PROJECT_ID;
+
+    /// @notice The contract that stores each project's token. A project's token is set once, so the fee tokens
+    /// looked up through it never change.
+    IJBTokens internal immutable _TOKENS;
 
     //*********************************************************************//
     // --------------------- public stored properties -------------------- //
@@ -326,6 +335,16 @@ contract Defifa1155Hook is ERC1155, Ownable, IDefifa1155Hook {
     //*********************************************************************//
     // -------------------------- public views --------------------------- //
     //*********************************************************************//
+
+    /// @notice The $BASE_PROTOCOL token that is expected to be issued from paying fees.
+    function BASE_PROTOCOL_TOKEN() public view override returns (IERC20) {
+        return IERC20(address(_TOKENS.tokenOf(_BASE_PROTOCOL_PROJECT_ID)));
+    }
+
+    /// @notice The $DEFIFA token that is expected to be issued from paying fees.
+    function DEFIFA_TOKEN() public view override returns (IERC20) {
+        return IERC20(address(_TOKENS.tokenOf(_DEFIFA_PROJECT_ID)));
+    }
 
     /// @notice The data calculated before a cash-out is recorded in the terminal store. This data is provided to the
     /// terminal's `cashOutTokensOf(...)` transaction.
@@ -494,8 +513,8 @@ contract Defifa1155Hook is ERC1155, Ownable, IDefifa1155Hook {
             hookStore: store,
             hook: address(this),
             totalMintCost: totalMintCost + _pendingReserveMintCost(),
-            defifaBalance: DEFIFA_TOKEN.balanceOf(address(this)),
-            baseProtocolBalance: BASE_PROTOCOL_TOKEN.balanceOf(address(this))
+            defifaBalance: DEFIFA_TOKEN().balanceOf(address(this)),
+            baseProtocolBalance: BASE_PROTOCOL_TOKEN().balanceOf(address(this))
         });
     }
 
@@ -504,17 +523,26 @@ contract Defifa1155Hook is ERC1155, Ownable, IDefifa1155Hook {
     //*********************************************************************//
 
     /// @dev The initial owner is msg.sender; ownership is transferred to the governor after initialization.
-    constructor(IJBDirectory directory, IERC20 defifaToken, IERC20 baseProtocolToken) ERC1155("") Ownable(msg.sender) {
-        if (address(defifaToken) == address(baseProtocolToken)) {
-            revert Defifa1155Hook_IdenticalTokens({
-                defifaToken: address(defifaToken), baseProtocolToken: address(baseProtocolToken)
-            });
-        }
+    /// @param directory The directory of terminals and controllers for projects.
+    /// @param tokens The contract that stores each project's token.
+    /// @param defifaProjectId The project whose token is expected to be issued from paying fees.
+    /// @param baseProtocolProjectId The protocol project whose token is expected to be issued from paying fees.
+    constructor(
+        IJBDirectory directory,
+        IJBTokens tokens,
+        uint256 defifaProjectId,
+        uint256 baseProtocolProjectId
+    )
+        ERC1155("")
+        Ownable(msg.sender)
+    {
+        if (defifaProjectId == baseProtocolProjectId) revert Defifa1155Hook_IdenticalFeeProjects(defifaProjectId);
 
         CODE_ORIGIN = address(this);
         DIRECTORY = directory;
-        DEFIFA_TOKEN = defifaToken;
-        BASE_PROTOCOL_TOKEN = baseProtocolToken;
+        _TOKENS = tokens;
+        _DEFIFA_PROJECT_ID = defifaProjectId;
+        _BASE_PROTOCOL_PROJECT_ID = baseProtocolProjectId;
     }
 
     //*********************************************************************//
@@ -925,8 +953,8 @@ contract Defifa1155Hook is ERC1155, Ownable, IDefifa1155Hook {
             beneficiary: beneficiary,
             shareToBeneficiary: shareToBeneficiary,
             outOfTotal: outOfTotal,
-            defifaToken: DEFIFA_TOKEN,
-            baseProtocolToken: BASE_PROTOCOL_TOKEN
+            defifaToken: DEFIFA_TOKEN(),
+            baseProtocolToken: BASE_PROTOCOL_TOKEN()
         });
     }
 

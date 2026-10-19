@@ -24,7 +24,6 @@ import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
 import {JBTerminalConfig} from "@bananapus/core-v6/src/structs/JBTerminalConfig.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
 contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
@@ -76,14 +75,13 @@ contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
         uint256 protocolFeeProjectId =
             jbController().launchProjectFor(projectOwner, "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
-        address nanaToken =
-            address(jbController().deployERC20For(protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+        jbController().deployERC20For(protocolFeeProjectId, "Bananapus", "NANA", bytes32(0));
 
         uint256 defifaProjectId = jbController().launchProjectFor(projectOwner, "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
-        address defifaToken = address(jbController().deployERC20For(defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+        jbController().deployERC20For(defifaProjectId, "Defifa", "DEFIFA", bytes32(0));
 
-        DefifaHook hookCodeOrigin = new DefifaHook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
+        DefifaHook hookCodeOrigin = new DefifaHook(jbDirectory(), jbTokens(), defifaProjectId, protocolFeeProjectId);
         DefifaGovernor governor = new DefifaGovernor(jbController(), address(this));
         registry = new JBAddressRegistry();
         deployer = new DefifaDeployer({

@@ -28,7 +28,6 @@ import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
 import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
 contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
@@ -89,15 +88,14 @@ contract SingleTierTimeoutLockTest is JBTest, TestBaseWorkflow {
         _protocolFeeProjectId =
             jbController().launchProjectFor(address(_projectOwner), "", rulesetConfigs, terminalConfigs, "");
         vm.prank(_projectOwner);
-        address nanaToken =
-            address(jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+        jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0));
 
         _defifaProjectId =
             jbController().launchProjectFor(address(_projectOwner), "", rulesetConfigs, terminalConfigs, "");
         vm.prank(_projectOwner);
-        address defifaToken = address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+        jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0));
 
-        _hookImpl = new Defifa1155Hook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
+        _hookImpl = new Defifa1155Hook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         _governorImpl = new DefifaGovernor(jbController(), address(this));
         _deployer = new DefifaDeployer({
             hookCodeOrigin: address(_hookImpl),

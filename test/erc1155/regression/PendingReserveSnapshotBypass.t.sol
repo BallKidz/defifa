@@ -12,7 +12,6 @@ import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/J
 
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {DefifaDelegation} from "../../../src/structs/DefifaDelegation.sol";
@@ -101,15 +100,14 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         _protocolFeeProjectId =
             jbController().launchProjectFor(address(_projectOwner), "", rulesetConfigs, terminalConfigs, "");
         vm.prank(_projectOwner);
-        address nanaToken =
-            address(jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+        jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0));
 
         _defifaProjectId =
             jbController().launchProjectFor(address(_projectOwner), "", rulesetConfigs, terminalConfigs, "");
         vm.prank(_projectOwner);
-        address defifaToken = address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+        jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0));
 
-        _hookImpl = new Defifa1155Hook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
+        _hookImpl = new Defifa1155Hook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         _governorImpl = new DefifaGovernor(jbController(), address(this));
         _deployer = new DefifaDeployer({
             hookCodeOrigin: address(_hookImpl),

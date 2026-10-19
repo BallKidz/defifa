@@ -38,7 +38,6 @@ import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow
 import {IERC1155} from "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 import {IERC1155MetadataURI} from "@openzeppelin/contracts/token/ERC1155/extensions/IERC1155MetadataURI.sol";
 import {IERC1155Errors} from "@openzeppelin/contracts/interfaces/draft-IERC6093.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
 /// @notice A launched game in its MINT phase with 8 tiers (tier 1 reserves one position per two paid), plus pay,
@@ -103,13 +102,12 @@ abstract contract DefifaERC1155Harness is JBTest, TestBaseWorkflow {
 
         uint256 protocolFeeProjectId = jbController().launchProjectFor(projectOwner, "", rulesets, terminals, "");
         vm.prank(projectOwner);
-        address nanaToken =
-            address(jbController().deployERC20For(protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+        jbController().deployERC20For(protocolFeeProjectId, "Bananapus", "NANA", bytes32(0));
         uint256 defifaProjectId = jbController().launchProjectFor(projectOwner, "", rulesets, terminals, "");
         vm.prank(projectOwner);
-        address defifaToken = address(jbController().deployERC20For(defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+        jbController().deployERC20For(defifaProjectId, "Defifa", "DEFIFA", bytes32(0));
 
-        hookImpl = new Defifa1155Hook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
+        hookImpl = new Defifa1155Hook(jbDirectory(), jbTokens(), defifaProjectId, protocolFeeProjectId);
         DefifaGovernor governor = new DefifaGovernor(jbController(), address(this));
         DefifaDeployer deployer = new DefifaDeployer({
             hookCodeOrigin: address(hookImpl),

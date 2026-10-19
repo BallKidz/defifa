@@ -4,9 +4,9 @@ pragma solidity 0.8.28;
 import {IJBAddressRegistry} from "@bananapus/address-registry-v6/src/interfaces/IJBAddressRegistry.sol";
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {IJBDirectory} from "@bananapus/core-v6/src/interfaces/IJBDirectory.sol";
+import {IJBTokens} from "@bananapus/core-v6/src/interfaces/IJBTokens.sol";
 
 import {ERC2771Context} from "@openzeppelin/contracts/metatx/ERC2771Context.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {Sphinx} from "@sphinx-labs/contracts/contracts/foundry/SphinxPlugin.sol";
 import {Script} from "forge-std/Script.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
@@ -33,9 +33,8 @@ contract DeployScript is Script, Sphinx {
     /// @notice The Capsules typeface the token URI resolver renders with on this chain.
     ITypeface private typeface;
 
-    /// @notice The fee tokens of the Defifa project and the base protocol project.
-    IERC20 private defifaToken;
-    IERC20 private baseProtocolToken;
+    /// @notice The contract that stores each project's token, read from the controller.
+    IJBTokens private tokens;
 
     /// @notice The project that takes the fee from games (the DEFIFA revnet), and the base protocol project (NANA).
     uint256 private constant _DEFIFA_PROJECT_ID = 5;
@@ -66,11 +65,13 @@ contract DeployScript is Script, Sphinx {
         // We use the same trusted forwarder as the core deployment.
         trustedForwarder = ERC2771Context(address(_CONTROLLER)).trustedForwarder();
 
-        // Both fee projects must have an ERC-20 on this chain.
-        defifaToken = IERC20(address(_CONTROLLER.TOKENS().tokenOf(_DEFIFA_PROJECT_ID)));
-        baseProtocolToken = IERC20(address(_CONTROLLER.TOKENS().tokenOf(_BASE_PROTOCOL_PROJECT_ID)));
-        require(address(defifaToken) != address(0), "Defifa project has no token on this chain");
-        require(address(baseProtocolToken) != address(0), "Base protocol project has no token on this chain");
+        // Both fee projects must have an ERC-20 on this chain. The hooks look them up by project ID.
+        tokens = _CONTROLLER.TOKENS();
+        require(address(tokens.tokenOf(_DEFIFA_PROJECT_ID)) != address(0), "Defifa project has no token on this chain");
+        require(
+            address(tokens.tokenOf(_BASE_PROTOCOL_PROJECT_ID)) != address(0),
+            "Base protocol project has no token on this chain"
+        );
 
         // The resolver renders with the Capsules typeface deployed on this chain.
         typeface = _typefaceOf(block.chainid);
@@ -126,13 +127,16 @@ contract DeployScript is Script, Sphinx {
             (address _hook, bool _hookIsDeployed) = _isDeployed({
                 salt: _HOOK_SALT,
                 creationCode: type(DefifaHook).creationCode,
-                arguments: abi.encode(directory, defifaToken, baseProtocolToken)
+                arguments: abi.encode(directory, tokens, _DEFIFA_PROJECT_ID, _BASE_PROTOCOL_PROJECT_ID)
             });
 
             // Deploy it if it has not been deployed yet.
             hook = !_hookIsDeployed
                 ? new DefifaHook{salt: _HOOK_SALT}({
-                    directory: directory, defifaToken: defifaToken, baseProtocolToken: baseProtocolToken
+                    directory: directory,
+                    tokens: tokens,
+                    defifaProjectId: _DEFIFA_PROJECT_ID,
+                    baseProtocolProjectId: _BASE_PROTOCOL_PROJECT_ID
                 })
                 : DefifaHook(_hook);
         }
@@ -152,13 +156,16 @@ contract DeployScript is Script, Sphinx {
             (address _hook1155, bool _hook1155IsDeployed) = _isDeployed({
                 salt: _1155_HOOK_SALT,
                 creationCode: type(Defifa1155Hook).creationCode,
-                arguments: abi.encode(directory, defifaToken, baseProtocolToken)
+                arguments: abi.encode(directory, tokens, _DEFIFA_PROJECT_ID, _BASE_PROTOCOL_PROJECT_ID)
             });
 
             // Deploy it if it has not been deployed yet.
             hook1155 = !_hook1155IsDeployed
                 ? new Defifa1155Hook{salt: _1155_HOOK_SALT}({
-                    directory: directory, defifaToken: defifaToken, baseProtocolToken: baseProtocolToken
+                    directory: directory,
+                    tokens: tokens,
+                    defifaProjectId: _DEFIFA_PROJECT_ID,
+                    baseProtocolProjectId: _BASE_PROTOCOL_PROJECT_ID
                 })
                 : Defifa1155Hook(_hook1155);
         }
