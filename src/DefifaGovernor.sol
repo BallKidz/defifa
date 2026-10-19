@@ -73,6 +73,14 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @notice The minimum attestation grace period enforced during game initialization.
     uint256 public constant override MIN_ATTESTATION_GRACE_PERIOD = 1 days;
 
+    /// @notice The share of the attestation possible that an evenly split scorecard needs, in basis points.
+    uint256 public constant override QUORUM_EVEN_BPS = 5000;
+
+    /// @notice The share of the attestation possible that a winner-take-all scorecard needs, in basis points.
+    /// @dev Kept below 100% so a quarter of a losing side can be silent, and so BWA rounding (under 2 units per
+    /// attesting delegate and tier) can never put quorum out of reach of unanimous attestation.
+    uint256 public constant override QUORUM_WINNER_TAKE_ALL_BPS = 7500;
+
     //*********************************************************************//
     // --------------- public immutable stored properties ---------------- //
     //*********************************************************************//
@@ -421,18 +429,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             }
         }
 
-        // Concentration-adjusted quorum: penalty = headroom * maxShare².
-        // Headroom = max achievable BWA - base quorum = (N-2) * MAX / 2.
-        // This is the gap honest attestors can fill above base quorum.
-        // maxShare² is nonlinear: gentle for moderate concentration, steep for extreme.
-        // The result is capped below max BWA by a rounding margin, so quorum stays reachable by non-beneficiaries.
-        uint256 baseQuorum = quorum(gameId);
-        uint256 adjustedQuorum = baseQuorum;
-
-        if (baseQuorum >= MAX_ATTESTATION_POWER_TIER) {
-            // headroom = maxBWA - baseQuorum = (N-1)*MAX - N*MAX/2 = (N-2)*MAX/2.
-            uint256 headroom = baseQuorum - MAX_ATTESTATION_POWER_TIER;
-
+        // Quorum rises from QUORUM_EVEN_BPS to QUORUM_WINNER_TAKE_ALL_BPS of the most attestation possible as the
+        // largest share grows, by that share squared: gentle for moderate concentration, steepest for winner-take-all.
+        {
             // Find the largest tier weight.
             uint256 totalCashOutWeight = IDefifaHook(metadata.dataHook).TOTAL_CASHOUT_WEIGHT();
             uint256 maxWeight;
@@ -443,21 +442,17 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                 }
             }
 
-            // maxShare² in totalCashOutWeight scale (nonlinear: gentle for moderate, steep for extreme).
+            // maxShare² in totalCashOutWeight scale.
             uint256 maxShareSquared = mulDiv({x: maxWeight, y: maxWeight, denominator: totalCashOutWeight});
 
-            // Penalty fills headroom proportional to concentration².
-            adjustedQuorum += mulDiv({x: headroom, y: maxShareSquared, denominator: totalCashOutWeight});
+            // Interpolate the required share between the even and winner-take-all levels.
+            uint256 bps = QUORUM_EVEN_BPS
+                + mulDiv({
+                    x: QUORUM_WINNER_TAKE_ALL_BPS - QUORUM_EVEN_BPS, y: maxShareSquared, denominator: totalCashOutWeight
+                });
 
-            // BWA floors twice per attesting (delegate, tier) pair, losing < 2 units per pair, so unanimous
-            // attestation can fall short of maxBWA by up to 2 units per pair. Keep quorum
-            // MAX_ATTESTATION_POWER_TIER / 10_000 per eligible tier (baseQuorum / 5000 in total) below maxBWA,
-            // which covers an average of up to 50,000 attesting delegates per eligible tier.
-            uint256 reachableQuorum = baseQuorum + headroom - baseQuorum / 5000;
-            if (adjustedQuorum > reachableQuorum) adjustedQuorum = reachableQuorum;
+            scorecard.quorumSnapshot = _quorumOf({maxAttestationWeight: _maxAttestationWeightOf(gameId), bps: bps});
         }
-
-        scorecard.quorumSnapshot = adjustedQuorum;
 
         // Keep a reference to the default attestation delegate.
         address defaultAttestationDelegate = IDefifaHook(metadata.dataHook).defaultAttestationDelegate();
@@ -772,50 +767,15 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         }
     }
 
-    /// @notice The number of attestation units that must have participated in a proposal for it to be ratified.
-    /// @dev Each tier with participation contributes MAX_ATTESTATION_POWER_TIER to the total eligible weight.
-    /// A tier counts as "participated" if it has circulating tokens OR unminted pending reserves — the latter
-    /// means mints occurred (triggering reserve accrual) even if all paid tokens were later burned during REFUND.
-    /// Quorum is 50% of this total. Because every tier has equal max attestation power regardless of supply,
-    /// each tier's community has equal influence. This prevents high-supply tiers from dominating governance.
-    /// @dev No snapshot needed: during SCORING, supply is frozen (no new paid mints, no burns). Reserve minting
-    /// doesn't change which tiers are counted because tiers with pending reserves are already included.
+    /// @notice The attestation an evenly split scorecard needs to be ratified.
+    /// @dev The attestation possible is `(N - 1) * MAX_ATTESTATION_POWER_TIER` for N quorum-eligible tiers, because a
+    /// tier never attests to its own payout. An even split needs `QUORUM_EVEN_BPS` of it; more concentrated scorecards
+    /// need up to `QUORUM_WINNER_TAKE_ALL_BPS` (see `submitScorecardFor`). Every tier has the same power regardless of
+    /// supply, so each outcome's community has equal influence.
+    /// @param gameId The ID of the game.
     /// @return The quorum number of attestations.
     function quorum(uint256 gameId) public view override returns (uint256) {
-        // Get the game's current funding cycle along with its metadata.
-        (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
-
-        // Get a reference to the hook and its store.
-        IDefifaHook hook = IDefifaHook(metadata.dataHook);
-        IJB721TiersHookStore store = hook.store();
-
-        // Get a reference to the number of tiers.
-        uint256 numberOfTiers = store.maxTierIdOf(metadata.dataHook);
-
-        // Keep a reference to the total eligible tier weight.
-        uint256 eligibleTierWeights;
-
-        for (uint256 i; i < numberOfTiers;) {
-            uint256 tierId = i + 1;
-
-            // A tier contributes to quorum if it has circulating tokens OR unminted pending reserves.
-            // Pending reserves still belong economically to the reserve beneficiary, even after the
-            // last paid token in the tier is burned during REFUND, so excluding them would let a
-            // burner erase another participant's quorum contribution without erasing their claim.
-            uint256 currentTierSupply = hook.currentSupplyOfTier(tierId);
-            // Use adjusted pending reserves that account for refund-phase burns.
-            uint256 pendingReserves = hook.adjustedPendingReservesFor(tierId);
-            if (currentTierSupply != 0 || pendingReserves != 0) {
-                eligibleTierWeights += MAX_ATTESTATION_POWER_TIER;
-            }
-
-            unchecked {
-                ++i;
-            }
-        }
-
-        // Quorum = 50% of all participated tiers' attestation power.
-        return eligibleTierWeights / 2;
+        return _quorumOf({maxAttestationWeight: _maxAttestationWeightOf(gameId), bps: QUORUM_EVEN_BPS});
     }
 
     /// @notice Get the current governance state (pending, active, defeated, succeeded) of a scorecard proposal.
@@ -917,6 +877,54 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     //*********************************************************************//
     // ------------------------- internal views -------------------------- //
     //*********************************************************************//
+
+    /// @notice The most attestation any scorecard of a game can collect: `(N - 1) * MAX_ATTESTATION_POWER_TIER` for N
+    /// quorum-eligible tiers.
+    /// @dev A tier is quorum-eligible if it has circulating tokens or unminted pending reserves. Pending reserves still
+    /// belong to the reserve beneficiary after the last paid token in a tier is burned during REFUND, so excluding
+    /// them would let a burner erase another participant's quorum contribution without erasing their claim. No
+    /// snapshot is needed: during SCORING, supply is frozen, and reserve mints never change which tiers count.
+    /// @param gameId The ID of the game.
+    /// @return maxAttestationWeight The most attestation possible.
+    function _maxAttestationWeightOf(uint256 gameId) internal view returns (uint256 maxAttestationWeight) {
+        // Get the game's current funding cycle along with its metadata.
+        (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
+
+        // Get a reference to the hook.
+        IDefifaHook hook = IDefifaHook(metadata.dataHook);
+
+        // Get a reference to the number of tiers.
+        uint256 numberOfTiers = hook.store().maxTierIdOf(metadata.dataHook);
+
+        // Count the quorum-eligible tiers.
+        uint256 eligibleTiers;
+        for (uint256 i; i < numberOfTiers;) {
+            uint256 tierId = i + 1;
+
+            // Use adjusted pending reserves that account for refund-phase burns.
+            if (hook.currentSupplyOfTier(tierId) != 0 || hook.adjustedPendingReservesFor(tierId) != 0) {
+                ++eligibleTiers;
+            }
+
+            unchecked {
+                ++i;
+            }
+        }
+
+        // A tier never attests to its own payout, so the most any scorecard can collect is every other tier's power.
+        if (eligibleTiers != 0) maxAttestationWeight = (eligibleTiers - 1) * MAX_ATTESTATION_POWER_TIER;
+    }
+
+    /// @notice A share of the most attestation possible.
+    /// @dev Never below 1, so a game with no possible attestation (a single eligible tier) can never ratify and falls
+    /// through to NO_CONTEST.
+    /// @param maxAttestationWeight The most attestation possible.
+    /// @param bps The share, in basis points.
+    /// @return quorumWeight The attestation needed.
+    function _quorumOf(uint256 maxAttestationWeight, uint256 bps) internal pure returns (uint256 quorumWeight) {
+        quorumWeight = mulDiv({x: maxAttestationWeight, y: bps, denominator: 10_000});
+        if (quorumWeight == 0) quorumWeight = 1;
+    }
 
     /// @notice A tier's attestation units at a scorecard's snapshot.
     /// @dev Starts from the checkpointed tier total at `timestamp`, clamps it to the units minted when the scorecard

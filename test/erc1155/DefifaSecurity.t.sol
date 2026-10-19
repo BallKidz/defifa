@@ -220,9 +220,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
 
     // =========================================================================
     // ROUNDING: extreme weights at 1000 ETH per tier
-    // With BWA + HHI, highly concentrated scorecards on fewer than 4 tiers
-    // cannot reach quorum (total BWA = MAX*(n-1) < adjusted quorum for HHI~1).
-    // Using 5 tiers ensures total BWA (4*MAX) exceeds the adjusted quorum.
+    // A highly concentrated scorecard needs 75% of the attestation possible, MAX*(n-1).
+    // Five tiers give every losing tier's holder a share of that power.
     // =========================================================================
     function testRounding_extremeWeights() external {
         _setupGame(5, 1000 ether);
@@ -278,22 +277,21 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // QUORUM: 50% of minted tiers
+    // QUORUM: 50% of the attestation possible across minted tiers
     // =========================================================================
     function testQuorum_50pctMintedTiers() external {
         // Launch game with 10 tiers but only mint 6
         _setupPartial(10, 6, 1 ether);
-        uint256 expected = (6 * _gov.MAX_ATTESTATION_POWER_TIER()) / 2;
-        assertEq(_gov.quorum(_gameId), expected, "quorum = 50% of minted tiers");
+        uint256 expected = (5 * _gov.MAX_ATTESTATION_POWER_TIER()) / 2;
+        assertEq(_gov.quorum(_gameId), expected, "quorum = 50% of (minted tiers - 1) * MAX");
     }
 
     // =========================================================================
     // FUZZ: fund conservation across varying tier/player counts
     // =========================================================================
     function testFuzz_fundConservation(uint8 rawTiers, uint8 rawPlayers) external {
-        // Minimum 3 tiers: with BWA + HHI-adjusted quorum, 2-tier games with equal scorecards
-        // can never reach quorum (total BWA = MAX*(n-1) < adjusted quorum when n < 3).
-        uint8 nTiers = uint8(bound(rawTiers, 3, 12));
+        // Two tiers is the smallest game whose scorecards can reach quorum.
+        uint8 nTiers = uint8(bound(rawTiers, 2, 12));
         uint8 nPpt = uint8(bound(rawPlayers, 1, 3));
 
         _setupMultiN(nTiers, nPpt, 1 ether);
@@ -347,10 +345,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
 
     // =========================================================================
     // C-D3: reserved minters get proportional fee tokens ($DEFIFA/$NANA)
-    // With BWA + HHI, 2-tier games cannot reach quorum (total BWA power for
-    // n tiers = MAX*(n-1) which is always less than HHI-adjusted quorum for n=2).
-    // We use 4 tiers with equal weight, all having reserveRate=1. This ensures
-    // enough attestation power from all participants to meet the adjusted quorum.
+    // We use 4 tiers with equal weight, all having reserveRate=1, so every
+    // participant contributes attestation power toward quorum.
     // =========================================================================
     function testC_D3_reservedMintersGetFeeTokens() external {
         // Setup: 4 tiers, reservedRate=1, reserveBeneficiary = _reserveAddr

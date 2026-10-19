@@ -978,9 +978,9 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
         uint256 quorumB = governor.quorum(gameIdB);
 
         // Game A has 4 minted tiers, Game B has 3 minted tiers.
-        // Quorum = 50% of minted tiers * MAX_ATTESTATION_POWER_TIER.
+        // Quorum = 50% of the attestation possible, (minted tiers - 1) * MAX_ATTESTATION_POWER_TIER.
         assertGt(quorumA, quorumB, "Game A quorum > Game B quorum (more tiers)");
-        assertEq(quorumA, 4 * governor.MAX_ATTESTATION_POWER_TIER() / 2, "Game A quorum = 4 tiers * 50%");
-        assertEq(quorumB, 3 * governor.MAX_ATTESTATION_POWER_TIER() / 2, "Game B quorum = 3 tiers * 50%");
+        assertEq(quorumA, 3 * governor.MAX_ATTESTATION_POWER_TIER() / 2, "Game A quorum = 50% of 3 tiers' power");
+        assertEq(quorumB, 2 * governor.MAX_ATTESTATION_POWER_TIER() / 2, "Game B quorum = 50% of 2 tiers' power");
     }
 }

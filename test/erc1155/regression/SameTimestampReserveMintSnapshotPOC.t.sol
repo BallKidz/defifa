@@ -47,10 +47,12 @@ contract SameTimestampReserveMintSnapshotPOC is DefifaGovernorTest {
 
         vm.warp(submitTimestamp + 1);
 
-        // The paid losing-tier holder held its unit before submission, so it still supplies half quorum.
+        // The paid losing-tier holder held its unit before submission, so it supplies half its tier's power.
         vm.prank(LOSING_HOLDER);
         uint256 holderWeight = gov.attestToScorecardFrom(projectId, scorecardId);
-        assertEq(holderWeight, gov.MAX_ATTESTATION_POWER_TIER() / 2, "paid losing holder supplies half quorum");
+        assertEq(
+            holderWeight, gov.MAX_ATTESTATION_POWER_TIER() / 2, "paid losing holder supplies half its tier's power"
+        );
 
         // The reserve beneficiary minted AFTER submission: the frozen snapshot gives it zero power, so attesting
         // reverts on the zero-weight guard. It cannot top up quorum for the self-serving scorecard.
@@ -62,10 +64,11 @@ contract SameTimestampReserveMintSnapshotPOC is DefifaGovernorTest {
         );
         gov.attestToScorecardFrom(projectId, scorecardId);
 
-        // Quorum is not reached and the scorecard never succeeds.
+        // A winner-take-all scorecard needs 75% of the attestation possible, (2 - 1) * MAX, so quorum is not reached
+        // and the scorecard never succeeds.
         assertLt(
             gov.attestationCountOf(projectId, scorecardId),
-            gov.quorum(projectId),
+            gov.MAX_ATTESTATION_POWER_TIER() * 3 / 4,
             "same-timestamp reserve mint must not reach quorum"
         );
 

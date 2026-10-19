@@ -255,8 +255,8 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // TEST 6: Quorum requires 50% of minted tier weight.
-    // With 4 minted tiers, quorum = 2 * MAX_ATTESTATION_POWER_TIER.
+    // TEST 6: Quorum requires 50% of the attestation possible.
+    // With 4 minted tiers, that is (4 - 1) * MAX_ATTESTATION_POWER_TIER, so quorum = 1.5 * MAX.
     // 1 out of 4 attestors cannot reach quorum alone.
     // =========================================================================
     function test_singleAttestorCannotReachQuorum() external {
@@ -264,8 +264,8 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         _toScoring();
 
         uint256 quorum = _gov.quorum(_gameId);
-        uint256 expectedQuorum = (4 * _gov.MAX_ATTESTATION_POWER_TIER()) / 2;
-        assertEq(quorum, expectedQuorum, "quorum = 50% of 4 minted tiers");
+        uint256 expectedQuorum = (3 * _gov.MAX_ATTESTATION_POWER_TIER()) / 2;
+        assertEq(quorum, expectedQuorum, "quorum = 50% of (4 - 1) tiers' power");
 
         // Submit scorecard.
         DefifaTierCashOutWeight[] memory sc = _buildScorecard(4);
@@ -295,12 +295,12 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // TEST 7: Three out of four attestors can reach the HHI-adjusted quorum.
+    // TEST 7: Three out of four attestors can reach quorum.
     // With BWA (Benefit-Weighted Attestation), each attestor's power is reduced
     // by their tier's share of the scorecard. For an equal 4-tier scorecard:
     //   BWA power per user = MAX_ATTESTATION_POWER_TIER * 0.75 = 750_000_000
-    //   HHI-adjusted quorum = baseQuorum * 1.125 = 2_250_000_000
-    // So 3 users (2_250_000_000) just meets quorum, but 2 users (1_500_000_000) does not.
+    //   quorum = 51.56% of (4 - 1) * MAX = 1_546_800_000
+    // So 3 users (2_250_000_000) meet quorum, but 2 users (1_500_000_000) do not.
     // =========================================================================
     function test_halfAttestorsCanReachQuorum() external {
         _setupGame(4, 1 ether);
@@ -410,19 +410,16 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
     // than a snapshot, so when tokens are burned the quorum threshold
     // decreases. This is documented and accepted behavior.
     //
-    // With BWA + HHI-adjusted quorum, a minimum of 4 remaining tiers is needed
-    // for a balanced scorecard to reach quorum (since total BWA power for n tiers
-    // is MAX*(n-1) and the adjusted quorum for n=2 always exceeds that).
     // We use 6 tiers, burn 2, leaving 4 tiers where 3/4 attestors suffice.
     // =========================================================================
     function test_burnTiersLowersQuorumAllowsRatification() external {
         // --- Step 1: Setup 6 tiers, 1 user per tier ---
         _setupGame(6, 1 ether);
 
-        // Verify initial quorum: 6 minted tiers -> quorum = 3 * MAX_ATTESTATION_POWER_TIER.
+        // Verify initial quorum: 6 minted tiers -> 50% of (6 - 1) * MAX_ATTESTATION_POWER_TIER.
         uint256 initialQuorum = _gov.quorum(_gameId);
         uint256 maxTier = _gov.MAX_ATTESTATION_POWER_TIER();
-        assertEq(initialQuorum, (6 * maxTier) / 2, "initial quorum = 50% of 6 tiers");
+        assertEq(initialQuorum, (5 * maxTier) / 2, "initial quorum = 50% of 5 tiers' power");
 
         // --- Step 2: Warp to REFUND phase, users 4 and 5 refund ---
         _toRefund();
@@ -437,7 +434,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
 
         // Quorum should now reflect only 4 minted tiers.
         uint256 newQuorum = _gov.quorum(_gameId);
-        assertEq(newQuorum, (4 * maxTier) / 2, "quorum drops to 50% of 4 remaining tiers");
+        assertEq(newQuorum, (3 * maxTier) / 2, "quorum drops to 50% of 3 tiers' power");
         assertLt(newQuorum, initialQuorum, "new quorum < initial quorum");
 
         // --- Step 3: Advance to SCORING phase ---
@@ -457,8 +454,8 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
 
         // --- Step 5: Users 0, 1, and 2 attest (3 of 4 remaining tiers) ---
         // BWA power per user (25% tier weight): 1e9 * 0.75 = 750_000_000.
-        // HHI-adjusted quorum for equal 4-tier scorecard = 2e9 * 1.125 = 2_250_000_000.
-        // 3 users * 750M = 2_250_000_000, meeting the adjusted quorum exactly.
+        // Quorum for an equal 4-tier scorecard = 3e9 * 51.56% = 1_546_800_000.
+        // 3 users * 750M = 2_250_000_000, above quorum.
         vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
 
         vm.prank(_users[0]);

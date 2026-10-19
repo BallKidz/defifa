@@ -18,7 +18,6 @@ import {DefifaDelegation} from "../../src/structs/DefifaDelegation.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../../src/structs/DefifaTierParams.sol";
 import {DefifaTierCashOutWeight} from "../../src/structs/DefifaTierCashOutWeight.sol";
-import {DefifaScorecardState} from "../../src/enums/DefifaScorecardState.sol";
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
 import {JBTerminalConfig} from "@bananapus/core-v6/src/structs/JBTerminalConfig.sol";
 import {JBRulesetConfig} from "@bananapus/core-v6/src/structs/JBRulesetConfig.sol";
@@ -154,7 +153,7 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
 
         assertEq(preBwa0, 375_000_000, "pending reserve should dilute tier 1 holder at snapshot");
         assertEq(preBwa1, 750_000_000, "non-reserve tier holder keeps full post-BWA weight");
-        assertEq(preBwa0 + preBwa1 + preBwa1, 1_875_000_000, "three attestors start below adjusted quorum");
+        assertEq(preBwa0 + preBwa1 + preBwa1, 1_875_000_000, "three attestors' diluted weight at the snapshot");
 
         vm.warp(block.timestamp + 1);
 
@@ -184,12 +183,12 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
 
         vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
 
-        // Three attestors cannot reach quorum because the snapshot preserves the dilution.
-        // Their combined weight: 375M + 750M + 750M = 1,875M < quorum (2,000M base).
+        // The recorded attestations use the snapshot's diluted weight: 375M + 750M + 750M = 1,875M, not the 2,250M
+        // that reserve minting would give if it could remove the dilution.
         assertEq(
-            uint256(_gov.stateOf(_gameId, scorecardId)),
-            uint256(DefifaScorecardState.ACTIVE),
-            "reserve mint after snapshot does NOT let three attestors reach quorum"
+            _gov.attestationCountOf(_gameId, scorecardId),
+            1_875_000_000,
+            "reserve mint after snapshot does NOT inflate recorded attestations"
         );
     }
 

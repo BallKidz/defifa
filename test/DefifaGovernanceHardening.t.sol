@@ -237,40 +237,15 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
         uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
 
-        // Compute expected HHI-adjusted quorum.
-        // HHI = 4 * mulDiv(25e16, 25e16, 1e18) = 4 * 62_500_000_000_000_000 = 250_000_000_000_000_000 = 25e16
-        uint256 hhi = 4 * mulDiv(25e16, 25e16, 1e18);
-        assertEq(hhi, 25e16, "HHI for equal 4-tier should be 0.25 * 1e18");
-
-        // adjustmentFactor = mulDiv(5e17, 25e16, 1e18) = 125e15
-        uint256 adjustmentFactor = mulDiv(5e17, hhi, 1e18);
-        assertEq(adjustmentFactor, 125e15, "adjustment factor should be 0.125 * 1e18");
-
-        // adjustedQuorum = baseQuorum + mulDiv(baseQuorum, 125e15, 1e18)
-        uint256 expectedAdjustedQuorum = baseQuorum + mulDiv(baseQuorum, adjustmentFactor, 1e18);
-
-        // Read the quorumSnapshot stored in the scorecard (via attestationCountOf side-effect or state check).
-        // We verify by checking that the right number of attestors is needed.
-        // With BWA for equal scorecard, each tier holder gets 75% of MAX_ATTESTATION_POWER_TIER.
-        // So 4 attestors provide: 4 * 0.75 * MAX = 3 * MAX = 3e9.
-        // Base quorum = 4 * MAX / 2 = 2e9.
-        // Expected adjusted quorum = 2e9 + 2e9 * 125e15 / 1e18 = 2e9 + 250_000_000 = 2_250_000_000.
-        uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
-        assertEq(expectedAdjustedQuorum, (4 * maxPower) / 2 + mulDiv((4 * maxPower) / 2, 125e15, 1e18));
-
-        // Verify quorum is 12.5% higher than base quorum.
-        // expectedAdjustedQuorum / baseQuorum = 1.125, which means 12.5% increase.
-        assertGt(expectedAdjustedQuorum, baseQuorum, "adjusted quorum must be greater than base quorum");
-        // Verify approximately 12.5% increase.
-        assertEq(
-            expectedAdjustedQuorum - baseQuorum,
-            mulDiv(baseQuorum, 125e15, 1e18),
-            "penalty should be exactly 12.5% of base quorum"
-        );
+        // An even split over 4 tiers has a largest share of 25%, so quorum is 50% + 25% * 0.25² of the attestation
+        // possible, (4 - 1) * MAX: 3e9 * 5156 / 10000 = 1_546_800_000.
+        uint256 expectedQuorum = _expectedQuorum(4, sc[0].cashOutWeight);
+        assertEq(_quorumSnapshotOf(scorecardId), expectedQuorum, "even split quorum");
+        assertEq(expectedQuorum, 1_546_800_000, "51.56% of 3 * MAX");
+        assertGt(expectedQuorum, baseQuorum, "any concentration raises quorum above the even-split floor");
 
         // With 2 out of 4 users attesting (each contributing 75% of MAX via BWA):
-        // totalWeight = 2 * 0.75 * MAX = 1.5 * MAX = 1_500_000_000
-        // Since expectedAdjustedQuorum = 2_250_000_000, 2 attestors should NOT be enough.
+        // totalWeight = 2 * 0.75 * MAX = 1_500_000_000, below the 1_546_800_000 quorum.
         vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
 
         vm.prank(_users[0]);
@@ -282,21 +257,16 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
         assertEq(
-            uint256(state),
-            uint256(DefifaScorecardState.ACTIVE),
-            "2 attestors should NOT meet HHI-adjusted quorum for equal scorecard"
+            uint256(state), uint256(DefifaScorecardState.ACTIVE), "2 attestors should NOT meet the even-split quorum"
         );
 
-        // With 3 out of 4 users attesting: totalWeight = 3 * 0.75 * MAX = 2.25 * MAX = 2_250_000_000.
-        // This exactly meets the adjusted quorum.
+        // With 3 out of 4 users attesting: totalWeight = 3 * 0.75 * MAX = 2_250_000_000, above the quorum.
         vm.prank(_users[2]);
         _gov.attestToScorecardFrom(_gameId, scorecardId);
 
         state = _gov.stateOf(_gameId, scorecardId);
         assertEq(
-            uint256(state),
-            uint256(DefifaScorecardState.SUCCEEDED),
-            "3 attestors should meet HHI-adjusted quorum for equal scorecard"
+            uint256(state), uint256(DefifaScorecardState.SUCCEEDED), "3 attestors should meet the even-split quorum"
         );
     }
 
@@ -1412,6 +1382,105 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             0,
             "unenforced delegate with no delegated units has no weight"
         );
+    }
+
+    //*********************************************************************//
+    // ---------------------- 50% to 75% quorum ------------------------- //
+    //*********************************************************************//
+
+    /// @notice Mirrors the governor's quorum: (N - 1) * MAX scaled from 50% to 75% by the largest share squared.
+    function _expectedQuorum(uint256 eligibleTiers, uint256 maxWeight) internal view returns (uint256 q) {
+        uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
+        uint256 maxBwa = eligibleTiers == 0 ? 0 : (eligibleTiers - 1) * _gov.MAX_ATTESTATION_POWER_TIER();
+        uint256 bps = 5000 + mulDiv(2500, mulDiv(maxWeight, maxWeight, tw), tw);
+        q = mulDiv(maxBwa, bps, 10_000);
+        if (q == 0) q = 1;
+    }
+
+    /// @notice Opens attestations, has the given users attest, then ends the grace period.
+    function _attestAndEndGrace(uint256 scorecardId, uint256[] memory userIndexes) internal {
+        vm.warp(_tsReader.ts() + 2);
+        for (uint256 i; i < userIndexes.length; i++) {
+            vm.prank(_users[userIndexes[i]]);
+            _gov.attestToScorecardFrom(_gameId, scorecardId);
+        }
+        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+    }
+
+    function test_quorum_twoTierWinnerTakeAllNeeds75Percent() public {
+        _setupGame(2, 1 ether);
+        _toScoring();
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(2);
+        sc[0].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT();
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        assertEq(_quorumSnapshotOf(scorecardId), _gov.MAX_ATTESTATION_POWER_TIER() * 3 / 4, "75% of one tier");
+        uint256[] memory loser = new uint256[](1);
+        loser[0] = 1;
+        _attestAndEndGrace(scorecardId, loser);
+        assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.SUCCEEDED), "loser concedes");
+    }
+
+    function test_quorum_twoTierEvenSplitNeedsBothSides() public {
+        _setupGame(2, 1 ether);
+        _toScoring();
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, _evenScorecard(2));
+        assertEq(_quorumSnapshotOf(scorecardId), _expectedQuorum(2, _nft.TOTAL_CASHOUT_WEIGHT() / 2), "56.25%");
+        uint256[] memory one = new uint256[](1);
+        _attestAndEndGrace(scorecardId, one);
+        assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.ACTIVE), "half is short");
+    }
+
+    function test_quorum_winnerTakeAllPassesWithThreeOfFourLosers() public {
+        _setupGame(5, 1 ether);
+        _toScoring();
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(5);
+        sc[0].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT();
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256[] memory two = new uint256[](2);
+        two[0] = 1;
+        two[1] = 2;
+        _attestAndEndGrace(scorecardId, two);
+        assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.ACTIVE), "2 of 4 short");
+        vm.prank(_users[3]);
+        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.SUCCEEDED), "3 of 4 pass");
+    }
+
+    function test_quorum_oneTierGameNeverRatifies() public {
+        _setupGame(1, 1 ether);
+        _toScoring();
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(1);
+        sc[0].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT();
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        assertEq(_quorumSnapshotOf(scorecardId), 1, "floor of 1");
+        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 2);
+        assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.ACTIVE), "unreachable");
+    }
+
+    function test_quorum_viewIsTheEvenSplitQuorum() public {
+        _setupGame(4, 1 ether);
+        _toScoring();
+        assertEq(_gov.quorum(_gameId), 3 * _gov.MAX_ATTESTATION_POWER_TIER() / 2, "50% of (N - 1) * MAX");
+    }
+
+    /// @notice Unanimity always reaches quorum, and quorum never drops below an even split's.
+    function testFuzz_quorum_reachableAndNeverBelowEven(uint8 nTiers, uint256 seed, uint256 split) public {
+        nTiers = uint8(bound(nTiers, 2, 21));
+        _setupCrowdedGame(nTiers, seed);
+        _toScoring();
+        uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
+        uint256 top = bound(split, tw / nTiers + 1, tw);
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(nTiers);
+        sc[0].cashOutWeight = top;
+        uint256 rest = tw - top;
+        for (uint256 i = 1; i < nTiers; i++) {
+            sc[i].cashOutWeight = rest / (nTiers - 1);
+        }
+        sc[1].cashOutWeight += rest - (rest / (nTiers - 1)) * (nTiers - 1);
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 snapshot = _quorumSnapshotOf(scorecardId);
+        assertLe(snapshot, _totalBWA(scorecardId), "unanimity always reaches quorum");
+        assertGe(snapshot, _expectedQuorum(nTiers, tw / nTiers), "never below an even split");
     }
 
     function _setupGame(uint8 nTiers, uint256 tierPrice) internal {

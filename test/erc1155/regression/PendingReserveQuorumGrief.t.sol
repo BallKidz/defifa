@@ -154,9 +154,9 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         uint256 proposalId = _gov.submitScorecardFor(_gameId, scorecard);
         vm.warp(block.timestamp + _gov.attestationStartTimeOf(_gameId) + 1);
 
-        // Quorum = 4 tiers * MAX_POWER / 2 = 2 * MAX_POWER
+        // Quorum = 50% of the attestation possible, (4 - 1) * MAX_POWER.
         uint256 snapshotQuorum = _gov.quorum(_gameId);
-        assertEq(snapshotQuorum, _gov.MAX_ATTESTATION_POWER_TIER() * 2, "4 tiers, quorum = 2 * MAX_POWER");
+        assertEq(snapshotQuorum, _gov.MAX_ATTESTATION_POWER_TIER() * 3 / 2, "4 tiers, quorum = 1.5 * MAX_POWER");
 
         // Tiers 1-2 (with pending reserves): raw power = 500M per player, BWA * 0.5 = 250M.
         // Tiers 3-4 (no reserves, 0 weight): raw power = 1e9 per player, BWA * 1.0 = 1e9.

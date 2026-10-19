@@ -129,18 +129,27 @@ interface IDefifaGovernor {
     /// @return True if the account has attested.
     function hasAttestedTo(uint256 gameId, uint256 scorecardId, address account) external view returns (bool);
 
-    /// @notice The maximum tier ID that contributes attestation power.
-    /// @return The maximum attestation power tier.
+    /// @notice The attestation power each tier has if every token within the tier attests.
+    /// @return The attestation power of one tier.
     function MAX_ATTESTATION_POWER_TIER() external view returns (uint256);
 
     /// @notice The minimum attestation grace period enforced during game initialization.
     /// @return The minimum grace period in seconds.
     function MIN_ATTESTATION_GRACE_PERIOD() external view returns (uint256);
 
-    /// @notice The quorum required to ratify a scorecard.
+    /// @notice The attestation an evenly split scorecard needs to be ratified.
+    /// @dev More concentrated scorecards need more, up to `QUORUM_WINNER_TAKE_ALL_BPS` of the attestation possible.
     /// @param gameId The ID of the game.
     /// @return The quorum threshold.
     function quorum(uint256 gameId) external view returns (uint256);
+
+    /// @notice The share of the attestation possible that an evenly split scorecard needs, in basis points.
+    /// @return The basis points.
+    function QUORUM_EVEN_BPS() external view returns (uint256);
+
+    /// @notice The share of the attestation possible that a winner-take-all scorecard needs, in basis points.
+    /// @return The basis points.
+    function QUORUM_WINNER_TAKE_ALL_BPS() external view returns (uint256);
 
     /// @notice The ID of the ratified scorecard for a game.
     /// @param gameId The ID of the game.
