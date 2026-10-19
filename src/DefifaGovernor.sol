@@ -691,6 +691,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// that tier benefits from the scorecard. Power is reduced by `(tierWeight / totalCashOutWeight)`.
     /// This means a tier with 100% of the scorecard weight gets 0 attestation power for that scorecard,
     /// while a tier with 0% weight retains full power. This prevents beneficiaries from self-attesting.
+    /// @dev In a game that enforces its default attestation delegate, that delegate attests with every tier's full
+    /// power whenever the tier has attestation units, and every other account has none, so holders' delegation choices
+    /// cannot change the result.
     /// @param gameId The ID of the game.
     /// @param scorecardId The ID of the scorecard (determines tier weight lookup).
     /// @param account The account to compute BWA power for.
@@ -712,8 +715,14 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         // Get the game's current funding cycle along with its metadata.
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
-        // Get a reference to the hook and its store.
+        // Get a reference to the hook.
         IDefifaHook hook = IDefifaHook(metadata.dataHook);
+
+        // An enforced game counts only its default attestation delegate, so every other account has no power.
+        bool enforced = enforcesDefaultAttestationDelegate(gameId);
+        if (enforced && account != hook.defaultAttestationDelegate()) return 0;
+
+        // Get a reference to the hook's store.
         IJB721TiersHookStore store = hook.store();
 
         // Get a reference to the number of tiers.
@@ -726,36 +735,29 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
             // Tiers are 1-indexed.
             uint256 tierId = i + 1;
 
-            // Get this account's attestation units within the tier (snapshot at timestamp).
-            uint256 tierAttestationUnitsForAccount =
-                hook.getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
+            // Get this account's attestation units within the tier (snapshot at timestamp). An enforced delegate's
+            // own units are irrelevant, since it attests with the tier's full power.
+            uint256 tierAttestationUnitsForAccount = enforced
+                ? 0
+                : hook.getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
 
-            if (tierAttestationUnitsForAccount != 0) {
-                // Start from the checkpointed tier total at the requested timestamp.
-                // If reserve mints happened after submission, clamp them out before adding the
-                // pending-reserve snapshot back in so each reserve unit is counted exactly once.
-                uint256 tierTotalAttestationUnits =
-                    hook.getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp});
-                uint256 submittedTierAttestationUnits = _submittedTierAttestationUnitsOf[gameId][scorecardId][tierId];
-                // Clamp the total to the submitted snapshot to exclude post-submission reserve mints.
-                if (tierTotalAttestationUnits > submittedTierAttestationUnits) {
-                    tierTotalAttestationUnits = submittedTierAttestationUnits;
-                }
-
-                // Add back the snapshotted pending reserves.
-                uint256 pendingReserves = _pendingReservesSnapshotOf[gameId][scorecardId][tierId];
-                if (pendingReserves != 0) {
-                    JB721Tier memory tier =
-                        store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
-                    tierTotalAttestationUnits += pendingReserves * tier.votingUnits;
-                }
-
-                // Raw power for this tier.
-                uint256 rawPower = mulDiv({
-                    x: MAX_ATTESTATION_POWER_TIER,
-                    y: tierAttestationUnitsForAccount,
-                    denominator: tierTotalAttestationUnits
+            if (enforced || tierAttestationUnitsForAccount != 0) {
+                // The tier's attestation units at the scorecard's snapshot, each reserve unit counted once.
+                uint256 tierTotalAttestationUnits = _tierAttestationUnitsAt({
+                    gameId: gameId, scorecardId: scorecardId, hook: hook, tierId: tierId, timestamp: timestamp
                 });
+
+                // Raw power for this tier. An enforced delegate holds the whole tier whenever the tier has units.
+                uint256 rawPower;
+                if (enforced) {
+                    if (tierTotalAttestationUnits != 0) rawPower = MAX_ATTESTATION_POWER_TIER;
+                } else {
+                    rawPower = mulDiv({
+                        x: MAX_ATTESTATION_POWER_TIER,
+                        y: tierAttestationUnitsForAccount,
+                        denominator: tierTotalAttestationUnits
+                    });
+                }
 
                 // BWA reduction: power * (1 - tierWeight / totalCashOutWeight).
                 uint256 tierWeight = _scorecardTierWeightsOf[gameId][scorecardId][i];
@@ -910,5 +912,45 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @param calldataBytes The calldata that will be sent if the scorecard is ratified.
     function _hashScorecardOf(address gameHook, bytes memory calldataBytes) internal pure virtual returns (uint256) {
         return uint256(keccak256(abi.encode(gameHook, calldataBytes)));
+    }
+
+    //*********************************************************************//
+    // ------------------------- internal views -------------------------- //
+    //*********************************************************************//
+
+    /// @notice A tier's attestation units at a scorecard's snapshot.
+    /// @dev Starts from the checkpointed tier total at `timestamp`, clamps it to the units minted when the scorecard
+    /// was submitted so reserve mints after submission are excluded, then adds the pending reserves snapshotted at
+    /// submission, so each reserve unit is counted exactly once.
+    /// @param gameId The ID of the game.
+    /// @param scorecardId The ID of the scorecard whose snapshot to use.
+    /// @param hook The game's hook.
+    /// @param tierId The ID of the tier.
+    /// @param timestamp The snapshot timestamp.
+    /// @return units The tier's attestation units.
+    function _tierAttestationUnitsAt(
+        uint256 gameId,
+        uint256 scorecardId,
+        IDefifaHook hook,
+        uint256 tierId,
+        uint48 timestamp
+    )
+        internal
+        view
+        returns (uint256 units)
+    {
+        // Start from the checkpointed tier total at the requested timestamp.
+        units = hook.getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp});
+
+        // Clamp the total to the submitted snapshot to exclude post-submission reserve mints.
+        uint256 submittedTierAttestationUnits = _submittedTierAttestationUnitsOf[gameId][scorecardId][tierId];
+        if (units > submittedTierAttestationUnits) units = submittedTierAttestationUnits;
+
+        // Add back the snapshotted pending reserves.
+        uint256 pendingReserves = _pendingReservesSnapshotOf[gameId][scorecardId][tierId];
+        if (pendingReserves != 0) {
+            JB721Tier memory tier = hook.store().tierOf({hook: address(hook), id: tierId, includeResolvedUri: false});
+            units += pendingReserves * tier.votingUnits;
+        }
     }
 }

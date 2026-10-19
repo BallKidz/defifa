@@ -1302,6 +1302,118 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         assertTrue(found, "GameInitialized emitted");
     }
 
+    /// @notice Launches an enforced-delegate game with one token per tier, each holder self-delegated during MINT.
+    function _setupEnforcedGame(uint8 nTiers) internal {
+        DefifaLaunchProjectData memory d = _launchData(nTiers, 1 ether);
+        d.defaultAttestationDelegate = _DELEGATE;
+        d.enforceDefaultAttestationDelegate = true;
+        (_pid, _nft, _gov) = _launch(d);
+        vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
+        _users = new address[](nTiers);
+        for (uint256 i; i < nTiers; i++) {
+            _users[i] = _addr(i);
+            _mint(_users[i], i + 1, 1 ether);
+            _delegateSelf(_users[i], i + 1);
+            vm.warp(block.timestamp + 1);
+        }
+    }
+
+    /// @notice A scorecard that pays one tier everything.
+    function _winnerTakeAll(uint256 n, uint256 winner) internal view returns (DefifaTierCashOutWeight[] memory sc) {
+        sc = _buildScorecard(n);
+        sc[winner - 1].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT();
+    }
+
+    function test_enforced_holdersHaveNoWeight() public {
+        _setupEnforcedGame(4);
+        _toScoring();
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, _winnerTakeAll(4, 1));
+        for (uint256 i; i < _users.length; i++) {
+            assertEq(
+                _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(block.timestamp)),
+                0,
+                "self-delegated holder has no weight"
+            );
+        }
+    }
+
+    function test_enforced_delegateCarriesFullPossibleAttestation() public {
+        _setupEnforcedGame(4);
+        _toScoring();
+        uint256 max = _gov.MAX_ATTESTATION_POWER_TIER();
+        uint256 wta = _gov.submitScorecardFor(_gameId, _winnerTakeAll(4, 1));
+        assertEq(
+            _gov.getBWAAttestationWeight(_gameId, wta, _DELEGATE, uint48(block.timestamp)), 3 * max, "WTA: (N-1) * MAX"
+        );
+        uint256 even = _gov.submitScorecardFor(_gameId, _evenScorecard(4));
+        assertApproxEqAbs(
+            _gov.getBWAAttestationWeight(_gameId, even, _DELEGATE, uint48(block.timestamp)),
+            3 * max,
+            4,
+            "even: (N-1) * MAX"
+        );
+    }
+
+    function test_enforced_delegateAloneRatifiesThroughTheNormalFlow() public {
+        _setupEnforcedGame(4);
+        _toScoring();
+        DefifaTierCashOutWeight[] memory sc = _winnerTakeAll(4, 2);
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + 2);
+        vm.prank(_DELEGATE);
+        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.ACTIVE), "grace period");
+        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.SUCCEEDED), "delegate alone");
+        vm.prank(_users[0]);
+        _gov.ratifyScorecardFrom(_gameId, sc);
+        assertEq(_gov.ratifiedScorecardIdOf(_gameId), scorecardId, "anyone ratifies");
+    }
+
+    function test_enforced_holderAttestationReverts() public {
+        _setupEnforcedGame(4);
+        _toScoring();
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, _winnerTakeAll(4, 1));
+        vm.warp(_tsReader.ts() + 2);
+        vm.prank(_users[1]);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        assertEq(_gov.attestationCountOf(_gameId, scorecardId), 0, "no weight added");
+    }
+
+    function test_enforced_delegateHoldingTokensGetsExactlyFullPower() public {
+        _setupEnforcedGame(4);
+        _mint(_DELEGATE, 3, 1 ether);
+        _toScoring();
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, _winnerTakeAll(4, 1));
+        assertEq(
+            _gov.getBWAAttestationWeight(_gameId, scorecardId, _DELEGATE, uint48(block.timestamp)),
+            3 * _gov.MAX_ATTESTATION_POWER_TIER(),
+            "own tokens add nothing"
+        );
+    }
+
+    function test_enforced_flagOffDelegateHasOnlyDelegatedPower() public {
+        DefifaLaunchProjectData memory d = _launchData(4, 1 ether);
+        d.defaultAttestationDelegate = _DELEGATE;
+        (_pid, _nft, _gov) = _launch(d);
+        vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
+        _users = new address[](4);
+        for (uint256 i; i < 4; i++) {
+            _users[i] = _addr(i);
+            _mint(_users[i], i + 1, 1 ether);
+            _delegateSelf(_users[i], i + 1);
+            vm.warp(block.timestamp + 1);
+        }
+        _toScoring();
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, _winnerTakeAll(4, 1));
+        assertEq(
+            _gov.getBWAAttestationWeight(_gameId, scorecardId, _DELEGATE, uint48(block.timestamp)),
+            0,
+            "unenforced delegate with no delegated units has no weight"
+        );
+    }
+
     function _setupGame(uint8 nTiers, uint256 tierPrice) internal {
         DefifaLaunchProjectData memory d = _launchData(nTiers, tierPrice);
         (_pid, _nft, _gov) = _launch(d);
