@@ -322,7 +322,7 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
     /// power both land on the beneficiary by default, and the payer retains neither.
     function test_attestationUnitsFollowBeneficiaryByDefault() public {
         DefifaLaunchProjectData memory defifaData = _getBasicLaunchData(2);
-        (uint256 projectId, Defifa1155Hook nft, DefifaGovernor _governor) = _createProject(defifaData);
+        (uint256 projectId, Defifa1155Hook nft,) = _createProject(defifaData);
 
         address payer = address(bytes20(keccak256("payer")));
         address beneficiary = address(bytes20(keccak256("beneficiary")));

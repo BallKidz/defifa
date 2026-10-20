@@ -151,7 +151,7 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
 
         DefifaLaunchProjectData memory defifaData =
             _getBasicLaunchDataWithAttestationTiming(nTiers, futureAttestationStart, gracePeriod);
-        (uint256 _projectId, DefifaHook _nft, DefifaGovernor _governor) = _createProject(defifaData);
+        (uint256 _projectId, DefifaHook _nft,) = _createProject(defifaData);
 
         // Phase 1: Mint
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
@@ -214,26 +214,31 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
             "Scorecard should still be PENDING even after old grace period would have ended"
         );
 
-        // Now warp to after attestation start (attestation begin + 1)
+        // Now warp to after attestation start (attestation begin + 1) and reach quorum at once.
         vm.warp(futureAttestationStart + 1);
+        for (uint256 i = 0; i < nTiers; i++) {
+            vm.prank(_users[i]);
+            votingReferee.attestToScorecardFrom(_gameId, _proposalId);
+        }
 
-        // Now the scorecard should be ACTIVE (attestations are open and grace period hasn't ended yet)
+        // Quorum is met, but the grace period runs from attestation start, so the scorecard is still ACTIVE and
+        // can't be forwarded. A grace period anchored to submission would already have ended.
         assertEq(
             uint256(votingReferee.stateOf(_gameId, _proposalId)),
             uint256(DefifaScorecardState.ACTIVE),
-            "Scorecard should be ACTIVE after attestation start but before grace period ends"
+            "Scorecard should be ACTIVE until the grace period after attestation start ends"
         );
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector);
+        votingReferee.forwardScorecardFor(_gameId, scorecards);
 
-        // Warp to after attestation start + grace period
-        vm.warp(futureAttestationStart + gracePeriod + 1);
-
-        // Now grace period has truly ended, so the state should be ACTIVE (quorum not met)
-        // The key here is that it transitioned properly - grace period ran from attestation start
+        // At attestation start + grace period, the grace period has ended and the scorecard passes.
+        vm.warp(futureAttestationStart + gracePeriod);
         assertEq(
             uint256(votingReferee.stateOf(_gameId, _proposalId)),
-            uint256(DefifaScorecardState.ACTIVE),
-            "Scorecard should be ACTIVE (no quorum) after grace period truly ends"
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "Scorecard should be SUCCEEDED once the grace period after attestation start ends"
         );
+        votingReferee.forwardScorecardFor(_gameId, scorecards);
     }
 
     // ----- Internal helpers ------

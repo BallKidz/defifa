@@ -270,7 +270,15 @@ contract DefifaUSDCTest is JBTest, TestBaseWorkflow {
         vm.warp((attestStart > current ? attestStart : current) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            try votingReferee.attestToScorecardFrom(_gameId, pid) {} catch {}
+            try votingReferee.attestToScorecardFrom(_gameId, pid) {}
+            catch (bytes memory reason) {
+                // Only a holder without attestation weight may fail to attest.
+                assertEq(
+                    bytes4(reason),
+                    DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector,
+                    "unexpected attestation failure"
+                );
+            }
         }
         vm.warp(_tsReader.timestamp() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
         votingReferee.forwardScorecardFor(_gameId, sc);

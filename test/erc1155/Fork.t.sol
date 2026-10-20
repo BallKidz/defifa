@@ -580,31 +580,29 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
 
         vm.warp(_tsReader.timestamp() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
-        // user[0] has no tokens now — attestation weight should be 0.
-        votingReferee.getAttestationWeight(_gameId, _users[0], uint48(votingReferee.attestationStartTimeOf(_gameId)));
-        // user[0]'s delegation was set at mint time. The checkpoint was recorded. But they transferred.
-        // Since attestation uses snapshot at submission time, user[0]'s weight depends on when they delegated.
+        // user[0] transferred its only token, so it has no attestation weight and can't attest.
+        vm.prank(_users[0]);
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector);
+        votingReferee.attestToScorecardFrom(_gameId, pid);
 
-        // user[1] attests (has tokens from both tiers now).
+        // user[1] now holds tiers 1 and 2 (the recipient auto-delegates to itself): two tiers at 75% each.
+        uint256 tierPower = votingReferee.MAX_ATTESTATION_POWER_TIER() * 3 / 4;
         vm.prank(_users[1]);
         uint256 weight1 = votingReferee.attestToScorecardFrom(_gameId, pid);
-        assertGt(weight1, 0, "user1 has attestation weight");
+        assertEq(weight1, 2 * tierPower, "user1 attests with both tiers once");
 
-        // Other users attest.
+        // Other users attest with one tier each.
         for (uint256 i = 2; i < 4; i++) {
             vm.prank(_users[i]);
-            votingReferee.attestToScorecardFrom(_gameId, pid);
+            assertEq(votingReferee.attestToScorecardFrom(_gameId, pid), tierPower, "one tier each");
         }
 
-        // Advance past grace period.
-        vm.warp(_tsReader.timestamp() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+        // The count is exactly the four tiers' power: tier 1 is counted once, for its new holder.
+        assertEq(votingReferee.attestationCountOf(_gameId, pid), 4 * tierPower, "no double count");
 
-        // Should be able to ratify if quorum is met.
-        DefifaScorecardState state = votingReferee.stateOf(_gameId, pid);
-        assertTrue(
-            state == DefifaScorecardState.SUCCEEDED || state == DefifaScorecardState.ACTIVE,
-            "state should be SUCCEEDED or ACTIVE"
-        );
+        // Advance past grace period: the scorecard passes.
+        vm.warp(_tsReader.timestamp() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+        assertEq(uint256(votingReferee.stateOf(_gameId, pid)), uint256(DefifaScorecardState.SUCCEEDED));
     }
 
     // =========================================================================
@@ -2322,7 +2320,15 @@ contract DefifaForkTest is JBTest, TestBaseWorkflow {
         vm.warp((attestStart > current ? attestStart : current) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            try votingReferee.attestToScorecardFrom(_gameId, pid) {} catch {}
+            try votingReferee.attestToScorecardFrom(_gameId, pid) {}
+            catch (bytes memory reason) {
+                // Only a holder without attestation weight may fail to attest.
+                assertEq(
+                    bytes4(reason),
+                    DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector,
+                    "unexpected attestation failure"
+                );
+            }
         }
         vm.warp(_tsReader.timestamp() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
     }

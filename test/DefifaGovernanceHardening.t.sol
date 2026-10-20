@@ -567,18 +567,17 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         }
 
-        // Warp past grace period: the scorecard has passed.
+        // Warp past grace period and forward: the governor's timelock is running.
         vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
-        assertEq(
-            uint256(votingReferee.stateOf(_gameId, scorecardId)),
-            uint256(DefifaScorecardState.SUCCEEDED),
-            "should be SUCCEEDED"
-        );
+        votingReferee.forwardScorecardFor(_gameId, sc);
+        assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.QUEUED), "should be QUEUED");
+        uint256 countBefore = votingReferee.attestationCountOf(_gameId, scorecardId);
 
         // Try to revoke -- should revert because not in ACTIVE state.
         vm.prank(_users[0]);
         vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector);
         votingReferee.revokeAttestationFrom(_gameId, scorecardId);
+        assertEq(votingReferee.attestationCountOf(_gameId, scorecardId), countBefore, "count unchanged");
     }
 
     /// @notice Test 13: Revoke without having attested reverts.
@@ -919,7 +918,15 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             // Attest all users and verify the scorecard can reach SUCCEEDED.
             for (uint256 i; i < 5; i++) {
                 vm.prank(_users[i]);
-                try votingReferee.attestToScorecardFrom(_gameId, scorecardId) {} catch {}
+                try votingReferee.attestToScorecardFrom(_gameId, scorecardId) {}
+                catch (bytes memory reason) {
+                    // Only a holder without attestation weight may fail to attest.
+                    assertEq(
+                        bytes4(reason),
+                        DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector,
+                        "unexpected attestation failure"
+                    );
+                }
             }
 
             vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
@@ -957,7 +964,15 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         for (uint256 i; i < 5; i++) {
             vm.prank(_users[i]);
-            try votingReferee.attestToScorecardFrom(_gameId, scorecardId) {} catch {}
+            try votingReferee.attestToScorecardFrom(_gameId, scorecardId) {}
+            catch (bytes memory reason) {
+                // Only a holder without attestation weight may fail to attest.
+                assertEq(
+                    bytes4(reason),
+                    DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector,
+                    "unexpected attestation failure"
+                );
+            }
         }
 
         vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
@@ -985,7 +1000,15 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            try votingReferee.attestToScorecardFrom(_gameId, scorecardId) {} catch {}
+            try votingReferee.attestToScorecardFrom(_gameId, scorecardId) {}
+            catch (bytes memory reason) {
+                // Only a holder without attestation weight may fail to attest.
+                assertEq(
+                    bytes4(reason),
+                    DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector,
+                    "unexpected attestation failure"
+                );
+            }
         }
         vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 

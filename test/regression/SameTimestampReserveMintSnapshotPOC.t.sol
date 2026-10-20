@@ -26,7 +26,7 @@ contract SameTimestampReserveMintSnapshotPOC is DefifaGovernorTest {
         data.tiers[0].reservedRate = 1;
         data.tiers[0].reservedTokenBeneficiary = RESERVE_BENEFICIARY;
 
-        (uint256 projectId, DefifaHook nft, DefifaGovernor gov) = createDefifaProject(data);
+        (uint256 projectId, DefifaHook nft,) = createDefifaProject(data);
 
         vm.warp(data.start - data.mintPeriodDuration - data.refundPeriodDuration);
         _mintOne(projectId, LOSING_HOLDER, 1);
@@ -89,7 +89,7 @@ contract SameTimestampReserveMintSnapshotPOC is DefifaGovernorTest {
         data.tiers[0].reservedRate = 1;
         data.tiers[0].reservedTokenBeneficiary = RESERVE_BENEFICIARY;
 
-        (uint256 projectId, DefifaHook nft, DefifaGovernor gov) = createDefifaProject(data);
+        (uint256 projectId, DefifaHook nft,) = createDefifaProject(data);
 
         vm.warp(data.start - data.mintPeriodDuration - data.refundPeriodDuration);
         _mintOne(projectId, LOSING_HOLDER, 1);

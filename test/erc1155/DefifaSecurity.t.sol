@@ -690,7 +690,15 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         vm.warp(block.timestamp + votingReferee.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            try votingReferee.attestToScorecardFrom(_gameId, pid) {} catch {}
+            try votingReferee.attestToScorecardFrom(_gameId, pid) {}
+            catch (bytes memory reason) {
+                // Only a holder without attestation weight may fail to attest.
+                assertEq(
+                    bytes4(reason),
+                    DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector,
+                    "unexpected attestation failure"
+                );
+            }
         }
         vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(_gameId) + 1);
     }

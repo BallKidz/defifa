@@ -403,13 +403,22 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         uint256 pid = votingReferee.submitScorecardFor(_gameId, sc);
         _attestAllFor(pid);
 
+        // The approved scorecard reaches the governor while the game is still scoring.
+        votingReferee.forwardScorecardFor(_gameId, sc);
+
         // Now warp past timeout → NO_CONTEST
         vm.warp(d.start + 7 days + 1);
         assertEq(uint256(deployer.currentGamePhaseOf(_pid)), uint256(DefifaGamePhase.NO_CONTEST));
 
-        // Forwarding the approved scorecard reverts: the governor only accepts scorecards during SCORING.
-        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
-        votingReferee.forwardScorecardFor(_gameId, sc);
+        // A late referee can't submit: the governor only accepts scorecards during SCORING.
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector);
+        votingReferee.submitScorecardFor(_gameId, _buildScorecard(4));
+
+        // Ratifying the forwarded scorecard reverts because setTierCashOutWeightsTo checks for the SCORING phase.
+        vm.expectPartialRevert(Defifa1155Hook.Defifa1155Hook_GameIsntScoringYet.selector);
+        _gov.ratifyScorecardFrom(_gameId, sc);
+        assertEq(_gov.ratifiedScorecardIdOf(_gameId), 0, "nothing ratified");
+        assertFalse(_nft.cashOutWeightIsSet(), "weights unset");
     }
 
     // =========================================================================
@@ -876,7 +885,15 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         vm.warp(block.timestamp + votingReferee.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            try votingReferee.attestToScorecardFrom(_gameId, pid) {} catch {}
+            try votingReferee.attestToScorecardFrom(_gameId, pid) {}
+            catch (bytes memory reason) {
+                // Only a holder without attestation weight may fail to attest.
+                assertEq(
+                    bytes4(reason),
+                    DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector,
+                    "unexpected attestation failure"
+                );
+            }
         }
         vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(_gameId) + 1);
     }

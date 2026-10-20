@@ -155,7 +155,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         vm.assume(tier != 0);
         address _user = address(bytes20(keccak256("user")));
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(nTiers);
-        (uint256 _projectId, DefifaHook _nft, DefifaGovernor _governor) = createDefifaProject(defifaData);
+        (uint256 _projectId, DefifaHook _nft,) = createDefifaProject(defifaData);
 
         // Phase 1: Mint
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
@@ -404,7 +404,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         uint8 nTiers = 10;
         address[] memory _users = new address[](nTiers);
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(nTiers);
-        (uint256 _projectId, DefifaHook _nft, DefifaGovernor _governor) = createDefifaProject(defifaData);
+        (uint256 _projectId, DefifaHook _nft,) = createDefifaProject(defifaData);
         // Phase 1: minting
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
         //deployer.queueNextPhaseOf(_projectId);
@@ -545,7 +545,15 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         // BWA may reduce beneficiaries' power to zero; skip those gracefully.
         for (uint256 i = 0; i < _users.length; i++) {
             vm.prank(_users[i]);
-            try votingReferee.attestToScorecardFrom(_gameId, _proposalId) {} catch {}
+            try votingReferee.attestToScorecardFrom(_gameId, _proposalId) {}
+            catch (bytes memory reason) {
+                // Only a holder without attestation weight may fail to attest.
+                assertEq(
+                    bytes4(reason),
+                    DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector,
+                    "unexpected attestation failure"
+                );
+            }
         }
         // each block is of 12 secs
         vm.warp(_tsReader.timestamp() + votingReferee.attestationGracePeriodOf(_gameId));
@@ -645,7 +653,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         uint256 nOfOtherTiers = 31;
         // forge-lint: disable-next-line(unsafe-typecast)
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(uint8(nOfOtherTiers + 1));
-        (uint256 _projectId, DefifaHook _hook, DefifaGovernor _governor) = createDefifaProject(defifaData);
+        (uint256 _projectId, DefifaHook _hook,) = createDefifaProject(defifaData);
 
         // Phase 1: minting
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
@@ -722,7 +730,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         address[] memory _users = new address[](nOfOtherTiers + nUsersWithWinningTier);
         // forge-lint: disable-next-line(unsafe-typecast)
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(uint8(nOfOtherTiers + 1));
-        (uint256 _projectId, DefifaHook _nft, DefifaGovernor _governor) = createDefifaProject(defifaData);
+        (uint256 _projectId, DefifaHook _nft,) = createDefifaProject(defifaData);
         // Phase 1: minting
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
         //deployer.queueNextPhaseOf(_projectId);
@@ -888,7 +896,15 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
             // BWA may reduce beneficiaries' power to zero; skip those gracefully.
             for (uint256 i = 0; i < _users.length; i++) {
                 vm.prank(_users[i]);
-                try votingReferee.attestToScorecardFrom(_gameId, _proposalId) {} catch {}
+                try votingReferee.attestToScorecardFrom(_gameId, _proposalId) {}
+                catch (bytes memory reason) {
+                    // Only a holder without attestation weight may fail to attest.
+                    assertEq(
+                        bytes4(reason),
+                        DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector,
+                        "unexpected attestation failure"
+                    );
+                }
             }
         }
 
@@ -996,7 +1012,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
     function testWhenScorecardIsSubmittedWithUnmintedTier() public {
         uint8 nTiers = 10;
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(nTiers);
-        (,, DefifaGovernor _governor) = createDefifaProject(defifaData);
+        createDefifaProject(defifaData);
         // Phase 1: Mint
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
 
@@ -1060,7 +1076,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
         uint8 nTiers = 10;
         address[] memory _users = new address[](nTiers);
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(nTiers);
-        (uint256 _projectId, DefifaHook _nft, DefifaGovernor _governor) = createDefifaProject(defifaData);
+        (uint256 _projectId, DefifaHook _nft,) = createDefifaProject(defifaData);
         // Phase 1: Mint
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
         //deployer.queueNextPhaseOf(_projectId);
@@ -1182,7 +1198,7 @@ contract DefifaGovernorTest is JBTest, TestBaseWorkflow {
     function _testCashOutWeightInvalid(uint8 nTiers) internal {
         address[] memory _users = new address[](nTiers);
         DefifaLaunchProjectData memory defifaData = getBasicDefifaLaunchData(nTiers);
-        (uint256 _projectId, DefifaHook _nft, DefifaGovernor _governor) = createDefifaProject(defifaData);
+        (uint256 _projectId, DefifaHook _nft,) = createDefifaProject(defifaData);
 
         uint256 cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT() / 10;
 
