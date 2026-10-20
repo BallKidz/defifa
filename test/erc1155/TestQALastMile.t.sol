@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {Defifa1155Hook} from "../../src/Defifa1155Hook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
@@ -64,6 +65,7 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     Defifa1155Hook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
 
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
@@ -122,6 +124,7 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
 
         hook = new Defifa1155Hook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         JBAddressRegistry _registry = new JBAddressRegistry();
         DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
         deployer = new DefifaDeployer({
@@ -189,14 +192,14 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
             scorecards[i] = DefifaTierCashOutWeight({id: i + 1, cashOutWeight: 0});
         }
 
-        uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
-        vm.warp(_tsReader.timestamp() + _governor.attestationStartTimeOf(_gameId) + 1);
+        uint256 _proposalId = votingReferee.submitScorecardFor(_gameId, scorecards);
+        vm.warp(_tsReader.timestamp() + votingReferee.attestationStartTimeOf(_gameId) + 1);
         // Start from i=1: user 0 holds tier 1 which gets 100% weight, so BWA reduces their power to 0.
         for (uint256 i = 1; i < _users.length; i++) {
             vm.prank(_users[i]);
-            _governor.attestToScorecardFrom(_gameId, _proposalId);
+            votingReferee.attestToScorecardFrom(_gameId, _proposalId);
         }
-        vm.warp(_tsReader.timestamp() + _governor.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(_tsReader.timestamp() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
         // --- Mock sendPayoutsOf on the terminal to revert (the actual failure point) ---
         vm.mockCallRevert(
@@ -207,6 +210,7 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
 
         // Ratify — sendPayoutsOf fails but fulfillCommitmentsOf handles it gracefully.
         // CommitmentPayoutFailed is emitted and the final ruleset is still queued.
+        votingReferee.forwardScorecardFor(_gameId, scorecards);
         vm.expectEmit(true, false, false, false);
         emit IDefifaDeployer.CommitmentPayoutFailed(_gameId, 0, "", address(_governor));
         _governor.ratifyScorecardFrom(_gameId, scorecards);
@@ -277,8 +281,6 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             tiers: tierParams,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
@@ -286,7 +288,8 @@ contract TestQACashOutDoSDuringFulfillmentWindow is JBTest, TestBaseWorkflow {
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 
@@ -344,6 +347,7 @@ contract TestQAGameIdPredictionRace is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     Defifa1155Hook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
 
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
@@ -402,6 +406,7 @@ contract TestQAGameIdPredictionRace is JBTest, TestBaseWorkflow {
 
         hook = new Defifa1155Hook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         JBAddressRegistry _registry = new JBAddressRegistry();
         DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
         deployer = new DefifaDeployer({
@@ -446,9 +451,11 @@ contract TestQAGameIdPredictionRace is JBTest, TestBaseWorkflow {
         // --- Verify no orphaned state exists after the revert ---
         uint256 staleGameId = countBefore;
 
-        assertEq(governor.attestationStartTimeOf(staleGameId), 0, "governor should not be initialized for stale gameId");
         assertEq(
-            governor.attestationGracePeriodOf(staleGameId), 0, "governor grace period should be 0 for stale gameId"
+            votingReferee.attestationStartTimeOf(staleGameId), 0, "governor should not be initialized for stale gameId"
+        );
+        assertEq(
+            votingReferee.attestationGracePeriodOf(staleGameId), 0, "governor grace period should be 0 for stale gameId"
         );
         assertEq(deployer.tokenOf(staleGameId), address(0), "no ops stored for stale gameId");
         assertEq(deployer.fulfilledCommitmentsOf(staleGameId), 0, "no commitments for stale gameId");
@@ -467,7 +474,9 @@ contract TestQAGameIdPredictionRace is JBTest, TestBaseWorkflow {
             uint256(DefifaGamePhase.COUNTDOWN),
             "game should be in COUNTDOWN phase"
         );
-        assertGt(governor.attestationGracePeriodOf(retryGameId), 0, "governor should be initialized for retry gameId");
+        assertGt(
+            votingReferee.attestationGracePeriodOf(retryGameId), 0, "governor should be initialized for retry gameId"
+        );
         assertEq(deployer.tokenOf(retryGameId), JBConstants.NATIVE_TOKEN, "ops stored correctly for retry gameId");
     }
 
@@ -496,8 +505,6 @@ contract TestQAGameIdPredictionRace is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             tiers: tierParams,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
@@ -505,7 +512,8 @@ contract TestQAGameIdPredictionRace is JBTest, TestBaseWorkflow {
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 }

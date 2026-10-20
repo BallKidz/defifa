@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {Defifa1155Hook} from "../../src/Defifa1155Hook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
@@ -169,6 +170,7 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     Defifa1155Hook hookImpl;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
     Defifa1155Hook nft;
 
     uint8 constant N_TIERS = 4;
@@ -225,6 +227,7 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
 
         hookImpl = new Defifa1155Hook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hookImpl),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -261,8 +264,6 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 200 days),
             refundPeriodDuration: 100 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             // forge-lint: disable-next-line(unsafe-typecast)
             tierPrice: uint104(TIER_PRICE),
@@ -272,7 +273,8 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
 
         uint256 pid = deployer.launchGameWith(d);

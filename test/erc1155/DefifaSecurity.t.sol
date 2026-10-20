@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {Defifa1155Hook} from "../../src/Defifa1155Hook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
@@ -57,6 +58,7 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     Defifa1155Hook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
     // Shared test state (set by _setupGame helpers)
@@ -115,6 +117,7 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
 
         hook = new Defifa1155Hook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -254,7 +257,7 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         }
 
         vm.expectPartialRevert(DefifaHookLib.DefifaHook_InvalidCashoutWeights.selector);
-        _gov.submitScorecardFor(_gameId, sc);
+        votingReferee.submitScorecardFor(_gameId, sc);
     }
 
     // =========================================================================
@@ -282,8 +285,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
     function testQuorum_50pctMintedTiers() external {
         // Launch game with 10 tiers but only mint 6
         _setupPartial(10, 6, 1 ether);
-        uint256 expected = (5 * _gov.MAX_ATTESTATION_POWER_TIER()) / 2;
-        assertEq(_gov.quorum(_gameId), expected, "quorum = 50% of (minted tiers - 1) * MAX");
+        uint256 expected = (5 * votingReferee.MAX_ATTESTATION_POWER_TIER()) / 2;
+        assertEq(votingReferee.quorum(_gameId), expected, "quorum = 50% of (minted tiers - 1) * MAX");
     }
 
     // =========================================================================
@@ -372,8 +375,6 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             tierPrice: uint104(1 ether),
             tiers: tp,
@@ -382,7 +383,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
@@ -433,15 +435,16 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.timestamp() + 1);
 
         // Paid minters and reserve beneficiary attest; both minted before the submission block, so both count.
-        uint256 pid = _gov.submitScorecardFor(_gameId, sc);
-        vm.warp(_tsReader.timestamp() + _gov.attestationStartTimeOf(_gameId) + 1);
+        uint256 pid = votingReferee.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.timestamp() + votingReferee.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, pid);
+            votingReferee.attestToScorecardFrom(_gameId, pid);
         }
         vm.prank(_reserveAddr);
-        _gov.attestToScorecardFrom(_gameId, pid);
-        vm.warp(_tsReader.timestamp() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        votingReferee.attestToScorecardFrom(_gameId, pid);
+        vm.warp(_tsReader.timestamp() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+        votingReferee.forwardScorecardFor(_gameId, sc);
         _gov.ratifyScorecardFrom(_gameId, sc);
         vm.warp(_tsReader.timestamp() + 1);
 
@@ -615,8 +618,6 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             // forge-lint: disable-next-line(unsafe-typecast)
             tierPrice: uint104(tierPrice),
@@ -626,7 +627,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 
@@ -677,19 +679,20 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
     }
 
     function _attestAndRatify(DefifaTierCashOutWeight[] memory sc) internal {
-        uint256 pid = _gov.submitScorecardFor(_gameId, sc);
+        uint256 pid = votingReferee.submitScorecardFor(_gameId, sc);
         _attestAllFor(pid);
+        votingReferee.forwardScorecardFor(_gameId, sc);
         _gov.ratifyScorecardFrom(_gameId, sc);
         vm.warp(block.timestamp + 1);
     }
 
     function _attestAllFor(uint256 pid) internal {
-        vm.warp(block.timestamp + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            try _gov.attestToScorecardFrom(_gameId, pid) {} catch {}
+            try votingReferee.attestToScorecardFrom(_gameId, pid) {} catch {}
         }
-        vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(_gameId) + 1);
     }
 
     function _surplus() internal view returns (uint256) {

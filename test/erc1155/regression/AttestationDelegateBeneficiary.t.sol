@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../../../src/DefifaDeployer.sol";
 import {Defifa1155Hook} from "../../../src/Defifa1155Hook.sol";
 import {DefifaTokenUriResolver} from "../../../src/DefifaTokenUriResolver.sol";
@@ -42,6 +43,7 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     Defifa1155Hook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
 
     function setUp() public virtual override {
         super.setUp();
@@ -96,6 +98,7 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
 
         hook = new Defifa1155Hook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -247,8 +250,6 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0), // No default delegate -- should fall back to beneficiary
             tiers: tierParams,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
@@ -256,7 +257,8 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
 
         _mintPhaseStart = d.start - d.mintPeriodDuration - d.refundPeriodDuration;

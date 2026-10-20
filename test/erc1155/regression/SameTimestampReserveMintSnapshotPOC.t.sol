@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {DefifaGovernorTest} from "../DefifaGovernor.t.sol";
 import {DefifaGovernor} from "../../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../../src/referees/DefifaVotingReferee.sol";
 import {Defifa1155Hook} from "../../../src/Defifa1155Hook.sol";
 import {DefifaScorecardState} from "../../../src/enums/DefifaScorecardState.sol";
 import {DefifaLaunchProjectData} from "../../../src/structs/DefifaLaunchProjectData.sol";
@@ -40,7 +41,7 @@ contract SameTimestampReserveMintSnapshotPOC is DefifaGovernorTest {
         weights[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: 0});
         weights[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: nft.TOTAL_CASHOUT_WEIGHT()});
 
-        uint256 scorecardId = gov.submitScorecardFor(projectId, weights);
+        uint256 scorecardId = votingReferee.submitScorecardFor(projectId, weights);
 
         // Same block, after submission: mint the tier-1 reserve to the beneficiary the attacker controls.
         nft.mintReservesFor(1, 1);
@@ -49,9 +50,11 @@ contract SameTimestampReserveMintSnapshotPOC is DefifaGovernorTest {
 
         // The paid losing-tier holder held its unit before submission, so it supplies half its tier's power.
         vm.prank(LOSING_HOLDER);
-        uint256 holderWeight = gov.attestToScorecardFrom(projectId, scorecardId);
+        uint256 holderWeight = votingReferee.attestToScorecardFrom(projectId, scorecardId);
         assertEq(
-            holderWeight, gov.MAX_ATTESTATION_POWER_TIER() / 2, "paid losing holder supplies half its tier's power"
+            holderWeight,
+            votingReferee.MAX_ATTESTATION_POWER_TIER() / 2,
+            "paid losing holder supplies half its tier's power"
         );
 
         // The reserve beneficiary minted AFTER submission: the frozen snapshot gives it zero power, so attesting
@@ -59,22 +62,22 @@ contract SameTimestampReserveMintSnapshotPOC is DefifaGovernorTest {
         vm.prank(RESERVE_BENEFICIARY);
         vm.expectRevert(
             abi.encodeWithSelector(
-                DefifaGovernor.DefifaGovernor_NotAllowed.selector, projectId, scorecardId, RESERVE_BENEFICIARY
+                DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector, projectId, scorecardId, RESERVE_BENEFICIARY
             )
         );
-        gov.attestToScorecardFrom(projectId, scorecardId);
+        votingReferee.attestToScorecardFrom(projectId, scorecardId);
 
         // A winner-take-all scorecard needs 75% of the attestation possible, (2 - 1) * MAX, so quorum is not reached
         // and the scorecard never succeeds.
         assertLt(
-            gov.attestationCountOf(projectId, scorecardId),
-            gov.MAX_ATTESTATION_POWER_TIER() * 3 / 4,
+            votingReferee.attestationCountOf(projectId, scorecardId),
+            votingReferee.MAX_ATTESTATION_POWER_TIER() * 3 / 4,
             "same-timestamp reserve mint must not reach quorum"
         );
 
-        vm.warp(submitTimestamp + 1 + gov.attestationGracePeriodOf(projectId));
+        vm.warp(submitTimestamp + 1 + votingReferee.attestationGracePeriodOf(projectId));
         assertTrue(
-            gov.stateOf(projectId, scorecardId) != DefifaScorecardState.SUCCEEDED,
+            votingReferee.stateOf(projectId, scorecardId) != DefifaScorecardState.SUCCEEDED,
             "scorecard must not succeed off a post-submission reserve mint"
         );
     }
@@ -103,18 +106,18 @@ contract SameTimestampReserveMintSnapshotPOC is DefifaGovernorTest {
         DefifaTierCashOutWeight[] memory weights = new DefifaTierCashOutWeight[](2);
         weights[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: 0});
         weights[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: nft.TOTAL_CASHOUT_WEIGHT()});
-        uint256 scorecardId = gov.submitScorecardFor(projectId, weights);
+        uint256 scorecardId = votingReferee.submitScorecardFor(projectId, weights);
 
         vm.warp(block.timestamp + 1);
 
         // The attacker holds 3 of tier 1's 8 units.
         vm.prank(LOSING_HOLDER);
-        uint256 weight = gov.attestToScorecardFrom(projectId, scorecardId);
-        assertEq(weight, gov.MAX_ATTESTATION_POWER_TIER() * 3 / 8, "3 of 8 units");
+        uint256 weight = votingReferee.attestToScorecardFrom(projectId, scorecardId);
+        assertEq(weight, votingReferee.MAX_ATTESTATION_POWER_TIER() * 3 / 8, "3 of 8 units");
 
-        vm.warp(block.timestamp + gov.attestationGracePeriodOf(projectId));
+        vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(projectId));
         assertTrue(
-            gov.stateOf(projectId, scorecardId) != DefifaScorecardState.SUCCEEDED,
+            votingReferee.stateOf(projectId, scorecardId) != DefifaScorecardState.SUCCEEDED,
             "a minority of the losing tier cannot pass a winner-take-all scorecard"
         );
     }

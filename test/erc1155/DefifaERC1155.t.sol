@@ -145,8 +145,6 @@ abstract contract DefifaERC1155Harness is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: _defaultDelegate(),
             // forge-lint: disable-next-line(unsafe-typecast)
             tierPrice: uint104(TIER_PRICE),
@@ -156,7 +154,8 @@ abstract contract DefifaERC1155Harness is JBTest, TestBaseWorkflow {
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(0xBEEF),
+            refereeData: ""
         });
 
         launchedAt = block.timestamp;
