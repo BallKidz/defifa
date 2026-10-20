@@ -53,7 +53,13 @@ interface IDefifaGovernor {
     /// @param gameHook The game hook address.
     /// @param tierWeights The tier cash-out weights.
     /// @return The scorecard ID.
-    function scorecardIdOf(address gameHook, DefifaTierCashOutWeight[] calldata tierWeights) external returns (uint256);
+    function scorecardIdOf(
+        address gameHook,
+        DefifaTierCashOutWeight[] calldata tierWeights
+    )
+        external
+        pure
+        returns (uint256);
 
     /// @notice When a scorecard was last submitted.
     /// @param gameId The ID of the game.

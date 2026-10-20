@@ -112,8 +112,8 @@ abstract contract RefereeTestBase is JBTest, TestBaseWorkflow {
             governor: governor,
             controller: jbController(),
             registry: new JBAddressRegistry(),
-            defifaProjectId: feeProjectId,
-            baseProtocolProjectId: defifaProjectId,
+            defifaProjectId: defifaProjectId,
+            baseProtocolProjectId: feeProjectId,
             hookStore: store,
             trustedForwarder: address(0)
         });

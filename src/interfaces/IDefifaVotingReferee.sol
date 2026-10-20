@@ -62,7 +62,7 @@ interface IDefifaVotingReferee is IDefifaReferee {
     /// @return The grace period in seconds.
     function attestationGracePeriodOf(uint256 gameId) external view returns (uint256);
 
-    /// @notice The timestamp when attestation begins for a game.
+    /// @notice The earliest timestamp a game's scorecards accept attestations.
     /// @param gameId The ID of the game.
     /// @return The attestation start time.
     function attestationStartTimeOf(uint256 gameId) external view returns (uint256);
@@ -122,8 +122,9 @@ interface IDefifaVotingReferee is IDefifaReferee {
     /// @return The minimum grace period in seconds.
     function MIN_ATTESTATION_GRACE_PERIOD() external view returns (uint256);
 
-    /// @notice The attestation an evenly split scorecard needs to pass.
-    /// @dev More concentrated scorecards need more, up to `QUORUM_WINNER_TAKE_ALL_BPS` of the attestation possible.
+    /// @notice The baseline quorum: the attestation an evenly split scorecard needs to pass.
+    /// @dev More concentrated scorecards need more, up to `QUORUM_WINNER_TAKE_ALL_BPS` of the attestation possible. Use
+    /// `quorumOf` for a specific scorecard.
     /// @param gameId The ID of the game.
     /// @return The quorum threshold.
     function quorum(uint256 gameId) external view returns (uint256);
@@ -146,7 +147,13 @@ interface IDefifaVotingReferee is IDefifaReferee {
     /// @param gameHook The game hook address.
     /// @param tierWeights The tier cash-out weights.
     /// @return The scorecard ID.
-    function scorecardIdOf(address gameHook, DefifaTierCashOutWeight[] calldata tierWeights) external returns (uint256);
+    function scorecardIdOf(
+        address gameHook,
+        DefifaTierCashOutWeight[] calldata tierWeights
+    )
+        external
+        pure
+        returns (uint256);
 
     /// @notice The voting state of a submitted scorecard.
     /// @param gameId The ID of the game.

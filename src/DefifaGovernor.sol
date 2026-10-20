@@ -244,6 +244,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @notice The ID of a scorecard representing the provided tier weights.
     /// @param gameHook The address where the game is played.
     /// @param tierWeights The weights of each tier in the scorecard.
+    /// @return The scorecard's ID.
     function scorecardIdOf(
         address gameHook,
         DefifaTierCashOutWeight[] calldata tierWeights
@@ -306,6 +307,7 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     /// @notice A value representing the contents of a scorecard.
     /// @param gameHook The address where the game is played.
     /// @param calldataBytes The calldata that will be sent if the scorecard is ratified.
+    /// @return The scorecard's ID.
     function _hashScorecardOf(address gameHook, bytes memory calldataBytes) internal pure virtual returns (uint256) {
         return uint256(keccak256(abi.encode(gameHook, calldataBytes)));
     }

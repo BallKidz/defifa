@@ -16,7 +16,7 @@
 ## Control model
 
 - `launchGameWith(...)` is the real governance commitment. Core game shape is fixed there.
-- `DefifaGovernor` controls scorecard submission, attestation, and ratification.
+- `DefifaGovernor` accepts scorecards only from each game's referee and lets anyone ratify after the timelock. Holder attestation, where a game uses it, lives in `DefifaVotingReferee`.
 - `DefifaHook` controls phase-aware mint and cash-out behavior but does not expose broad admin mutability.
 - `DefifaDeployer` still owns structural lifecycle duties such as fulfillment and no-contest queuing.
 
