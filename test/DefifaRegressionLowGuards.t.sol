@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
@@ -46,6 +47,7 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
     // Shared test state (set by _setupGame)
@@ -104,6 +106,7 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
 
         hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -120,7 +123,7 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // 1. DefifaGovernor_AlreadyInitialized: re-initialization blocked
+    // 1. Governor re-initialization blocked
     // =========================================================================
     function testRevert_initializeGame_alreadyInitialized() external {
         // Deploy a standalone governor where this test contract is the owner, so we can call initializeGame directly.
@@ -128,74 +131,74 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
 
         // First initialization should succeed.
         uint256 gameId = 42;
-        _standaloneGov.initializeGame({
-            gameId: gameId,
-            attestationStartTime: block.timestamp,
-            attestationGracePeriod: 2 days,
-            timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
-        });
+        _standaloneGov.initializeGame({gameId: gameId, referee: address(0xBEEF), timelockDuration: 0});
 
         // Second initialization for the same gameId should revert.
         vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_AlreadyInitialized.selector);
-        _standaloneGov.initializeGame({
-            gameId: gameId,
-            attestationStartTime: block.timestamp,
-            attestationGracePeriod: 2 days,
-            timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
-        });
+        _standaloneGov.initializeGame({gameId: gameId, referee: address(0xBEEF), timelockDuration: 0});
     }
 
     // =========================================================================
-    // 1b. Re-initialization blocked even through the deployer (integration)
+    // 1b. Voting referee re-initialization blocked, even from the game's project owner
     // =========================================================================
     function testRevert_initializeGame_alreadyInitialized_viaDeployer() external {
-        // Launch a game (this calls initializeGame internally).
+        // Launch a game (the deployer initializes the voting referee).
         _setupGame(4, 1 ether);
+        assertTrue(
+            votingReferee.attestationStartTimeOf(_gameId) > 0 || votingReferee.attestationGracePeriodOf(_gameId) > 0
+        );
 
-        // The governor is now owned by the deployer. Trying to initialize the same game again
-        // via the deployer is not possible because there is no public re-init path. But we
-        // verify the packed info is non-zero, confirming the guard would trigger.
-        assertTrue(_gov.attestationStartTimeOf(_gameId) > 0 || _gov.attestationGracePeriodOf(_gameId) > 0);
+        vm.prank(address(deployer));
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_AlreadyInitialized.selector);
+        votingReferee.initializeGameFor(_gameId, abi.encode(block.timestamp, 2 days));
     }
 
     // =========================================================================
     // 2. uint48 overflow on attestationStartTime
     // =========================================================================
     function testRevert_initializeGame_attestationStartTimeOverflow() external {
-        DefifaGovernor _standaloneGov = new DefifaGovernor(jbController(), address(this));
+        uint256 gameId = _launchGameWithPlainReferee();
 
         // type(uint48).max + 1 should overflow the 48-bit packing.
         uint256 overflowStartTime = uint256(type(uint48).max) + 1;
 
-        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
-        _standaloneGov.initializeGame({
-            gameId: 99,
-            attestationStartTime: overflowStartTime,
-            attestationGracePeriod: 2 days,
-            timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
-        });
+        vm.prank(address(deployer));
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_Uint48Overflow.selector);
+        votingReferee.initializeGameFor(gameId, abi.encode(overflowStartTime, 2 days));
     }
 
     // =========================================================================
     // 3. uint48 overflow on attestationGracePeriod
     // =========================================================================
     function testRevert_initializeGame_attestationGracePeriodOverflow() external {
-        DefifaGovernor _standaloneGov = new DefifaGovernor(jbController(), address(this));
+        uint256 gameId = _launchGameWithPlainReferee();
 
         // type(uint48).max + 1 should overflow the 48-bit packing.
         uint256 overflowGracePeriod = uint256(type(uint48).max) + 1;
 
+        vm.prank(address(deployer));
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_Uint48Overflow.selector);
+        votingReferee.initializeGameFor(gameId, abi.encode(block.timestamp, overflowGracePeriod));
+    }
+
+    // =========================================================================
+    // 3b. uint48 overflow on the governor's timelock
+    // =========================================================================
+    function testRevert_initializeGame_timelockOverflow() external {
+        DefifaGovernor _standaloneGov = new DefifaGovernor(jbController(), address(this));
+
         vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_Uint48Overflow.selector);
         _standaloneGov.initializeGame({
-            gameId: 100,
-            attestationStartTime: block.timestamp,
-            attestationGracePeriod: overflowGracePeriod,
-            timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            gameId: 101, referee: address(0xBEEF), timelockDuration: uint256(type(uint48).max) + 1
         });
+    }
+
+    /// @notice Launch a game judged by a plain address, so the voting referee has no settings for it.
+    function _launchGameWithPlainReferee() internal returns (uint256 gameId) {
+        DefifaLaunchProjectData memory d = _launchData(4, 1 ether);
+        d.referee = address(0xBEEF);
+        d.refereeData = "";
+        gameId = deployer.launchGameWith(d);
     }
 
     // =========================================================================
@@ -277,8 +280,6 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             // forge-lint: disable-next-line(unsafe-typecast)
             tierPrice: uint104(tierPrice),
@@ -288,7 +289,8 @@ contract DefifaRegressionLowGuardsTest is JBTest, TestBaseWorkflow {
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 

@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
@@ -81,6 +82,7 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
     // Shared test state.
@@ -145,6 +147,7 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
 
         hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -202,8 +205,6 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             tierPrice: tierPrice,
             tiers: tp,
@@ -212,7 +213,8 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
             minParticipation: minParticipation,
             scorecardTimeout: scorecardTimeout,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 
@@ -272,15 +274,16 @@ contract TestRegressionGapsERC20Games is JBTest, TestBaseWorkflow {
     }
 
     function _attestAndRatify(DefifaTierCashOutWeight[] memory sc) internal {
-        uint256 pid = _gov.submitScorecardFor(_gameId, sc);
-        uint256 attestStart = _gov.attestationStartTimeOf(_gameId);
+        uint256 pid = votingReferee.submitScorecardFor(_gameId, sc);
+        uint256 attestStart = votingReferee.attestationStartTimeOf(_gameId);
         uint256 current = _tsReader.timestamp();
         vm.warp((attestStart > current ? attestStart : current) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            try _gov.attestToScorecardFrom(_gameId, pid) {} catch {}
+            try votingReferee.attestToScorecardFrom(_gameId, pid) {} catch {}
         }
-        vm.warp(_tsReader.timestamp() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(_tsReader.timestamp() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+        votingReferee.forwardScorecardFor(_gameId, sc);
         _gov.ratifyScorecardFrom(_gameId, sc);
         vm.warp(_tsReader.timestamp() + 1);
     }
@@ -544,6 +547,7 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
     // Game A state.
@@ -610,6 +614,7 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
 
         hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -650,8 +655,6 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             tierPrice: 1 ether,
             tiers: tp,
@@ -660,7 +663,8 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 
@@ -780,15 +784,16 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
     }
 
     function _attestAndRatify(uint256 gameId, address[] memory users, DefifaTierCashOutWeight[] memory sc) internal {
-        uint256 pid = governor.submitScorecardFor(gameId, sc);
-        uint256 attestStart = governor.attestationStartTimeOf(gameId);
+        uint256 pid = votingReferee.submitScorecardFor(gameId, sc);
+        uint256 attestStart = votingReferee.attestationStartTimeOf(gameId);
         uint256 current = _tsReader.timestamp();
         vm.warp((attestStart > current ? attestStart : current) + 1);
         for (uint256 i; i < users.length; i++) {
             vm.prank(users[i]);
-            try governor.attestToScorecardFrom(gameId, pid) {} catch {}
+            try votingReferee.attestToScorecardFrom(gameId, pid) {} catch {}
         }
-        vm.warp(_tsReader.timestamp() + governor.attestationGracePeriodOf(gameId) + 1);
+        vm.warp(_tsReader.timestamp() + votingReferee.attestationGracePeriodOf(gameId) + 1);
+        votingReferee.forwardScorecardFor(gameId, sc);
         governor.ratifyScorecardFrom(gameId, sc);
         vm.warp(_tsReader.timestamp() + 1);
     }
@@ -908,16 +913,16 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
 
         // Submit a scorecard for Game A only.
         DefifaTierCashOutWeight[] memory scA = _evenScorecard(nftA, 4);
-        uint256 scorecardIdA = governor.submitScorecardFor(gameIdA, scA);
+        uint256 scorecardIdA = votingReferee.submitScorecardFor(gameIdA, scA);
 
         // The scorecard should be known for Game A.
         // stateOf should not revert for Game A's scorecard.
-        governor.stateOf(gameIdA, scorecardIdA);
+        votingReferee.stateOf(gameIdA, scorecardIdA);
 
         // The same scorecardId should be unknown for Game B (different hooks produce different hashes).
         // Trying to query it on Game B should revert.
-        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_UnknownProposal.selector);
-        governor.stateOf(gameIdB, scorecardIdA);
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_UnknownProposal.selector);
+        votingReferee.stateOf(gameIdB, scorecardIdA);
     }
 
     /// @notice Game A users' attestation power is zero in Game B (different hooks).
@@ -928,19 +933,19 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.timestamp() + 3 days + 1);
 
         // Game A user 0 has attestation power in Game A.
-        uint256 powerA = governor.getAttestationWeight(gameIdA, usersA[0], uint48(_tsReader.timestamp()));
+        uint256 powerA = votingReferee.getAttestationWeight(gameIdA, usersA[0], uint48(_tsReader.timestamp()));
         assertGt(powerA, 0, "Game A user has power in Game A");
 
         // Game A user 0 has NO attestation power in Game B (they don't hold Game B NFTs).
-        uint256 powerB = governor.getAttestationWeight(gameIdB, usersA[0], uint48(_tsReader.timestamp()));
+        uint256 powerB = votingReferee.getAttestationWeight(gameIdB, usersA[0], uint48(_tsReader.timestamp()));
         assertEq(powerB, 0, "Game A user has no power in Game B");
 
         // Game B user 0 has attestation power in Game B.
-        uint256 powerB0 = governor.getAttestationWeight(gameIdB, usersB[0], uint48(_tsReader.timestamp()));
+        uint256 powerB0 = votingReferee.getAttestationWeight(gameIdB, usersB[0], uint48(_tsReader.timestamp()));
         assertGt(powerB0, 0, "Game B user has power in Game B");
 
         // Game B user 0 has NO attestation power in Game A.
-        uint256 powerA0 = governor.getAttestationWeight(gameIdA, usersB[0], uint48(_tsReader.timestamp()));
+        uint256 powerA0 = votingReferee.getAttestationWeight(gameIdA, usersB[0], uint48(_tsReader.timestamp()));
         assertEq(powerA0, 0, "Game B user has no power in Game A");
     }
 
@@ -974,13 +979,13 @@ contract TestRegressionGapsMultiGameIsolation is JBTest, TestBaseWorkflow {
         // Advance to scoring.
         vm.warp(_tsReader.timestamp() + 3 days + 1);
 
-        uint256 quorumA = governor.quorum(gameIdA);
-        uint256 quorumB = governor.quorum(gameIdB);
+        uint256 quorumA = votingReferee.quorum(gameIdA);
+        uint256 quorumB = votingReferee.quorum(gameIdB);
 
         // Game A has 4 minted tiers, Game B has 3 minted tiers.
         // Quorum = 50% of the attestation possible, (minted tiers - 1) * MAX_ATTESTATION_POWER_TIER.
         assertGt(quorumA, quorumB, "Game A quorum > Game B quorum (more tiers)");
-        assertEq(quorumA, 3 * governor.MAX_ATTESTATION_POWER_TIER() / 2, "Game A quorum = 50% of 3 tiers' power");
-        assertEq(quorumB, 2 * governor.MAX_ATTESTATION_POWER_TIER() / 2, "Game B quorum = 50% of 2 tiers' power");
+        assertEq(quorumA, 3 * votingReferee.MAX_ATTESTATION_POWER_TIER() / 2, "Game A quorum = 50% of 3 tiers' power");
+        assertEq(quorumB, 2 * votingReferee.MAX_ATTESTATION_POWER_TIER() / 2, "Game B quorum = 50% of 2 tiers' power");
     }
 }

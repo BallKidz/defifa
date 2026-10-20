@@ -3,6 +3,8 @@ pragma solidity 0.8.28;
 
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
+import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
+import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 import {mulDiv} from "@prb/math/src/Common.sol";
 
 import {DefifaHook} from "../DefifaHook.sol";
@@ -11,8 +13,6 @@ import {DefifaScorecardState} from "../enums/DefifaScorecardState.sol";
 import {IDefifaDeployer} from "../interfaces/IDefifaDeployer.sol";
 import {IDefifaGovernor} from "../interfaces/IDefifaGovernor.sol";
 import {IDefifaVotingReferee} from "../interfaces/IDefifaVotingReferee.sol";
-import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
-import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
 import {IDefifaHook} from "../interfaces/IDefifaHook.sol";
 import {DefifaAttestations} from "../structs/DefifaAttestations.sol";
 import {DefifaScorecard} from "../structs/DefifaScorecard.sol";
@@ -33,7 +33,7 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     /// @notice Thrown when an account tries to attest to a scorecard it has already attested to.
     error DefifaVotingReferee_AlreadyAttested(uint256 gameId, uint256 scorecardId, address account);
 
-    /// @notice Thrown when forwarding a scorecard that was already forwarded.
+    /// @notice Thrown when forwarding a scorecard after the game's first approved scorecard was forwarded.
     error DefifaVotingReferee_AlreadyForwarded(uint256 gameId, uint256 scorecardId);
 
     /// @notice Thrown when initializing a game whose voting settings have already been set.
@@ -100,10 +100,11 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     // --------------------- public stored properties -------------------- //
     //*********************************************************************//
 
-    /// @notice Whether each scorecard has been forwarded to its game's governor.
+    /// @notice The scorecard forwarded to each game's governor. Zero if none.
+    /// @dev The first approved scorecard forwarded is final, so a competing approved scorecard can't replace it just
+    /// before it becomes ratifiable and push the game past its timeout.
     /// @custom:param gameId The ID of the game.
-    /// @custom:param scorecardId The ID of the scorecard.
-    mapping(uint256 => mapping(uint256 => bool)) public override forwardedScorecardOf;
+    mapping(uint256 => uint256) public override forwardedScorecardIdOf;
 
     //*********************************************************************//
     // -------------------- internal stored properties ------------------- //
@@ -149,6 +150,7 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     // -------------------------- constructor ---------------------------- //
     //*********************************************************************//
 
+    /// @param controller The controller used to find each game's hook and project owner.
     constructor(IJBController controller) {
         CONTROLLER = controller;
     }
@@ -212,7 +214,7 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     }
 
     /// @notice Send a scorecard that holders approved to the game's governor, starting the governor's timelock.
-    /// @dev Each scorecard can be forwarded once, so two approved scorecards can't keep replacing each other.
+    /// @dev Only the first approved scorecard forwarded counts; later ones revert.
     /// @param gameId The ID of the game.
     /// @param tierWeights The weights of each tier in the approved scorecard.
     /// @return scorecardId The scorecard's ID.
@@ -236,16 +238,62 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
             revert DefifaVotingReferee_NotAllowed({gameId: gameId, scorecardId: scorecardId, caller: msg.sender});
         }
 
-        // Each scorecard is forwarded at most once.
-        if (forwardedScorecardOf[gameId][scorecardId]) {
-            revert DefifaVotingReferee_AlreadyForwarded({gameId: gameId, scorecardId: scorecardId});
+        // Only the first approved scorecard is forwarded.
+        uint256 forwardedScorecardId = forwardedScorecardIdOf[gameId];
+        if (forwardedScorecardId != 0) {
+            revert DefifaVotingReferee_AlreadyForwarded({gameId: gameId, scorecardId: forwardedScorecardId});
         }
-        forwardedScorecardOf[gameId][scorecardId] = true;
+        forwardedScorecardIdOf[gameId] = scorecardId;
 
         // Submit it as the game's referee.
         _governorOf(gameId).submitScorecardFor({gameId: gameId, tierWeights: tierWeights});
 
         emit ScorecardForwarded({gameId: gameId, scorecardId: scorecardId, caller: msg.sender});
+    }
+
+    /// @notice Set a game's voting windows. Called by the deployer at launch.
+    /// @dev Only the game's project owner (the deployer) can call this, once.
+    /// @param gameId The ID of the game.
+    /// @param data `abi.encode(uint256 attestationStartTime, uint256 attestationGracePeriod)`. A zero start time means
+    /// attestations open as soon as a scorecard is submitted.
+    function initializeGameFor(uint256 gameId, bytes calldata data) external override {
+        // Only the game's project owner can set its voting windows.
+        if (msg.sender != CONTROLLER.PROJECTS().ownerOf(gameId)) {
+            revert DefifaVotingReferee_NotProjectOwner({gameId: gameId, caller: msg.sender});
+        }
+
+        // Make sure the game hasn't already been initialized.
+        if (_packedScorecardInfoOf[gameId] != 0) revert DefifaVotingReferee_AlreadyInitialized({gameId: gameId});
+
+        (uint256 attestationStartTime, uint256 attestationGracePeriod) = abi.decode(data, (uint256, uint256));
+
+        // Set a default attestation start time if needed.
+        if (attestationStartTime == 0) attestationStartTime = block.timestamp;
+
+        // Enforce a minimum grace period to prevent instant ratification.
+        if (attestationGracePeriod < MIN_ATTESTATION_GRACE_PERIOD) {
+            revert DefifaVotingReferee_GracePeriodTooShort({
+                gracePeriod: attestationGracePeriod, minGracePeriod: MIN_ATTESTATION_GRACE_PERIOD
+            });
+        }
+
+        // Ensure values fit within their allocated 48-bit widths before packing.
+        if (attestationStartTime > type(uint48).max) {
+            revert DefifaVotingReferee_Uint48Overflow({value: attestationStartTime, max: type(uint48).max});
+        }
+        if (attestationGracePeriod > type(uint48).max) {
+            revert DefifaVotingReferee_Uint48Overflow({value: attestationGracePeriod, max: type(uint48).max});
+        }
+
+        // attestation start time in bits 0-47, attestation grace period in bits 48-95.
+        _packedScorecardInfoOf[gameId] = attestationStartTime | (attestationGracePeriod << 48);
+
+        emit GameInitialized({
+            gameId: gameId,
+            attestationStartTime: attestationStartTime,
+            attestationGracePeriod: attestationGracePeriod,
+            caller: msg.sender
+        });
     }
 
     /// @notice Revoke a previously submitted attestation. Only allowed during the ACTIVE phase.
@@ -458,6 +506,25 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         return _scorecardAttestationsOf[gameId][scorecardId].attestedWeightOf[account] != 0;
     }
 
+    /// @notice The attestation an evenly split scorecard needs to be ratified.
+    /// @dev The attestation possible is `(N - 1) * MAX_ATTESTATION_POWER_TIER` for N quorum-eligible tiers, because a
+    /// tier never attests to its own payout. An even split needs `QUORUM_EVEN_BPS` of it; more concentrated scorecards
+    /// need up to `QUORUM_WINNER_TAKE_ALL_BPS` (see `submitScorecardFor`). Every tier has the same power regardless of
+    /// supply, so each outcome's community has equal influence.
+    /// @param gameId The ID of the game.
+    /// @return The quorum number of attestations.
+    function quorum(uint256 gameId) external view override returns (uint256) {
+        return _quorumOf({maxAttestationWeight: _maxAttestationWeightOf(gameId), bps: QUORUM_EVEN_BPS});
+    }
+
+    /// @notice The attestation a submitted scorecard needs to pass, fixed at its submission by its concentration.
+    /// @param gameId The ID of the game.
+    /// @param scorecardId The ID of the scorecard.
+    /// @return The quorum threshold, or 0 if the scorecard was never submitted.
+    function quorumOf(uint256 gameId, uint256 scorecardId) external view override returns (uint256) {
+        return _scorecardOf[gameId][scorecardId].quorumSnapshot;
+    }
+
     /// @notice The ID of a scorecard representing the provided tier weights.
     /// @param gameHook The address where the game is played.
     /// @param tierWeights The weights of each tier in the scorecard.
@@ -472,51 +539,6 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         returns (uint256)
     {
         return _hashScorecardOf({gameHook: gameHook, calldataBytes: _buildScorecardCalldataFor(tierWeights)});
-    }
-
-    /// @notice Set a game's voting windows. Called by the deployer at launch.
-    /// @dev Only the game's project owner (the deployer) can call this, once.
-    /// @param gameId The ID of the game.
-    /// @param data `abi.encode(uint256 attestationStartTime, uint256 attestationGracePeriod)`. A zero start time means
-    /// attestations open as soon as a scorecard is submitted.
-    function initializeGameFor(uint256 gameId, bytes calldata data) external override {
-        // Only the game's project owner can set its voting windows.
-        if (msg.sender != CONTROLLER.PROJECTS().ownerOf(gameId)) {
-            revert DefifaVotingReferee_NotProjectOwner({gameId: gameId, caller: msg.sender});
-        }
-
-        // Make sure the game hasn't already been initialized.
-        if (_packedScorecardInfoOf[gameId] != 0) revert DefifaVotingReferee_AlreadyInitialized({gameId: gameId});
-
-        (uint256 attestationStartTime, uint256 attestationGracePeriod) = abi.decode(data, (uint256, uint256));
-
-        // Set a default attestation start time if needed.
-        if (attestationStartTime == 0) attestationStartTime = block.timestamp;
-
-        // Enforce a minimum grace period to prevent instant ratification.
-        if (attestationGracePeriod < MIN_ATTESTATION_GRACE_PERIOD) {
-            revert DefifaVotingReferee_GracePeriodTooShort({
-                gracePeriod: attestationGracePeriod, minGracePeriod: MIN_ATTESTATION_GRACE_PERIOD
-            });
-        }
-
-        // Ensure values fit within their allocated 48-bit widths before packing.
-        if (attestationStartTime > type(uint48).max) {
-            revert DefifaVotingReferee_Uint48Overflow({value: attestationStartTime, max: type(uint48).max});
-        }
-        if (attestationGracePeriod > type(uint48).max) {
-            revert DefifaVotingReferee_Uint48Overflow({value: attestationGracePeriod, max: type(uint48).max});
-        }
-
-        // attestation start time in bits 0-47, attestation grace period in bits 48-95.
-        _packedScorecardInfoOf[gameId] = attestationStartTime | (attestationGracePeriod << 48);
-
-        emit GameInitialized({
-            gameId: gameId,
-            attestationStartTime: attestationStartTime,
-            attestationGracePeriod: attestationGracePeriod,
-            caller: msg.sender
-        });
     }
 
     //*********************************************************************//
@@ -682,25 +704,6 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
                 ++i;
             }
         }
-    }
-
-    /// @notice The attestation an evenly split scorecard needs to be ratified.
-    /// @dev The attestation possible is `(N - 1) * MAX_ATTESTATION_POWER_TIER` for N quorum-eligible tiers, because a
-    /// tier never attests to its own payout. An even split needs `QUORUM_EVEN_BPS` of it; more concentrated scorecards
-    /// need up to `QUORUM_WINNER_TAKE_ALL_BPS` (see `submitScorecardFor`). Every tier has the same power regardless of
-    /// supply, so each outcome's community has equal influence.
-    /// @param gameId The ID of the game.
-    /// @return The quorum number of attestations.
-    function quorum(uint256 gameId) external view override returns (uint256) {
-        return _quorumOf({maxAttestationWeight: _maxAttestationWeightOf(gameId), bps: QUORUM_EVEN_BPS});
-    }
-
-    /// @notice The attestation a submitted scorecard needs to pass, fixed at its submission by its concentration.
-    /// @param gameId The ID of the game.
-    /// @param scorecardId The ID of the scorecard.
-    /// @return The quorum threshold, or 0 if the scorecard was never submitted.
-    function quorumOf(uint256 gameId, uint256 scorecardId) external view override returns (uint256) {
-        return _scorecardOf[gameId][scorecardId].quorumSnapshot;
     }
 
     /// @notice Get the current governance state (pending, active, defeated, succeeded) of a scorecard proposal.

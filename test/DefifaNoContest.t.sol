@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
@@ -47,6 +48,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
     // Shared test state
@@ -105,6 +107,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
 
         hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -398,16 +401,16 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         for (uint256 i; i < 4; i++) {
             sc[i].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT() / 4;
         }
-        uint256 pid = _gov.submitScorecardFor(_gameId, sc);
+        uint256 pid = votingReferee.submitScorecardFor(_gameId, sc);
         _attestAllFor(pid);
 
         // Now warp past timeout → NO_CONTEST
         vm.warp(d.start + 7 days + 1);
         assertEq(uint256(deployer.currentGamePhaseOf(_pid)), uint256(DefifaGamePhase.NO_CONTEST));
 
-        // Attempting to ratify should revert because setTierCashOutWeightsTo checks for SCORING phase
-        vm.expectPartialRevert(DefifaHook.DefifaHook_GameIsntScoringYet.selector);
-        _gov.ratifyScorecardFrom(_gameId, sc);
+        // Forwarding the approved scorecard reverts: the governor only accepts scorecards during SCORING.
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        votingReferee.forwardScorecardFor(_gameId, sc);
     }
 
     // =========================================================================
@@ -807,8 +810,6 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             // forge-lint: disable-next-line(unsafe-typecast)
             tierPrice: uint104(tierPrice),
@@ -818,7 +819,8 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
             minParticipation: minParticipation,
             scorecardTimeout: scorecardTimeout,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 
@@ -868,19 +870,20 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
     }
 
     function _attestAndRatify(DefifaTierCashOutWeight[] memory sc) internal {
-        uint256 pid = _gov.submitScorecardFor(_gameId, sc);
+        uint256 pid = votingReferee.submitScorecardFor(_gameId, sc);
         _attestAllFor(pid);
+        votingReferee.forwardScorecardFor(_gameId, sc);
         _gov.ratifyScorecardFrom(_gameId, sc);
         vm.warp(block.timestamp + 1);
     }
 
     function _attestAllFor(uint256 pid) internal {
-        vm.warp(block.timestamp + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            try _gov.attestToScorecardFrom(_gameId, pid) {} catch {}
+            try votingReferee.attestToScorecardFrom(_gameId, pid) {} catch {}
         }
-        vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(_gameId) + 1);
     }
 
     function _surplus() internal view returns (uint256) {

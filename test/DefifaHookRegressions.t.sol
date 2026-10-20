@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
@@ -52,6 +53,7 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
 
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
@@ -110,6 +112,7 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
 
         hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         JBAddressRegistry _registry = new JBAddressRegistry();
         DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
         deployer = new DefifaDeployer({
@@ -340,8 +343,8 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
 
         vm.warp(_tsReader.timestamp() + 1);
 
-        uint256 payerWeight = _governor.getAttestationWeight(projectId, payer, uint48(block.timestamp));
-        uint256 beneficiaryWeight = _governor.getAttestationWeight(projectId, beneficiary, uint48(block.timestamp));
+        uint256 payerWeight = votingReferee.getAttestationWeight(projectId, payer, uint48(block.timestamp));
+        uint256 beneficiaryWeight = votingReferee.getAttestationWeight(projectId, beneficiary, uint48(block.timestamp));
 
         assertEq(payerWeight, 0, "payer receives no attestation power when delegate defaults to beneficiary");
         assertGt(beneficiaryWeight, 0, "beneficiary receives the default attestation power");
@@ -372,8 +375,6 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             tiers: tierParams,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
@@ -381,7 +382,8 @@ contract DefifaHookRegressions is JBTest, TestBaseWorkflow {
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 

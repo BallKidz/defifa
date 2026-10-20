@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
@@ -137,15 +138,14 @@ contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
             refundPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(0xBEEF),
+            refereeData: ""
         });
     }
 

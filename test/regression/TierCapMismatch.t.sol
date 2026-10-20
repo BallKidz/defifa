@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
@@ -33,6 +34,7 @@ contract TierCapMismatchTest is JBTest, TestBaseWorkflow {
 
     DefifaDeployer internal deployer;
     DefifaGovernor internal governor;
+    DefifaVotingReferee votingReferee;
     DefifaHook internal hookCodeOrigin;
 
     function setUp() public virtual override {
@@ -88,6 +90,7 @@ contract TierCapMismatchTest is JBTest, TestBaseWorkflow {
 
         hookCodeOrigin = new DefifaHook(jbDirectory(), jbTokens(), defifaProjectId, protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hookCodeOrigin),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -136,15 +139,14 @@ contract TierCapMismatchTest is JBTest, TestBaseWorkflow {
             refundPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: 7 days,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 

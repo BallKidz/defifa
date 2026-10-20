@@ -102,7 +102,9 @@ abstract contract DefifaVotingRefereeTest is RefereeTestBase {
         referee.forwardScorecardFor(gameId, sc);
     }
 
-    function test_forwardOnce() external {
+    /// @notice Once one approved scorecard is forwarded, no other can replace it. Otherwise anyone could forward a
+    /// competing approved scorecard just before the first one becomes ratifiable and push the game past its timeout.
+    function test_firstForwardedWins() external {
         _launchVotingGame(4, 1 days);
         DefifaTierCashOutWeight[] memory a = _even(4);
         DefifaTierCashOutWeight[] memory b = _even(4);
@@ -114,14 +116,19 @@ abstract contract DefifaVotingRefereeTest is RefereeTestBase {
         _attestAll(4, aId);
         _attestAll(4, bId);
         vm.warp(block.timestamp + 1 days);
+        assertEq(uint256(referee.stateOf(gameId, bId)), uint256(DefifaScorecardState.SUCCEEDED));
 
         referee.forwardScorecardFor(gameId, a);
-        referee.forwardScorecardFor(gameId, b);
+        assertEq(referee.forwardedScorecardIdOf(gameId), aId);
+
         vm.expectRevert(
             abi.encodeWithSelector(DefifaVotingReferee.DefifaVotingReferee_AlreadyForwarded.selector, gameId, aId)
         );
-        referee.forwardScorecardFor(gameId, a);
-        assertEq(uint256(governor.stateOf(gameId, aId)), uint256(DefifaScorecardState.DEFEATED));
+        referee.forwardScorecardFor(gameId, b);
+
+        vm.warp(block.timestamp + 1 days);
+        governor.ratifyScorecardFrom(gameId, a);
+        assertEq(governor.ratifiedScorecardIdOf(gameId), aId);
     }
 
     function test_quorumCarriesOver() external {

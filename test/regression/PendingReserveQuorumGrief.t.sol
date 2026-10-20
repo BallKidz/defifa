@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
@@ -43,6 +44,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
     DefifaDeployer internal _deployer;
     DefifaHook internal _hookImpl;
     DefifaGovernor internal _governorImpl;
+    DefifaVotingReferee votingReferee;
 
     address internal _projectOwner = address(bytes20(keccak256("projectOwner")));
     address internal _reserveBeneficiary = address(bytes20(keccak256("reserveBeneficiary")));
@@ -108,6 +110,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
 
         _hookImpl = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         _governorImpl = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         _deployer = new DefifaDeployer({
             hookCodeOrigin: address(_hookImpl),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -151,29 +154,31 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         // --- SCORING phase --- submit scorecard
         vm.warp(259_202);
         DefifaTierCashOutWeight[] memory scorecard = _buildScorecard();
-        uint256 proposalId = _gov.submitScorecardFor(_gameId, scorecard);
-        vm.warp(block.timestamp + _gov.attestationStartTimeOf(_gameId) + 1);
+        uint256 proposalId = votingReferee.submitScorecardFor(_gameId, scorecard);
+        vm.warp(block.timestamp + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // Quorum = 50% of the attestation possible, (4 - 1) * MAX_POWER.
-        uint256 snapshotQuorum = _gov.quorum(_gameId);
-        assertEq(snapshotQuorum, _gov.MAX_ATTESTATION_POWER_TIER() * 3 / 2, "4 tiers, quorum = 1.5 * MAX_POWER");
+        uint256 snapshotQuorum = votingReferee.quorum(_gameId);
+        assertEq(
+            snapshotQuorum, votingReferee.MAX_ATTESTATION_POWER_TIER() * 3 / 2, "4 tiers, quorum = 1.5 * MAX_POWER"
+        );
 
         // Tiers 1-2 (with pending reserves): raw power = 500M per player, BWA * 0.5 = 250M.
         // Tiers 3-4 (no reserves, 0 weight): raw power = 1e9 per player, BWA * 1.0 = 1e9.
         // Total BWA = 250M + 250M + 1e9 + 1e9 = 2.5e9, meeting adjusted quorum of 2.5e9.
         vm.prank(_player0);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(_player1);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(_player2);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(_player3);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
 
-        vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
         assertEq(
-            uint256(_gov.stateOf(_gameId, proposalId)),
+            uint256(votingReferee.stateOf(_gameId, proposalId)),
             uint256(DefifaScorecardState.SUCCEEDED),
             "scorecard succeeds with disinterested attestors providing quorum"
         );
@@ -185,7 +190,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
 
         // Scorecard STILL SUCCEEDED — reserve mint doesn't change which tiers are counted
         assertEq(
-            uint256(_gov.stateOf(_gameId, proposalId)),
+            uint256(votingReferee.stateOf(_gameId, proposalId)),
             uint256(DefifaScorecardState.SUCCEEDED),
             "quorum unchanged after reserve mint"
         );
@@ -213,20 +218,20 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         // Tiers 3-4 (no reserves, 0 weight) provide disinterested attestation power.
         vm.warp(259_202);
         DefifaTierCashOutWeight[] memory scorecard = _buildScorecard();
-        uint256 proposalId = _gov.submitScorecardFor(_gameId, scorecard);
-        vm.warp(block.timestamp + _gov.attestationStartTimeOf(_gameId) + 1);
+        uint256 proposalId = votingReferee.submitScorecardFor(_gameId, scorecard);
+        vm.warp(block.timestamp + votingReferee.attestationStartTimeOf(_gameId) + 1);
         vm.prank(_player0);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(_player1);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(_player2);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(_player3);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
-        vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
+        vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
         assertEq(
-            uint256(_gov.stateOf(_gameId, proposalId)),
+            uint256(votingReferee.stateOf(_gameId, proposalId)),
             uint256(DefifaScorecardState.SUCCEEDED),
             "scorecard should be succeeded"
         );
@@ -237,6 +242,7 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
         _nft.mintReservesFor(reserveConfigs);
 
         // Ratification succeeds because quorum is unchanged (tier already counted via pending reserves)
+        votingReferee.forwardScorecardFor(_gameId, scorecard);
         uint256 ratifiedId = _gov.ratifyScorecardFrom(_gameId, scorecard);
         assertEq(ratifiedId, proposalId, "ratification succeeds after reserve mint");
     }
@@ -285,15 +291,14 @@ contract PendingReserveQuorumGriefTest is JBTest, TestBaseWorkflow {
             refundPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 

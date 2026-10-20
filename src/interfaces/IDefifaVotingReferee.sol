@@ -10,6 +10,16 @@ import {IDefifaReferee} from "./IDefifaReferee.sol";
 /// @notice A sample referee: holders attest to scorecards with benefit-weighted power, and a scorecard that reaches its
 /// quorum after the grace period can be forwarded to the game's governor.
 interface IDefifaVotingReferee is IDefifaReferee {
+    /// @notice Emitted when an attestation is revoked from a scorecard.
+    /// @param gameId The ID of the game.
+    /// @param scorecardId The ID of the scorecard.
+    /// @param account The address whose attestation was revoked.
+    /// @param weight The revoked attestation weight.
+    /// @param caller The address that revoked the attestation.
+    event AttestationRevoked(
+        uint256 indexed gameId, uint256 indexed scorecardId, address account, uint256 weight, address caller
+    );
+
     /// @notice Emitted when a game's voting settings are set.
     /// @param gameId The ID of the game.
     /// @param attestationStartTime The timestamp when attestation begins.
@@ -41,16 +51,6 @@ interface IDefifaVotingReferee is IDefifaReferee {
         uint256 indexed gameId, uint256 indexed scorecardId, DefifaTierCashOutWeight[] tierWeights, address caller
     );
 
-    /// @notice Emitted when an attestation is revoked from a scorecard.
-    /// @param gameId The ID of the game.
-    /// @param scorecardId The ID of the scorecard.
-    /// @param account The address whose attestation was revoked.
-    /// @param weight The revoked attestation weight.
-    /// @param caller The address that revoked the attestation.
-    event AttestationRevoked(
-        uint256 indexed gameId, uint256 indexed scorecardId, address account, uint256 weight, address caller
-    );
-
     /// @notice The number of attestations for a scorecard.
     /// @param gameId The ID of the game.
     /// @param scorecardId The ID of the scorecard.
@@ -71,11 +71,10 @@ interface IDefifaVotingReferee is IDefifaReferee {
     /// @return The controller contract.
     function CONTROLLER() external view returns (IJBController);
 
-    /// @notice Whether a scorecard has been forwarded to the game's governor.
+    /// @notice The scorecard forwarded to a game's governor. Only the first approved scorecard forwarded counts.
     /// @param gameId The ID of the game.
-    /// @param scorecardId The ID of the scorecard.
-    /// @return True if forwarded.
-    function forwardedScorecardOf(uint256 gameId, uint256 scorecardId) external view returns (bool);
+    /// @return The scorecard ID, or 0 if none was forwarded.
+    function forwardedScorecardIdOf(uint256 gameId) external view returns (uint256);
 
     /// @notice Get the attestation weight for an account at a specific timestamp.
     /// @param gameId The ID of the game.

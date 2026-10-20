@@ -6,6 +6,7 @@ import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaGamePhase} from "../../src/enums/DefifaGamePhase.sol";
@@ -34,6 +35,7 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
     DefifaDeployer internal _deployer;
     DefifaHook internal _hookImpl;
     DefifaGovernor internal _governorImpl;
+    DefifaVotingReferee votingReferee;
 
     address internal _projectOwner = address(bytes20(keccak256("projectOwner")));
     address internal _player = address(bytes20(keccak256("player")));
@@ -92,6 +94,7 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
 
         _hookImpl = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         _governorImpl = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         _deployer = new DefifaDeployer({
             hookCodeOrigin: address(_hookImpl),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -186,15 +189,14 @@ contract NoContestReserveDrainTest is JBTest, TestBaseWorkflow {
             refundPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 1 days,
             defaultAttestationDelegate: address(0),
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 3 ether,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 1 days)
         });
     }
 

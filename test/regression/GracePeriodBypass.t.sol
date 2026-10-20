@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
@@ -58,6 +59,7 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
 
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
@@ -116,6 +118,7 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
 
         hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         JBAddressRegistry _registry = new JBAddressRegistry();
         DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
         deployer = new DefifaDeployer({
@@ -191,11 +194,11 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
         }
 
         uint256 submissionTime = _tsReader.timestamp();
-        uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
+        uint256 _proposalId = votingReferee.submitScorecardFor(_gameId, scorecards);
 
         // The scorecard should be PENDING (attestations haven't started yet)
         assertEq(
-            uint256(_governor.stateOf(_gameId, _proposalId)),
+            uint256(votingReferee.stateOf(_gameId, _proposalId)),
             uint256(DefifaScorecardState.PENDING),
             "Scorecard should be PENDING before attestation start"
         );
@@ -206,7 +209,7 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
 
         // The scorecard should still be PENDING because attestationsBegin hasn't arrived yet.
         assertEq(
-            uint256(_governor.stateOf(_gameId, _proposalId)),
+            uint256(votingReferee.stateOf(_gameId, _proposalId)),
             uint256(DefifaScorecardState.PENDING),
             "Scorecard should still be PENDING even after old grace period would have ended"
         );
@@ -216,7 +219,7 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
 
         // Now the scorecard should be ACTIVE (attestations are open and grace period hasn't ended yet)
         assertEq(
-            uint256(_governor.stateOf(_gameId, _proposalId)),
+            uint256(votingReferee.stateOf(_gameId, _proposalId)),
             uint256(DefifaScorecardState.ACTIVE),
             "Scorecard should be ACTIVE after attestation start but before grace period ends"
         );
@@ -227,7 +230,7 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
         // Now grace period has truly ended, so the state should be ACTIVE (quorum not met)
         // The key here is that it transitioned properly - grace period ran from attestation start
         assertEq(
-            uint256(_governor.stateOf(_gameId, _proposalId)),
+            uint256(votingReferee.stateOf(_gameId, _proposalId)),
             uint256(DefifaScorecardState.ACTIVE),
             "Scorecard should be ACTIVE (no quorum) after grace period truly ends"
         );
@@ -266,8 +269,6 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: attestationStartTime,
-            attestationGracePeriod: attestationGracePeriod,
             defaultAttestationDelegate: address(0),
             tiers: tierParams,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
@@ -275,7 +276,8 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(attestationStartTime, attestationGracePeriod)
         });
     }
 

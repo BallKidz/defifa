@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaHookLib} from "../../src/libraries/DefifaHookLib.sol";
@@ -53,6 +54,7 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
 
     address projectOwner = address(bytes20(keccak256("projectOwner")));
     address reserveBeneficiary = address(bytes20(keccak256("reserveBeneficiary")));
@@ -115,6 +117,7 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
 
         hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -162,20 +165,21 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         sc[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: 0});
         sc[2] = DefifaTierCashOutWeight({id: 3, cashOutWeight: 0});
         sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: 0});
-        uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 proposalId = votingReferee.submitScorecardFor(_gameId, sc);
 
         vm.warp(block.timestamp + 1);
 
         // Disinterested users attest (they have full BWA power since their tiers get 0 weight).
         // The player (tier 1, 100% weight) has 0 BWA power and cannot meaningfully attest.
         vm.prank(disinterested1);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(disinterested2);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(disinterested3);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
 
-        vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+        votingReferee.forwardScorecardFor(_gameId, sc);
         _gov.ratifyScorecardFrom(_gameId, sc);
 
         // The player should only reclaim HALF of their tier's share of the post-fee surplus
@@ -229,19 +233,20 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         sc[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: 0});
         sc[2] = DefifaTierCashOutWeight({id: 3, cashOutWeight: 0});
         sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: 0});
-        uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 proposalId = votingReferee.submitScorecardFor(_gameId, sc);
 
         vm.warp(block.timestamp + 1);
 
         // Disinterested users attest (full BWA power since 0 weight tiers).
         vm.prank(disinterested1);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(disinterested2);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(disinterested3);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
 
-        vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+        votingReferee.forwardScorecardFor(_gameId, sc);
         _gov.ratifyScorecardFrom(_gameId, sc);
 
         // Mint the reserve NFTs for tier 1.
@@ -304,10 +309,10 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         sc[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT()});
         sc[2] = DefifaTierCashOutWeight({id: 3, cashOutWeight: 0});
         sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: 0});
-        uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 proposalId = votingReferee.submitScorecardFor(_gameId, sc);
 
         assertEq(
-            uint256(_gov.stateOf(_gameId, proposalId)),
+            uint256(votingReferee.stateOf(_gameId, proposalId)),
             uint256(DefifaScorecardState.PENDING),
             "immediate scorecard should wait for the next timestamp"
         );
@@ -319,15 +324,15 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
         vm.prank(reserveBeneficiary);
         vm.expectRevert(
             abi.encodeWithSelector(
-                DefifaGovernor.DefifaGovernor_NotAllowed.selector, _gameId, proposalId, reserveBeneficiary
+                DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector, _gameId, proposalId, reserveBeneficiary
             )
         );
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
 
         // A holder that minted in an earlier block (tier-1 paid holder, on the 0-weight tier so BWA leaves it full
         // power) keeps its pre-submission attestation power — only same-block activity is excluded.
         vm.prank(player);
-        uint256 playerWeight = _gov.attestToScorecardFrom(_gameId, proposalId);
+        uint256 playerWeight = votingReferee.attestToScorecardFrom(_gameId, proposalId);
         assertGt(playerWeight, 0, "pre-submission holder retains its frozen attestation power");
     }
 
@@ -364,8 +369,6 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             tierPrice: 1 ether,
             tiers: tp,
@@ -374,7 +377,8 @@ contract FixPendingReserveDilutionTest is JBTest, TestBaseWorkflow {
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 

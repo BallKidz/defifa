@@ -36,18 +36,19 @@ contract CurrencyMismatchBypassTest is DefifaUSDCTest {
         scorecard[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: 0});
 
         vm.prank(_users[1]);
-        uint256 scorecardId = _gov.submitScorecardFor(_pid, scorecard);
-        vm.warp(block.timestamp + _gov.attestationStartTimeOf(_pid) + 1);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_pid, scorecard);
+        vm.warp(block.timestamp + votingReferee.attestationStartTimeOf(_pid) + 1);
 
         vm.prank(_users[1]);
-        _gov.attestToScorecardFrom(_pid, scorecardId);
+        votingReferee.attestToScorecardFrom(_pid, scorecardId);
 
-        vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_pid) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(_pid) + 1);
 
         uint256 preRatificationBalance = _balance();
         uint256 expectedFee = (preRatificationBalance * 75_000_000) / JBConstants.SPLITS_TOTAL_PERCENT;
 
         vm.prank(_users[1]);
+        votingReferee.forwardScorecardFor(_pid, scorecard);
         _gov.ratifyScorecardFrom(_pid, scorecard);
 
         // Payout succeeds and fulfilledCommitmentsOf stores the actual fee.
@@ -94,8 +95,6 @@ contract CurrencyMismatchBypassTest is DefifaUSDCTest {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 1 days,
             defaultAttestationDelegate: address(0),
             tierPrice: tierPrice,
             tiers: tp,
@@ -104,7 +103,8 @@ contract CurrencyMismatchBypassTest is DefifaUSDCTest {
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
             timelockDuration: 0,
-            enforceDefaultAttestationDelegate: false
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 1 days)
         });
     }
 }
