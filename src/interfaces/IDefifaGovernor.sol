@@ -4,6 +4,7 @@ pragma solidity ^0.8.0;
 import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
 
 import {DefifaScorecardState} from "../enums/DefifaScorecardState.sol";
+
 import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
 
 /// @notice Ratifies each game's scorecard as submitted by the game's referee, after the game's timelock.
@@ -31,52 +32,52 @@ interface IDefifaGovernor {
     );
 
     /// @notice The Juicebox controller used to manage projects.
-    /// @return The controller contract.
-    function CONTROLLER() external view returns (IJBController);
+    /// @return controller The controller contract.
+    function CONTROLLER() external view returns (IJBController controller);
 
     /// @notice The scorecard waiting out its timelock for a game.
     /// @param gameId The ID of the game.
-    /// @return The scorecard ID, or 0 if none was submitted.
-    function pendingScorecardIdOf(uint256 gameId) external view returns (uint256);
+    /// @return scorecardId The scorecard ID, or 0 if none was submitted.
+    function pendingScorecardIdOf(uint256 gameId) external view returns (uint256 scorecardId);
 
     /// @notice The ID of the ratified scorecard for a game.
     /// @param gameId The ID of the game.
-    /// @return The ratified scorecard ID, or 0 if none.
-    function ratifiedScorecardIdOf(uint256 gameId) external view returns (uint256);
+    /// @return scorecardId The ratified scorecard ID, or 0 if none.
+    function ratifiedScorecardIdOf(uint256 gameId) external view returns (uint256 scorecardId);
 
     /// @notice The referee of a game.
     /// @param gameId The ID of the game.
-    /// @return The address that judges the game, or the zero address if the game is unknown.
-    function refereeOf(uint256 gameId) external view returns (address);
+    /// @return referee The address that judges the game, or the zero address if the game is unknown.
+    function refereeOf(uint256 gameId) external view returns (address referee);
 
     /// @notice Compute the scorecard ID for a given hook and tier weights.
     /// @param gameHook The game hook address.
     /// @param tierWeights The tier cash-out weights.
-    /// @return The scorecard ID.
+    /// @return scorecardId The scorecard ID.
     function scorecardIdOf(
         address gameHook,
         DefifaTierCashOutWeight[] calldata tierWeights
     )
         external
         pure
-        returns (uint256);
+        returns (uint256 scorecardId);
 
     /// @notice When a scorecard was last submitted.
     /// @param gameId The ID of the game.
     /// @param scorecardId The ID of the scorecard.
-    /// @return The submission timestamp, or 0 if never submitted.
-    function scorecardSubmittedAtOf(uint256 gameId, uint256 scorecardId) external view returns (uint256);
+    /// @return submittedAt The submission timestamp, or 0 if never submitted.
+    function scorecardSubmittedAtOf(uint256 gameId, uint256 scorecardId) external view returns (uint256 submittedAt);
 
     /// @notice The state of a submitted scorecard.
     /// @param gameId The ID of the game.
     /// @param scorecardId The ID of the scorecard.
-    /// @return The scorecard state: QUEUED, SUCCEEDED, RATIFIED, or DEFEATED.
-    function stateOf(uint256 gameId, uint256 scorecardId) external view returns (DefifaScorecardState);
+    /// @return state The scorecard state: QUEUED, SUCCEEDED, RATIFIED, or DEFEATED.
+    function stateOf(uint256 gameId, uint256 scorecardId) external view returns (DefifaScorecardState state);
 
     /// @notice The time a game's submitted scorecard waits before anyone can ratify it.
     /// @param gameId The ID of the game.
-    /// @return The timelock duration, in seconds.
-    function timelockDurationOf(uint256 gameId) external view returns (uint256);
+    /// @return timelockDuration The timelock duration, in seconds.
+    function timelockDurationOf(uint256 gameId) external view returns (uint256 timelockDuration);
 
     /// @notice Set a game's referee and timelock.
     /// @param gameId The ID of the game.
@@ -87,22 +88,22 @@ interface IDefifaGovernor {
     /// @notice Ratify a game's pending scorecard once its timelock has passed.
     /// @param gameId The ID of the game.
     /// @param tierWeights The tier cash-out weights (must match the pending scorecard).
-    /// @return The scorecard ID that was ratified.
+    /// @return scorecardId The scorecard ID that was ratified.
     function ratifyScorecardFrom(
         uint256 gameId,
         DefifaTierCashOutWeight[] calldata tierWeights
     )
         external
-        returns (uint256);
+        returns (uint256 scorecardId);
 
     /// @notice Submit a game's scorecard, replacing any pending one and starting the timelock. Referee only.
     /// @param gameId The ID of the game.
     /// @param tierWeights The tier cash-out weights.
-    /// @return The scorecard ID.
+    /// @return scorecardId The scorecard ID.
     function submitScorecardFor(
         uint256 gameId,
         DefifaTierCashOutWeight[] calldata tierWeights
     )
         external
-        returns (uint256);
+        returns (uint256 scorecardId);
 }

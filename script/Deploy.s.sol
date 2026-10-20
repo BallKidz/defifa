@@ -14,10 +14,11 @@ import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {Defifa1155Hook} from "../src/Defifa1155Hook.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
-import {DefifaVotingReferee} from "../src/referees/DefifaVotingReferee.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTiersHookStore} from "../src/DefifaTiersHookStore.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
+
+import {DefifaVotingReferee} from "../src/referees/DefifaVotingReferee.sol";
 
 contract DeployScript is Script, Sphinx {
     /// @notice The core controller and the address registry, at the same address on every chain. The rest of core
@@ -190,7 +191,7 @@ contract DeployScript is Script, Sphinx {
             });
 
             // Deploy it if it has not been deployed yet.
-            if (!_refereeIsDeployed) new DefifaVotingReferee{salt: _VOTING_REFEREE_SALT}({controller: _CONTROLLER});
+            if (!_refereeIsDeployed) new DefifaVotingReferee{salt: _VOTING_REFEREE_SALT}(_CONTROLLER);
         }
     }
 

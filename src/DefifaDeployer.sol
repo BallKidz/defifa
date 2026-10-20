@@ -73,7 +73,9 @@ contract DefifaDeployer is
     error DefifaDeployer_CantFulfillYet(uint256 gameId);
 
     /// @notice Thrown when launching a game with non-sequential phase timestamps, no mint duration, more than 128
-    /// tiers, no scorecard timeout, a scorecard timeout no longer than the timelock, or no referee.
+    /// tiers, no scorecard timeout, a scorecard timeout no longer than the timelock, or no referee. Each guard keeps a
+    /// launched game able to finish: phases in order, a mint window, tier tables that fit, a refund path, a timelock
+    /// that ends before the timeout, and someone to submit the result.
     error DefifaDeployer_InvalidGameConfiguration(
         uint256 start, uint256 mintPeriodDuration, uint256 refundPeriodDuration, uint256 tierCount
     );

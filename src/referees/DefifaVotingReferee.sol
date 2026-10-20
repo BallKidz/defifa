@@ -1,20 +1,24 @@
 // SPDX-License-Identifier: MIT
 pragma solidity 0.8.28;
 
-import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
-import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
 import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
+import {IJBController} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
+import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
 import {mulDiv} from "@prb/math/src/Common.sol";
 
 import {DefifaHook} from "../DefifaHook.sol";
+
 import {DefifaGamePhase} from "../enums/DefifaGamePhase.sol";
 import {DefifaScorecardState} from "../enums/DefifaScorecardState.sol";
+
 import {IDefifaDeployer} from "../interfaces/IDefifaDeployer.sol";
 import {IDefifaGovernor} from "../interfaces/IDefifaGovernor.sol";
 import {IDefifaHook} from "../interfaces/IDefifaHook.sol";
 import {IDefifaVotingReferee} from "../interfaces/IDefifaVotingReferee.sol";
+
 import {DefifaHookLib} from "../libraries/DefifaHookLib.sol";
+
 import {DefifaAttestations} from "../structs/DefifaAttestations.sol";
 import {DefifaScorecard} from "../structs/DefifaScorecard.sol";
 import {DefifaTierCashOutWeight} from "../structs/DefifaTierCashOutWeight.sol";
@@ -30,44 +34,52 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     // --------------------------- custom errors ------------------------- //
     //*********************************************************************//
 
-    /// @notice Thrown when an account tries to attest to a scorecard it has already attested to.
+    /// @notice Thrown when an account attests to a scorecard it already attested to, so its weight counts once.
     error DefifaVotingReferee_AlreadyAttested(uint256 gameId, uint256 scorecardId, address account);
 
-    /// @notice Thrown when forwarding a scorecard after the game's first approved scorecard was forwarded.
+    /// @notice Thrown when forwarding a scorecard after the game's first approved scorecard was forwarded, so a
+    /// competing approved scorecard can't replace it and restart the governor's timelock.
     error DefifaVotingReferee_AlreadyForwarded(uint256 gameId, uint256 scorecardId);
 
-    /// @notice Thrown when initializing a game whose voting settings have already been set.
+    /// @notice Thrown when initializing a game whose voting settings are already set, so its windows can't change.
     error DefifaVotingReferee_AlreadyInitialized(uint256 gameId);
 
-    /// @notice Thrown when submitting a scorecard for a game whose governor has already ratified one.
+    /// @notice Thrown when submitting a scorecard for a game whose governor already ratified one, since the result is
+    /// final.
     error DefifaVotingReferee_AlreadyRatified(uint256 gameId, uint256 scorecardId);
 
-    /// @notice Thrown when submitting a scorecard that has already been submitted for the game.
+    /// @notice Thrown when submitting a scorecard already submitted for the game, so its attestations and snapshot
+    /// can't be reset.
     error DefifaVotingReferee_DuplicateScorecard(uint256 gameId, uint256 scorecardId);
 
-    /// @notice Thrown when submitting a scorecard for a game that has not been initialized.
+    /// @notice Thrown when submitting a scorecard for a game this referee has no voting settings for, since its windows
+    /// and grace period would be undefined.
     error DefifaVotingReferee_GameNotFound(uint256 gameId);
 
-    /// @notice Thrown when initializing a game with an attestation grace period shorter than the minimum allowed.
+    /// @notice Thrown when a game's grace period is shorter than the minimum, so a scorecard can't pass before holders
+    /// have time to see and contest it.
     error DefifaVotingReferee_GracePeriodTooShort(uint256 gracePeriod, uint256 minGracePeriod);
 
-    /// @notice Thrown when the action is not allowed: the game is not in its scoring phase, the scorecard is not in an
-    /// eligible state, or the caller's attestation weight is zero.
+    /// @notice Thrown when the action is not allowed: the game is not in its scoring phase, the scorecard is not in a
+    /// state that permits it, or the caller has no attestation weight for it. Votes only count while the game scores,
+    /// in the window the scorecard's state allows, from holders with power.
     error DefifaVotingReferee_NotAllowed(uint256 gameId, uint256 scorecardId, address caller);
 
-    /// @notice Thrown when revoking an attestation that the account never made for the scorecard.
+    /// @notice Thrown when revoking an attestation the account never made, so the count can't be reduced for free.
     error DefifaVotingReferee_NotAttested(uint256 gameId, uint256 scorecardId, address account);
 
-    /// @notice Thrown when an address other than the game's project owner initializes the game.
+    /// @notice Thrown when an address other than the game's project owner sets its voting settings, so only the
+    /// deployer that launched the game can.
     error DefifaVotingReferee_NotProjectOwner(uint256 gameId, address caller);
 
-    /// @notice Thrown when a timestamp or duration value exceeds the maximum that fits in a uint48.
+    /// @notice Thrown when a timestamp or duration exceeds a uint48, since the referee packs them into 48-bit fields.
     error DefifaVotingReferee_Uint48Overflow(uint256 value, uint256 max);
 
-    /// @notice Thrown when querying the state of a scorecard that has never been submitted.
+    /// @notice Thrown when reading the state of a scorecard never submitted to this referee for the game, so an unknown
+    /// ID can't be mistaken for one being voted on.
     error DefifaVotingReferee_UnknownProposal(uint256 gameId, uint256 scorecardId);
 
-    /// @notice Thrown when a submitted scorecard assigns a nonzero cash-out weight to a tier that has no live supply.
+    /// @notice Thrown when a scorecard pays a tier with no live supply, since no token could redeem that weight.
     error DefifaVotingReferee_UnownedProposedCashoutValue(uint256 gameId, uint256 tierId, uint256 cashOutWeight);
 
     //*********************************************************************//
@@ -94,7 +106,7 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     // --------------- public immutable stored properties ---------------- //
     //*********************************************************************//
 
-    /// @notice The controller with which new projects should be deployed.
+    /// @notice The controller used to find each game's hook, rulesets and project owner.
     IJBController public immutable override CONTROLLER;
 
     //*********************************************************************//
@@ -116,22 +128,28 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     /// @custom:param gameId The ID of the game for which the scorecard info applies.
     mapping(uint256 => uint256) internal _packedScorecardInfoOf;
 
-    /// @notice The scorecards.
-    /// @custom:param gameId The ID of the game the scorecard affects.
-    /// @custom:param scorecardId The ID of the scorecard to retrieve.
-    mapping(uint256 => mapping(uint256 => DefifaScorecard)) internal _scorecardOf;
-
-    /// @notice The attestations to a scorecard.
-    /// @custom:param gameId The ID of the game the scorecard affects.
-    /// @custom:param scorecardId The ID of the scorecard that has been attested to.
-    mapping(uint256 => mapping(uint256 => DefifaAttestations)) internal _scorecardAttestationsOf;
-
     /// @notice Snapshot of pending reserves per tier at scorecard submission time.
     /// @dev Used to keep unminted reserve units in the BWA denominator.
     /// @custom:param gameId The ID of the game.
     /// @custom:param scorecardId The ID of the scorecard.
     /// @custom:param tierId The tier ID (1-indexed).
     mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) internal _pendingReservesSnapshotOf;
+
+    /// @notice The attestations to a scorecard.
+    /// @custom:param gameId The ID of the game the scorecard affects.
+    /// @custom:param scorecardId The ID of the scorecard that has been attested to.
+    mapping(uint256 => mapping(uint256 => DefifaAttestations)) internal _scorecardAttestationsOf;
+
+    /// @notice The scorecards.
+    /// @custom:param gameId The ID of the game the scorecard affects.
+    /// @custom:param scorecardId The ID of the scorecard to retrieve.
+    mapping(uint256 => mapping(uint256 => DefifaScorecard)) internal _scorecardOf;
+
+    /// @notice Tier weights per scorecard for BWA computation.
+    /// @custom:param gameId The ID of the game.
+    /// @custom:param scorecardId The ID of the scorecard.
+    /// @custom:param tierId The tier ID (0-indexed).
+    mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) internal _scorecardTierWeightsOf;
 
     /// @notice Snapshot of each tier's minted attestation units at scorecard submission time.
     /// @dev Caps later checkpoint reads so reserve mints after submission can't increase the denominator
@@ -141,17 +159,12 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     /// @custom:param tierId The tier ID (1-indexed).
     mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) internal _submittedTierAttestationUnitsOf;
 
-    /// @notice Tier weights per scorecard for BWA computation.
-    /// @custom:param gameId The ID of the game.
-    /// @custom:param scorecardId The ID of the scorecard.
-    /// @custom:param tierId The tier ID (0-indexed).
-    mapping(uint256 => mapping(uint256 => mapping(uint256 => uint256))) internal _scorecardTierWeightsOf;
-
     //*********************************************************************//
     // -------------------------- constructor ---------------------------- //
     //*********************************************************************//
 
-    /// @param controller The controller used to find each game's hook and project owner.
+    /// @notice Creates the referee for games launched through the given controller.
+    /// @param controller The controller used to find each game's hook, rulesets and project owner.
     constructor(IJBController controller) {
         CONTROLLER = controller;
     }
@@ -161,11 +174,13 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     //*********************************************************************//
 
     /// @notice Cast an attestation supporting a proposed scorecard, weighted by the caller's tier voting power.
+    /// @dev Power is read at the scorecard's frozen snapshot, one second before submission, so tokens moved in or after
+    /// the submission block can't add power. Zero-weight attestations revert, so they can't be repeated for free.
     /// @param gameId The ID of the game to which the scorecard belongs.
     /// @param scorecardId The scorecard ID.
     /// @return weight The attestation weight that was applied.
     function attestToScorecardFrom(uint256 gameId, uint256 scorecardId) external override returns (uint256 weight) {
-        // Get the game's current funding cycle along with its metadata.
+        // Get the game's current ruleset metadata, which names its hook.
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Make sure the game is in its scoring phase.
@@ -205,12 +220,13 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
             revert DefifaVotingReferee_NotAllowed({gameId: gameId, scorecardId: scorecardId, caller: msg.sender});
         }
 
-        // Increase the attestation count.
+        // Add the weight to the scorecard's running total, which `stateOf` compares to its quorum.
         attestations.count += weight;
 
         // Store the BWA weight that was added (used for accurate subtraction on revoke).
         attestations.attestedWeightOf[msg.sender] = weight;
 
+        // Let indexers track each attestation and its weight.
         emit ScorecardAttested({gameId: gameId, scorecardId: scorecardId, weight: weight, caller: msg.sender});
     }
 
@@ -227,7 +243,7 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         override
         returns (uint256 scorecardId)
     {
-        // Get the game's current funding cycle along with its metadata.
+        // Get the game's current ruleset metadata, which names its hook.
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Hash the scorecard to derive its ID.
@@ -239,16 +255,19 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
             revert DefifaVotingReferee_NotAllowed({gameId: gameId, scorecardId: scorecardId, caller: msg.sender});
         }
 
-        // Only the first approved scorecard is forwarded.
+        // Only the first approved scorecard is forwarded, so no competing one can restart the governor's timelock.
         uint256 forwardedScorecardId = forwardedScorecardIdOf[gameId];
         if (forwardedScorecardId != 0) {
             revert DefifaVotingReferee_AlreadyForwarded({gameId: gameId, scorecardId: forwardedScorecardId});
         }
+
+        // Record the forward before the external call, so a re-entrant call can't forward a second scorecard.
         forwardedScorecardIdOf[gameId] = scorecardId;
 
-        // Submit it as the game's referee.
+        // Submit it as the game's referee, which starts the governor's timelock.
         _governorOf(gameId).submitScorecardFor({gameId: gameId, tierWeights: tierWeights});
 
+        // Let indexers see which scorecard reached the governor.
         emit ScorecardForwarded({gameId: gameId, scorecardId: scorecardId, caller: msg.sender});
     }
 
@@ -266,6 +285,7 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         // Make sure the game hasn't already been initialized.
         if (_packedScorecardInfoOf[gameId] != 0) revert DefifaVotingReferee_AlreadyInitialized({gameId: gameId});
 
+        // Read the game's attestation start time and grace period, as the deployer passed them.
         (uint256 attestationStartTime, uint256 attestationGracePeriod) = abi.decode(data, (uint256, uint256));
 
         // Set a default attestation start time if needed.
@@ -286,9 +306,10 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
             revert DefifaVotingReferee_Uint48Overflow({value: attestationGracePeriod, max: type(uint48).max});
         }
 
-        // attestation start time in bits 0-47, attestation grace period in bits 48-95.
+        // Pack both into one slot: attestation start time in bits 0-47, attestation grace period in bits 48-95.
         _packedScorecardInfoOf[gameId] = attestationStartTime | (attestationGracePeriod << 48);
 
+        // Let indexers record the game's voting windows.
         emit GameInitialized({
             gameId: gameId,
             attestationStartTime: attestationStartTime,
@@ -308,7 +329,10 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
             revert DefifaVotingReferee_NotAllowed({gameId: gameId, scorecardId: scorecardId, caller: msg.sender});
         }
 
+        // Keep a reference to the scorecard's attestations.
         DefifaAttestations storage attestations = _scorecardAttestationsOf[gameId][scorecardId];
+
+        // Read the weight this account added, so exactly that amount is removed.
         uint256 weight = attestations.attestedWeightOf[msg.sender];
 
         // Must have previously attested.
@@ -316,16 +340,20 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
             revert DefifaVotingReferee_NotAttested({gameId: gameId, scorecardId: scorecardId, account: msg.sender});
         }
 
-        // Subtract the weight and clear the attestation.
+        // Subtract the weight and clear the attestation, so the account can attest again later.
         attestations.count -= weight;
         attestations.attestedWeightOf[msg.sender] = 0;
 
+        // Let indexers track the revocation.
         emit AttestationRevoked({
             gameId: gameId, scorecardId: scorecardId, account: msg.sender, weight: weight, caller: msg.sender
         });
     }
 
     /// @notice Submits a scorecard to be attested to.
+    /// @dev Freezes everything the vote depends on: account power is read one second before submission, each tier's
+    /// total units and pending reserves are snapshotted now, and the quorum is fixed by the scorecard's concentration.
+    /// Attestations open at the game's start time, or one second after submission, never in the submission block.
     /// @param gameId The ID of the game.
     /// @param tierWeights The weights of each tier in the scorecard.
     /// @return scorecardId The scorecard's ID.
@@ -349,7 +377,7 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         // Keep a reference to the number of tier weights in the proposed scorecard.
         uint256 numberOfTierWeights = tierWeights.length;
 
-        // Get the game's current funding cycle along with its metadata.
+        // Get the game's current ruleset metadata, which names its hook.
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Make sure the game is in its scoring phase.
@@ -366,6 +394,7 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
                     gameId: gameId, tierId: tierWeights[i].id, cashOutWeight: tierWeights[i].cashOutWeight
                 });
             }
+            // Can't overflow: the index is bounded by the loop's length.
             unchecked {
                 ++i;
             }
@@ -382,21 +411,24 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         scorecardId =
             _hashScorecardOf({gameHook: metadata.dataHook, calldataBytes: _buildScorecardCalldataFor(tierWeights)});
 
-        // Store the scorecard.
+        // Keep a reference to the scorecard's storage. A nonzero start means it was already submitted.
         DefifaScorecard storage scorecard = _scorecardOf[gameId][scorecardId];
         if (scorecard.attestationsBegin != 0) {
             revert DefifaVotingReferee_DuplicateScorecard({gameId: gameId, scorecardId: scorecardId});
         }
 
+        // Read the game's earliest attestation time.
         uint256 attestationStartTime = attestationStartTimeOf(gameId);
 
         // Game phase timing is timestamp-based by design. If attestations would otherwise open immediately,
         // wait until the next timestamp so the attestation window opens in a later block than submission,
         // preventing same-block attestation. The BWA snapshot is taken separately, one second before submission.
         uint256 currentTimestamp = block.timestamp;
+        // Attestations open at the game's start time, or one second after submission if that start has passed.
         uint256 attestationsBeginTimestamp = attestationStartTime;
         if (currentTimestamp >= attestationStartTime) attestationsBeginTimestamp = currentTimestamp + 1;
 
+        // The start is stored in 48 bits.
         if (attestationsBeginTimestamp > type(uint48).max) {
             revert DefifaVotingReferee_Uint48Overflow({value: attestationsBeginTimestamp, max: type(uint48).max});
         }
@@ -404,11 +436,15 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         // Safe after the explicit max check above.
         // forge-lint: disable-next-line(unsafe-typecast)
         uint48 attestationsBegin = uint48(attestationsBeginTimestamp);
+
+        // Record when attestations open, which also marks the scorecard as submitted.
         scorecard.attestationsBegin = attestationsBegin;
-        // Grace period extends from when attestations begin, not from submission time.
-        // This prevents the grace period from expiring before attestations even start
-        // when a scorecard is submitted early.
+
+        // The grace period runs from when attestations begin, so it can't expire before holders can attest to a
+        // scorecard submitted early.
         uint256 gracePeriodEnds = uint256(attestationsBegin) + attestationGracePeriodOf(gameId);
+
+        // The end is stored in 48 bits.
         if (gracePeriodEnds > type(uint48).max) {
             revert DefifaVotingReferee_Uint48Overflow({value: gracePeriodEnds, max: type(uint48).max});
         }
@@ -427,7 +463,9 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
 
         // Store tier weights for BWA computation.
         for (uint256 i; i < numberOfTierWeights;) {
+            // Tier IDs are 1-indexed; the weights are stored 0-indexed to match the tier loop in BWA.
             _scorecardTierWeightsOf[gameId][scorecardId][tierWeights[i].id - 1] = tierWeights[i].cashOutWeight;
+            // Can't overflow: the index is bounded by the loop's length.
             unchecked {
                 ++i;
             }
@@ -440,16 +478,26 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         {
             // Cache the number of tiers to avoid re-reading from storage.
             uint256 numberOfTiers = hookStore.maxTierIdOf(metadata.dataHook);
+            // Snapshot every tier, since any tier's holders can attest.
             for (uint256 i; i < numberOfTiers;) {
+                // Tiers are 1-indexed.
                 uint256 tierId = i + 1;
+
+                // Read the tier for its voting units per token.
                 JB721Tier memory tier =
                     hookStore.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
+
                 // Use adjusted pending reserves that account for refund-phase burns.
                 uint256 pendingReserves = IDefifaHook(metadata.dataHook).adjustedPendingReservesFor(tierId);
+
+                // The tier's minted attestation units right now.
                 uint256 submittedTierAttestationUnits =
                     IDefifaHook(metadata.dataHook).currentSupplyOfTier(tierId) * tier.votingUnits;
+
+                // Freeze both, so this scorecard's denominators can't move after submission.
                 _pendingReservesSnapshotOf[gameId][scorecardId][tierId] = pendingReserves;
                 _submittedTierAttestationUnitsOf[gameId][scorecardId][tierId] = submittedTierAttestationUnits;
+                // Can't overflow: the index is bounded by the loop's length.
                 unchecked {
                     ++i;
                 }
@@ -459,11 +507,16 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         // Quorum rises from QUORUM_EVEN_BPS to QUORUM_WINNER_TAKE_ALL_BPS of the most attestation possible as the
         // largest share grows, by that share squared: gentle for moderate concentration, steepest for winner-take-all.
         {
-            // Find the largest tier weight.
+            // The weight every scorecard's tier weights add up to.
             uint256 totalCashOutWeight = IDefifaHook(metadata.dataHook).TOTAL_CASHOUT_WEIGHT();
+
+            // Find the largest tier weight, which sets how concentrated the scorecard is.
             uint256 maxWeight;
+            // Scan every proposed weight.
             for (uint256 i; i < numberOfTierWeights;) {
+                // Keep the larger weight.
                 if (tierWeights[i].cashOutWeight > maxWeight) maxWeight = tierWeights[i].cashOutWeight;
+                // Can't overflow: the index is bounded by the loop's length.
                 unchecked {
                     ++i;
                 }
@@ -478,9 +531,11 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
                     x: QUORUM_WINNER_TAKE_ALL_BPS - QUORUM_EVEN_BPS, y: maxShareSquared, denominator: totalCashOutWeight
                 });
 
+            // Freeze the scorecard's quorum at submission.
             scorecard.quorumSnapshot = _quorumOf({maxAttestationWeight: _maxAttestationWeightOf(gameId), bps: bps});
         }
 
+        // Let indexers record the scorecard and its weights.
         emit ScorecardSubmitted({
             gameId: gameId, scorecardId: scorecardId, tierWeights: tierWeights, caller: msg.sender
         });
@@ -490,11 +545,12 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     // ----------------------- external views ---------------------------- //
     //*********************************************************************//
 
-    /// @notice The number of attestations the given scorecard has.
+    /// @notice The attestation weight a scorecard has collected.
     /// @param gameId The ID of the game to which the scorecard belongs.
     /// @param scorecardId The ID of the scorecard to get attestations of.
-    /// @return The number of attestations the given scorecard has.
-    function attestationCountOf(uint256 gameId, uint256 scorecardId) external view returns (uint256) {
+    /// @return count The total attestation weight.
+    function attestationCountOf(uint256 gameId, uint256 scorecardId) external view override returns (uint256 count) {
+        // The running total kept by attest and revoke.
         return _scorecardAttestationsOf[gameId][scorecardId].count;
     }
 
@@ -502,36 +558,48 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     /// @param gameId The ID of the game to which the scorecard belongs.
     /// @param scorecardId The ID of the scorecard to query attestations from.
     /// @param account The address to check the attestation status of.
-    /// @return A flag indicating if the given account has already attested to the scorecard.
-    function hasAttestedTo(uint256 gameId, uint256 scorecardId, address account) external view returns (bool) {
+    /// @return attested True if the account has attested to the scorecard.
+    function hasAttestedTo(
+        uint256 gameId,
+        uint256 scorecardId,
+        address account
+    )
+        external
+        view
+        override
+        returns (bool attested)
+    {
+        // An attestation always records a nonzero weight.
         return _scorecardAttestationsOf[gameId][scorecardId].attestedWeightOf[account] != 0;
     }
 
     /// @notice The baseline quorum: 50% of the attestation possible, which a scorecard spread thinly over many tiers
     /// approaches.
-    /// @dev Integrations checking a specific scorecard should use `quorumOf`, which includes its concentration.
     /// @dev The attestation possible is `(N - 1) * MAX_ATTESTATION_POWER_TIER` for N quorum-eligible tiers, because a
-    /// tier never attests to its own payout. An even split needs `QUORUM_EVEN_BPS` of it; more concentrated scorecards
-    /// need up to `QUORUM_WINNER_TAKE_ALL_BPS` (see `submitScorecardFor`). Every tier has the same power regardless of
-    /// supply, so each outcome's community has equal influence.
+    /// tier never attests to its own payout. Scorecards need `QUORUM_EVEN_BPS` of it plus more as they concentrate, up
+    /// to `QUORUM_WINNER_TAKE_ALL_BPS` (see `submitScorecardFor`), so integrations checking a specific scorecard should
+    /// use `quorumOf`. Every tier has the same power regardless of supply, so each outcome's community has equal
+    /// influence.
     /// @param gameId The ID of the game.
-    /// @return The quorum number of attestations.
-    function quorum(uint256 gameId) external view override returns (uint256) {
+    /// @return quorumWeight The baseline quorum.
+    function quorum(uint256 gameId) external view override returns (uint256 quorumWeight) {
+        // Apply the baseline share to the attestation possible right now.
         return _quorumOf({maxAttestationWeight: _maxAttestationWeightOf(gameId), bps: QUORUM_EVEN_BPS});
     }
 
     /// @notice The attestation a submitted scorecard needs to pass, fixed at its submission by its concentration.
     /// @param gameId The ID of the game.
     /// @param scorecardId The ID of the scorecard.
-    /// @return The quorum threshold, or 0 if the scorecard was never submitted.
-    function quorumOf(uint256 gameId, uint256 scorecardId) external view override returns (uint256) {
+    /// @return quorumWeight The quorum threshold, or 0 if the scorecard was never submitted.
+    function quorumOf(uint256 gameId, uint256 scorecardId) external view override returns (uint256 quorumWeight) {
+        // The quorum frozen when the scorecard was submitted.
         return _scorecardOf[gameId][scorecardId].quorumSnapshot;
     }
 
     /// @notice The ID of a scorecard representing the provided tier weights.
     /// @param gameHook The address where the game is played.
     /// @param tierWeights The weights of each tier in the scorecard.
-    /// @return The scorecard's ID.
+    /// @return scorecardId The scorecard's ID.
     function scorecardIdOf(
         address gameHook,
         DefifaTierCashOutWeight[] calldata tierWeights
@@ -540,8 +608,9 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         pure
         virtual
         override
-        returns (uint256)
+        returns (uint256 scorecardId)
     {
+        // Hash the hook with the calldata ratification would send it.
         return _hashScorecardOf({gameHook: gameHook, calldataBytes: _buildScorecardCalldataFor(tierWeights)});
     }
 
@@ -549,10 +618,10 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     // -------------------------- public views --------------------------- //
     //*********************************************************************//
 
-    /// @notice The amount of time that must go by before a scorecard can be ratified.
+    /// @notice The time after attestations open during which a scorecard can't pass, even at quorum.
     /// @param gameId The ID of the game to get the attestation period of.
-    /// @return The attestation grace period, in seconds.
-    function attestationGracePeriodOf(uint256 gameId) public view override returns (uint256) {
+    /// @return gracePeriod The attestation grace period, in seconds.
+    function attestationGracePeriodOf(uint256 gameId) public view override returns (uint256 gracePeriod) {
         // attestation grace period in bits 48-95 (48 bits).
         return uint256(uint48(_packedScorecardInfoOf[gameId] >> 48));
     }
@@ -562,13 +631,13 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     /// read one second before submission, so tokens acquired or delegated after a scorecard is submitted don't count
     /// toward it.
     /// @param gameId The ID of the game.
-    /// @return The attestation start timestamp.
-    function attestationStartTimeOf(uint256 gameId) public view override returns (uint256) {
+    /// @return startTime The attestation start timestamp.
+    function attestationStartTimeOf(uint256 gameId) public view override returns (uint256 startTime) {
         // attestation start time in bits 0-47 (48 bits).
         return uint256(uint48(_packedScorecardInfoOf[gameId]));
     }
 
-    /// @notice Gets an account's attestation power given a number of tiers to look through.
+    /// @notice An account's attestation power at a timestamp, before any scorecard's benefit discount.
     /// @dev An account's power per tier = MAX_ATTESTATION_POWER_TIER * (account's units / tier's total units).
     /// This means within a tier, power is proportional to token holdings, but across tiers, each tier's
     /// total power is capped at MAX_ATTESTATION_POWER_TIER. A holder of 1-of-1 in a tier gets
@@ -587,18 +656,21 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         public
         view
         virtual
+        override
         returns (uint256 attestationPower)
     {
-        // Get the game's current funding cycle along with its metadata.
+        // Get the game's current ruleset metadata, which names its hook.
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Get a reference to the hook and its store.
         IDefifaHook hook = IDefifaHook(metadata.dataHook);
+        // Get a reference to the hook's store, which holds each tier's voting units.
         IJB721TiersHookStore store = hook.store();
 
         // Get a reference to the number of tiers.
         uint256 numberOfTiers = store.maxTierIdOf(metadata.dataHook);
 
+        // Add up the account's share of each tier.
         for (uint256 i; i < numberOfTiers;) {
             // Tiers are 1-indexed.
             uint256 tierId = i + 1;
@@ -618,16 +690,23 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
             {
                 // Use adjusted pending reserves that account for refund-phase burns.
                 uint256 pendingReserves = IDefifaHook(metadata.dataHook).adjustedPendingReservesFor(tierId);
+                // Only tiers with pending reserves need them added.
                 if (pendingReserves != 0) {
+                    // Read the tier for its voting units per token.
                     JB721Tier memory tier =
                         store.tierOf({hook: metadata.dataHook, id: tierId, includeResolvedUri: false});
+
+                    // Each pending reserve will carry the tier's voting units once minted.
                     tierTotalAttestationUnits += pendingReserves * tier.votingUnits;
                 }
             }
 
             // Scale the account's share of the tier to MAX_ATTESTATION_POWER_TIER.
             // e.g. holding 3 of 10 tokens -> 3/10 * MAX_ATTESTATION_POWER_TIER attestation power from this tier.
+            // Can't overflow: each tier adds at most MAX_ATTESTATION_POWER_TIER, over at most 128 tiers, and the index
+            // is bounded by the tier count.
             unchecked {
+                // Tiers the account holds no units in add nothing, so skip the division.
                 if (tierAttestationUnitsForAccount != 0) {
                     attestationPower += mulDiv({
                         x: MAX_ATTESTATION_POWER_TIER,
@@ -663,7 +742,7 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         override
         returns (uint256 bwaAttestationPower)
     {
-        // Get the game's current funding cycle along with its metadata.
+        // Get the game's current ruleset metadata, which names its hook.
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Get a reference to the hook.
@@ -678,6 +757,7 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         // Cache the total cash-out weight denominator from the hook.
         uint256 totalCashOutWeight = hook.TOTAL_CASHOUT_WEIGHT();
 
+        // Add up the account's discounted share of each tier.
         for (uint256 i; i < numberOfTiers;) {
             // Tiers are 1-indexed.
             uint256 tierId = i + 1;
@@ -686,6 +766,7 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
             uint256 tierAttestationUnitsForAccount =
                 hook.getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
 
+            // Only tiers the account holds units in add power.
             if (tierAttestationUnitsForAccount != 0) {
                 // The tier's attestation units frozen at the scorecard's submission.
                 uint256 tierTotalAttestationUnits =
@@ -700,10 +781,14 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
 
                 // BWA reduction: power * (1 - tierWeight / totalCashOutWeight).
                 uint256 tierWeight = _scorecardTierWeightsOf[gameId][scorecardId][i];
+                // The unpaid share of the total weight is the tier's remaining power.
                 uint256 bwaMultiplier = totalCashOutWeight - tierWeight;
 
+                // Add the tier's discounted power.
                 bwaAttestationPower += mulDiv({x: rawPower, y: bwaMultiplier, denominator: totalCashOutWeight});
             }
+
+            // Can't overflow: the index is bounded by the loop's length.
 
             unchecked {
                 ++i;
@@ -711,20 +796,28 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         }
     }
 
-    /// @notice Get the current governance state (pending, active, defeated, succeeded) of a scorecard proposal.
-    /// @param gameId The ID of the game to get a proposal state of.
-    /// @param scorecardId The ID of the proposal to get the state of.
-    /// @return The state.
+    /// @notice The voting state of a submitted scorecard.
     /// @dev Boundary semantics (inclusive):
     ///   - At exactly `attestationsBegin`, the state transitions from PENDING to ACTIVE (attestations are open).
     ///   - At exactly `gracePeriodEnds`, the grace period has elapsed and the state transitions from ACTIVE to
     ///     SUCCEEDED if quorum is met.
-    function stateOf(uint256 gameId, uint256 scorecardId) public view virtual override returns (DefifaScorecardState) {
+    /// @param gameId The ID of the game to get a proposal state of.
+    /// @param scorecardId The ID of the proposal to get the state of.
+    /// @return state PENDING, ACTIVE or SUCCEEDED, then RATIFIED or DEFEATED once the game's governor ratifies.
+    function stateOf(
+        uint256 gameId,
+        uint256 scorecardId
+    )
+        public
+        view
+        virtual
+        override
+        returns (DefifaScorecardState state)
+    {
         // Keep a reference to the scorecard the game's governor ratified.
         uint256 ratifiedScorecardId = _governorOf(gameId).ratifiedScorecardIdOf(gameId);
 
-        // If the game has already ratified a scorecard, return succeeded if the ratified proposal is being checked.
-        // Else return defeated.
+        // Once the governor ratifies a scorecard, that one is RATIFIED and every other is DEFEATED.
         if (ratifiedScorecardId != 0) {
             return ratifiedScorecardId == scorecardId ? DefifaScorecardState.RATIFIED : DefifaScorecardState.DEFEATED;
         }
@@ -732,7 +825,7 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         // Get a reference to the scorecard.
         DefifaScorecard memory scorecard = _scorecardOf[gameId][scorecardId];
 
-        // Make sure the proposal is known.
+        // An unknown ID gets no state, so it can't be mistaken for a scorecard being voted on.
         if (scorecard.attestationsBegin == 0) {
             revert DefifaVotingReferee_UnknownProposal({gameId: gameId, scorecardId: scorecardId});
         }
@@ -771,11 +864,11 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
 
     /// @notice Build the normalized calldata for ratification.
     /// @param tierWeights The weights of each tier in the scorecard data.
-    /// @return The calldata to send alongside the transactions.
+    /// @return calldataBytes The calldata ratification would send to the hook.
     function _buildScorecardCalldataFor(DefifaTierCashOutWeight[] calldata tierWeights)
         internal
         pure
-        returns (bytes memory)
+        returns (bytes memory calldataBytes)
     {
         // Build the calldata from the tier weights using the hook's selector.
         return abi.encodeWithSelector(DefifaHook.setTierCashOutWeightsTo.selector, (tierWeights));
@@ -784,8 +877,17 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     /// @notice A value representing the contents of a scorecard.
     /// @param gameHook The address where the game is played.
     /// @param calldataBytes The calldata that will be sent if the scorecard is ratified.
-    /// @return The scorecard's ID.
-    function _hashScorecardOf(address gameHook, bytes memory calldataBytes) internal pure virtual returns (uint256) {
+    /// @return scorecardId The scorecard's ID.
+    function _hashScorecardOf(
+        address gameHook,
+        bytes memory calldataBytes
+    )
+        internal
+        pure
+        virtual
+        returns (uint256 scorecardId)
+    {
+        // The hook and the calldata together identify the scorecard.
         return uint256(keccak256(abi.encode(gameHook, calldataBytes)));
     }
 
@@ -796,7 +898,10 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     /// @param bps The share, in basis points.
     /// @return quorumWeight The attestation needed.
     function _quorumOf(uint256 maxAttestationWeight, uint256 bps) internal pure returns (uint256 quorumWeight) {
+        // Take the share of the attestation possible, rounding down; the floor below covers the zero case.
         quorumWeight = mulDiv({x: maxAttestationWeight, y: bps, denominator: 10_000});
+
+        // Never below 1, so a scorecard with no possible attestation can't pass with zero attestations.
         if (quorumWeight == 0) quorumWeight = 1;
     }
 
@@ -806,8 +911,9 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
 
     /// @notice The governor of a game, read from the deployer that owns the game's project.
     /// @param gameId The ID of the game.
-    /// @return The game's governor.
-    function _governorOf(uint256 gameId) internal view returns (IDefifaGovernor) {
+    /// @return governor The game's governor.
+    function _governorOf(uint256 gameId) internal view returns (IDefifaGovernor governor) {
+        // The deployer that launched the game owns its project and knows its governor.
         return IDefifaDeployer(CONTROLLER.PROJECTS().ownerOf(gameId)).GOVERNOR();
     }
 
@@ -819,7 +925,7 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     /// @param gameId The ID of the game.
     /// @return maxAttestationWeight The most attestation possible.
     function _maxAttestationWeightOf(uint256 gameId) internal view returns (uint256 maxAttestationWeight) {
-        // Get the game's current funding cycle along with its metadata.
+        // Get the game's current ruleset metadata, which names its hook.
         (, JBRulesetMetadata memory metadata) = CONTROLLER.currentRulesetOf(gameId);
 
         // Get a reference to the hook.
@@ -830,13 +936,17 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
 
         // Count the quorum-eligible tiers.
         uint256 eligibleTiers;
+        // Check every tier.
         for (uint256 i; i < numberOfTiers;) {
+            // Tiers are 1-indexed.
             uint256 tierId = i + 1;
 
             // Use adjusted pending reserves that account for refund-phase burns.
             if (hook.currentSupplyOfTier(tierId) != 0 || hook.adjustedPendingReservesFor(tierId) != 0) {
                 ++eligibleTiers;
             }
+
+            // Can't overflow: the index is bounded by the loop's length.
 
             unchecked {
                 ++i;
@@ -873,8 +983,12 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
 
         // Add the pending reserves snapshotted at submission.
         uint256 pendingReserves = _pendingReservesSnapshotOf[gameId][scorecardId][tierId];
+        // Only tiers with pending reserves need them added.
         if (pendingReserves != 0) {
+            // Read the tier for its voting units per token.
             JB721Tier memory tier = hook.store().tierOf({hook: address(hook), id: tierId, includeResolvedUri: false});
+
+            // Each pending reserve will carry the tier's voting units once minted.
             units += pendingReserves * tier.votingUnits;
         }
     }
