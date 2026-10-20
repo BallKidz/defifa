@@ -47,8 +47,6 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 1 days,
             defaultAttestationDelegate: address(0),
             tierPrice: tierPrice,
             tiers: tp,
@@ -56,7 +54,9 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 1 days)
         });
     }
 
@@ -186,8 +186,6 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 1 days,
             defaultAttestationDelegate: address(0),
             tierPrice: 100e6,
             tiers: tp,
@@ -195,7 +193,9 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 1 days)
         });
 
         vm.expectPartialRevert(DefifaDeployer.DefifaDeployer_InvalidCurrency.selector);
@@ -225,8 +225,6 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 1 days,
             defaultAttestationDelegate: address(0),
             tierPrice: 1 ether,
             tiers: tp,
@@ -234,7 +232,9 @@ contract CurrencyMismatchFixTest is DefifaUSDCTest {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 1 days)
         });
 
         // Should succeed without revert.

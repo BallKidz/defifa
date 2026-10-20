@@ -4,6 +4,9 @@ pragma solidity 0.8.28;
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../src/referees/DefifaVotingReferee.sol";
+import {IDefifaGovernor} from "../src/interfaces/IDefifaGovernor.sol";
+import {Vm} from "forge-std/Vm.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
@@ -14,7 +17,6 @@ import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRule
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {DefifaDelegation} from "../src/structs/DefifaDelegation.sol";
@@ -22,6 +24,7 @@ import {DefifaLaunchProjectData} from "../src/structs/DefifaLaunchProjectData.so
 import {DefifaTierParams} from "../src/structs/DefifaTierParams.sol";
 import {DefifaTierCashOutWeight} from "../src/structs/DefifaTierCashOutWeight.sol";
 import {DefifaScorecardState} from "../src/enums/DefifaScorecardState.sol";
+import {DefifaGamePhase} from "../src/enums/DefifaGamePhase.sol";
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
 import {JBTerminalConfig} from "@bananapus/core-v6/src/structs/JBTerminalConfig.sol";
 import {JBRulesetConfig} from "@bananapus/core-v6/src/structs/JBRulesetConfig.sol";
@@ -62,6 +65,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
     uint256 _pid;
@@ -117,9 +121,9 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _defifaProjectTokenAccount =
             address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
 
-        hook =
-            new DefifaHook(jbDirectory(), IERC20(_defifaProjectTokenAccount), IERC20(_protocolFeeProjectTokenAccount));
+        hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -150,20 +154,22 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         sc[0].cashOutWeight = tw; // tier 1 = 100%
         // sc[1..3].cashOutWeight = 0 (default)
 
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
         // Wait for attestation to begin.
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // Get the scorecard's snapshot time (attestationsBegin).
         // User 0 holds tier 1 (100% beneficiary) -- should have 0 BWA power for this scorecard.
-        uint256 bwaPowerUser0 = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[0], uint48(_tsReader.ts()));
+        uint256 bwaPowerUser0 =
+            votingReferee.getBWAAttestationWeight(_gameId, scorecardId, _users[0], uint48(_tsReader.ts()));
         assertEq(bwaPowerUser0, 0, "tier 1 holder (100% beneficiary) should have 0 BWA power");
 
         // Users 1-3 hold tiers 2-4 (0% beneficiary) -- should have full MAX_ATTESTATION_POWER_TIER.
-        uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
+        uint256 maxPower = votingReferee.MAX_ATTESTATION_POWER_TIER();
         for (uint256 i = 1; i < 4; i++) {
-            uint256 bwaPower = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
+            uint256 bwaPower =
+                votingReferee.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
             assertEq(bwaPower, maxPower, "non-beneficiary tier holder should have full BWA power");
         }
     }
@@ -178,15 +184,15 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         DefifaTierCashOutWeight[] memory sc = _buildScorecard(4);
         sc[0].cashOutWeight = tw;
 
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         uint48 snapshotTime = uint48(_tsReader.ts());
 
         // For each non-beneficiary tier, BWA power should equal raw attestation power.
         for (uint256 i = 1; i < 4; i++) {
-            uint256 rawPower = _gov.getAttestationWeight(_gameId, _users[i], snapshotTime);
-            uint256 bwaPower = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], snapshotTime);
+            uint256 rawPower = votingReferee.getAttestationWeight(_gameId, _users[i], snapshotTime);
+            uint256 bwaPower = votingReferee.getBWAAttestationWeight(_gameId, scorecardId, _users[i], snapshotTime);
             assertEq(bwaPower, rawPower, "BWA power for 0%-weight tier should equal raw power");
         }
     }
@@ -202,19 +208,19 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         sc[0].cashOutWeight = (tw * 40) / 100; // tier 1 = 40% = 4e17
         sc[1].cashOutWeight = (tw * 60) / 100; // tier 2 = 60% = 6e17
 
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         uint48 snapshotTime = uint48(_tsReader.ts());
-        uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
+        uint256 maxPower = votingReferee.MAX_ATTESTATION_POWER_TIER();
 
         // Tier 1 holder: BWA multiplier = 1 - 0.4 = 0.6, so power = maxPower * 60%.
-        uint256 bwaPowerTier1 = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[0], snapshotTime);
+        uint256 bwaPowerTier1 = votingReferee.getBWAAttestationWeight(_gameId, scorecardId, _users[0], snapshotTime);
         uint256 expectedTier1 = mulDiv(maxPower, 6e17, 1e18); // 60% of max
         assertEq(bwaPowerTier1, expectedTier1, "tier 1 holder should have 60% of MAX power (1 - 0.4)");
 
         // Tier 2 holder: BWA multiplier = 1 - 0.6 = 0.4, so power = maxPower * 40%.
-        uint256 bwaPowerTier2 = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[1], snapshotTime);
+        uint256 bwaPowerTier2 = votingReferee.getBWAAttestationWeight(_gameId, scorecardId, _users[1], snapshotTime);
         uint256 expectedTier2 = mulDiv(maxPower, 4e17, 1e18); // 40% of max
         assertEq(bwaPowerTier2, expectedTier2, "tier 2 holder should have 40% of MAX power (1 - 0.6)");
     }
@@ -231,72 +237,42 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _setupGame(4, 1 ether);
         _toScoring();
 
-        uint256 baseQuorum = _gov.quorum(_gameId);
+        uint256 baseQuorum = votingReferee.quorum(_gameId);
 
         // Submit equal-weight scorecard.
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
-        // Compute expected HHI-adjusted quorum.
-        // HHI = 4 * mulDiv(25e16, 25e16, 1e18) = 4 * 62_500_000_000_000_000 = 250_000_000_000_000_000 = 25e16
-        uint256 hhi = 4 * mulDiv(25e16, 25e16, 1e18);
-        assertEq(hhi, 25e16, "HHI for equal 4-tier should be 0.25 * 1e18");
-
-        // adjustmentFactor = mulDiv(5e17, 25e16, 1e18) = 125e15
-        uint256 adjustmentFactor = mulDiv(5e17, hhi, 1e18);
-        assertEq(adjustmentFactor, 125e15, "adjustment factor should be 0.125 * 1e18");
-
-        // adjustedQuorum = baseQuorum + mulDiv(baseQuorum, 125e15, 1e18)
-        uint256 expectedAdjustedQuorum = baseQuorum + mulDiv(baseQuorum, adjustmentFactor, 1e18);
-
-        // Read the quorumSnapshot stored in the scorecard (via attestationCountOf side-effect or state check).
-        // We verify by checking that the right number of attestors is needed.
-        // With BWA for equal scorecard, each tier holder gets 75% of MAX_ATTESTATION_POWER_TIER.
-        // So 4 attestors provide: 4 * 0.75 * MAX = 3 * MAX = 3e9.
-        // Base quorum = 4 * MAX / 2 = 2e9.
-        // Expected adjusted quorum = 2e9 + 2e9 * 125e15 / 1e18 = 2e9 + 250_000_000 = 2_250_000_000.
-        uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
-        assertEq(expectedAdjustedQuorum, (4 * maxPower) / 2 + mulDiv((4 * maxPower) / 2, 125e15, 1e18));
-
-        // Verify quorum is 12.5% higher than base quorum.
-        // expectedAdjustedQuorum / baseQuorum = 1.125, which means 12.5% increase.
-        assertGt(expectedAdjustedQuorum, baseQuorum, "adjusted quorum must be greater than base quorum");
-        // Verify approximately 12.5% increase.
-        assertEq(
-            expectedAdjustedQuorum - baseQuorum,
-            mulDiv(baseQuorum, 125e15, 1e18),
-            "penalty should be exactly 12.5% of base quorum"
-        );
+        // An even split over 4 tiers has a largest share of 25%, so quorum is 50% + 25% * 0.25² of the attestation
+        // possible, (4 - 1) * MAX: 3e9 * 5156 / 10000 = 1_546_800_000.
+        uint256 expectedQuorum = _expectedQuorum(4, sc[0].cashOutWeight);
+        assertEq(_quorumSnapshotOf(scorecardId), expectedQuorum, "even split quorum");
+        assertEq(expectedQuorum, 1_546_800_000, "51.56% of 3 * MAX");
+        assertGt(expectedQuorum, baseQuorum, "any concentration raises quorum above the even-split floor");
 
         // With 2 out of 4 users attesting (each contributing 75% of MAX via BWA):
-        // totalWeight = 2 * 0.75 * MAX = 1.5 * MAX = 1_500_000_000
-        // Since expectedAdjustedQuorum = 2_250_000_000, 2 attestors should NOT be enough.
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        // totalWeight = 2 * 0.75 * MAX = 1_500_000_000, below the 1_546_800_000 quorum.
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         vm.prank(_users[0]);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         vm.prank(_users[1]);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
 
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
-        DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
+        DefifaScorecardState state = votingReferee.stateOf(_gameId, scorecardId);
         assertEq(
-            uint256(state),
-            uint256(DefifaScorecardState.ACTIVE),
-            "2 attestors should NOT meet HHI-adjusted quorum for equal scorecard"
+            uint256(state), uint256(DefifaScorecardState.ACTIVE), "2 attestors should NOT meet the even-split quorum"
         );
 
-        // With 3 out of 4 users attesting: totalWeight = 3 * 0.75 * MAX = 2.25 * MAX = 2_250_000_000.
-        // This exactly meets the adjusted quorum.
+        // With 3 out of 4 users attesting: totalWeight = 3 * 0.75 * MAX = 2_250_000_000, above the quorum.
         vm.prank(_users[2]);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
 
-        state = _gov.stateOf(_gameId, scorecardId);
+        state = votingReferee.stateOf(_gameId, scorecardId);
         assertEq(
-            uint256(state),
-            uint256(DefifaScorecardState.SUCCEEDED),
-            "3 attestors should meet HHI-adjusted quorum for equal scorecard"
+            uint256(state), uint256(DefifaScorecardState.SUCCEEDED), "3 attestors should meet the even-split quorum"
         );
     }
 
@@ -308,38 +284,38 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _setupGame(4, 1 ether);
         _toScoring();
 
-        _gov.quorum(_gameId);
-        _gov.MAX_ATTESTATION_POWER_TIER();
+        votingReferee.quorum(_gameId);
+        votingReferee.MAX_ATTESTATION_POWER_TIER();
 
         // Submit winner-take-all scorecard: tier 1 gets 100%.
         uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
         DefifaTierCashOutWeight[] memory sc = _buildScorecard(4);
         sc[0].cashOutWeight = tw; // tier 1 = 100%
 
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
-        // headroom = baseQuorum - MAX = 2e9 - 1e9 = 1e9 (minus rounding buffer 4 = 999999996).
+        // headroom = baseQuorum - MAX = 2e9 - 1e9 = 1e9.
         // maxShare² = mulDiv(tw, tw, tw) = tw. penalty = mulDiv(headroom, tw, tw) = headroom.
-        // adjustedQuorum = baseQuorum + headroom ≈ 2e9 + 1e9 = ~3e9.
+        // adjustedQuorum = baseQuorum + headroom - baseQuorum / 5000 (rounding margin) = 3e9 - 4e5.
         // Max BWA = 3 * MAX (users 1-3, each with ~MAX power) ≈ 3e9.
         // Quorum should be reachable but tight.
 
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // User 0 (100% beneficiary) cannot attest (BWA power = 0, reverts).
         vm.prank(_users[0]);
-        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
 
         // Users 1 and 2 attest (2 * MAX < adjusted quorum).
         vm.prank(_users[1]);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         vm.prank(_users[2]);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
 
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
-        DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
+        DefifaScorecardState state = votingReferee.stateOf(_gameId, scorecardId);
         assertEq(
             uint256(state),
             uint256(DefifaScorecardState.ACTIVE),
@@ -348,9 +324,9 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         // User 3 attests (3 * MAX ≈ adjusted quorum).
         vm.prank(_users[3]);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
 
-        state = _gov.stateOf(_gameId, scorecardId);
+        state = votingReferee.stateOf(_gameId, scorecardId);
         assertEq(
             uint256(state),
             uint256(DefifaScorecardState.SUCCEEDED),
@@ -362,7 +338,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
     // TIMELOCK TESTS
     // =========================================================================
 
-    /// @notice Test 6: After quorum + grace period with timelock, state should be QUEUED.
+    /// @notice Test 6: A forwarded scorecard waits out the governor's timelock in QUEUED.
     function test_timelock_queuedState() external {
         uint256 timelockDuration = 1 days;
         _setupGameWithTimelock(4, 1 ether, timelockDuration);
@@ -370,38 +346,41 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
 
         // Submit even scorecard.
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
         // All 4 users attest.
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < 4; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, scorecardId);
+            votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         }
 
-        // After grace period ends, state should be QUEUED (not SUCCEEDED) due to timelock.
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        // After the grace period the referee approves it; forwarding starts the governor's timelock.
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+        assertEq(uint256(votingReferee.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.SUCCEEDED));
+        votingReferee.forwardScorecardFor(_gameId, sc);
 
         DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
         assertEq(uint256(state), uint256(DefifaScorecardState.QUEUED), "should be QUEUED when timelock is active");
     }
 
-    /// @notice Test 7: Cannot ratify while in QUEUED state.
+    /// @notice Test 7: Cannot ratify while the governor's timelock runs.
     function test_timelock_cannotRatifyDuringQueue() external {
         uint256 timelockDuration = 1 days;
         _setupGameWithTimelock(4, 1 ether, timelockDuration);
         _toScoring();
 
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < 4; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, scorecardId);
+            votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         }
 
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+        votingReferee.forwardScorecardFor(_gameId, sc);
 
         // Verify we are in QUEUED state.
         assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.QUEUED));
@@ -411,23 +390,24 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _gov.ratifyScorecardFrom(_gameId, sc);
     }
 
-    /// @notice Test 8: After timelock expires, state transitions to SUCCEEDED and ratification works.
+    /// @notice Test 8: After the timelock expires, the governor's state is SUCCEEDED and ratification works.
     function test_timelock_succeededAfterExpiry() external {
         uint256 timelockDuration = 1 days;
         _setupGameWithTimelock(4, 1 ether, timelockDuration);
         _toScoring();
 
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < 4; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, scorecardId);
+            votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         }
 
-        // Warp past grace period.
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        // Warp past grace period and forward.
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+        votingReferee.forwardScorecardFor(_gameId, sc);
         assertEq(
             uint256(_gov.stateOf(_gameId, scorecardId)),
             uint256(DefifaScorecardState.QUEUED),
@@ -451,29 +431,30 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _toScoring();
 
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
         // All 4 users attest.
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < 4; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, scorecardId);
+            votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         }
 
         // After grace period, state should be SUCCEEDED (not QUEUED).
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
-        DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
+        DefifaScorecardState state = votingReferee.stateOf(_gameId, scorecardId);
         assertEq(
             uint256(state), uint256(DefifaScorecardState.SUCCEEDED), "should go directly to SUCCEEDED with 0 timelock"
         );
 
         // Ratification should work immediately.
+        votingReferee.forwardScorecardFor(_gameId, sc);
         _gov.ratifyScorecardFrom(_gameId, sc);
         assertTrue(_nft.cashOutWeightIsSet(), "weights should be set after ratification");
     }
 
-    /// @notice Test 10: Two scorecards both reach SUCCEEDED after timelock. First ratified wins.
+    /// @notice Test 10: Two scorecards both pass the vote. The first forwarded wins; the second can't replace it.
     function test_timelock_competingScorecards_firstRatifiedWins() external {
         uint256 timelockDuration = 1 days;
         _setupGameWithTimelock(4, 1 ether, timelockDuration);
@@ -489,41 +470,54 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         // Scorecard B: equal distribution (25% each).
         DefifaTierCashOutWeight[] memory scB = _evenScorecard(4);
 
-        uint256 proposalA = _gov.submitScorecardFor(_gameId, scA);
-        uint256 proposalB = _gov.submitScorecardFor(_gameId, scB);
+        uint256 proposalA = votingReferee.submitScorecardFor(_gameId, scA);
+        uint256 proposalB = votingReferee.submitScorecardFor(_gameId, scB);
 
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // All 4 users attest to both scorecards.
         for (uint256 i; i < 4; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, proposalA);
+            votingReferee.attestToScorecardFrom(_gameId, proposalA);
         }
         for (uint256 i; i < 4; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, proposalB);
+            votingReferee.attestToScorecardFrom(_gameId, proposalB);
         }
 
-        // Warp past grace period + timelock.
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + timelockDuration + 2);
+        // Warp past grace period.
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
         // Both should be SUCCEEDED.
         assertEq(
-            uint256(_gov.stateOf(_gameId, proposalA)), uint256(DefifaScorecardState.SUCCEEDED), "A should be SUCCEEDED"
+            uint256(votingReferee.stateOf(_gameId, proposalA)),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "A should be SUCCEEDED"
         );
         assertEq(
-            uint256(_gov.stateOf(_gameId, proposalB)), uint256(DefifaScorecardState.SUCCEEDED), "B should be SUCCEEDED"
+            uint256(votingReferee.stateOf(_gameId, proposalB)),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "B should be SUCCEEDED"
         );
 
-        // Ratify scorecard A first.
+        // Forward A first; B can no longer replace it.
+        votingReferee.forwardScorecardFor(_gameId, scA);
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_AlreadyForwarded.selector);
+        votingReferee.forwardScorecardFor(_gameId, scB);
+
+        vm.warp(_tsReader.ts() + timelockDuration + 1);
         _gov.ratifyScorecardFrom(_gameId, scA);
 
         // After ratification, A is RATIFIED, B is DEFEATED.
         assertEq(
-            uint256(_gov.stateOf(_gameId, proposalA)), uint256(DefifaScorecardState.RATIFIED), "A should be RATIFIED"
+            uint256(votingReferee.stateOf(_gameId, proposalA)),
+            uint256(DefifaScorecardState.RATIFIED),
+            "A should be RATIFIED"
         );
         assertEq(
-            uint256(_gov.stateOf(_gameId, proposalB)), uint256(DefifaScorecardState.DEFEATED), "B should be DEFEATED"
+            uint256(votingReferee.stateOf(_gameId, proposalB)),
+            uint256(DefifaScorecardState.DEFEATED),
+            "B should be DEFEATED"
         );
     }
 
@@ -537,48 +531,53 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _toScoring();
 
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // User 0 attests.
         vm.prank(_users[0]);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
-        assertTrue(_gov.hasAttestedTo(_gameId, scorecardId, _users[0]), "should be attested after attestation");
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
+        assertTrue(votingReferee.hasAttestedTo(_gameId, scorecardId, _users[0]), "should be attested after attestation");
 
         // User 0 revokes during ACTIVE phase.
         vm.prank(_users[0]);
-        _gov.revokeAttestationFrom(_gameId, scorecardId);
+        votingReferee.revokeAttestationFrom(_gameId, scorecardId);
 
         // hasAttestedTo should return false after revocation.
-        assertFalse(_gov.hasAttestedTo(_gameId, scorecardId, _users[0]), "should not be attested after revocation");
+        assertFalse(
+            votingReferee.hasAttestedTo(_gameId, scorecardId, _users[0]), "should not be attested after revocation"
+        );
     }
 
-    /// @notice Test 12: Revoke during QUEUED state reverts.
+    /// @notice Test 12: Revoking once the scorecard has passed the vote reverts.
     function test_revoke_duringQueued_reverts() external {
         uint256 timelockDuration = 1 days;
         _setupGameWithTimelock(4, 1 ether, timelockDuration);
         _toScoring();
 
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // All 4 users attest to reach quorum.
         for (uint256 i; i < 4; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, scorecardId);
+            votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         }
 
-        // Warp past grace period to enter QUEUED state.
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        // Warp past grace period and forward: the governor's timelock is running.
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+        votingReferee.forwardScorecardFor(_gameId, sc);
         assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.QUEUED), "should be QUEUED");
+        uint256 countBefore = votingReferee.attestationCountOf(_gameId, scorecardId);
 
         // Try to revoke -- should revert because not in ACTIVE state.
         vm.prank(_users[0]);
-        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
-        _gov.revokeAttestationFrom(_gameId, scorecardId);
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector);
+        votingReferee.revokeAttestationFrom(_gameId, scorecardId);
+        assertEq(votingReferee.attestationCountOf(_gameId, scorecardId), countBefore, "count unchanged");
     }
 
     /// @notice Test 13: Revoke without having attested reverts.
@@ -587,14 +586,14 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _toScoring();
 
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // User 0 has NOT attested. Try to revoke.
         vm.prank(_users[0]);
-        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAttested.selector);
-        _gov.revokeAttestationFrom(_gameId, scorecardId);
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAttested.selector);
+        votingReferee.revokeAttestationFrom(_gameId, scorecardId);
     }
 
     /// @notice Test 14: Revoke subtracts the correct BWA-adjusted weight.
@@ -603,28 +602,28 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _toScoring();
 
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // Record count before attestation.
-        uint256 countBefore = _gov.attestationCountOf(_gameId, scorecardId);
+        uint256 countBefore = votingReferee.attestationCountOf(_gameId, scorecardId);
 
         // User 0 attests.
         vm.prank(_users[0]);
-        uint256 weight = _gov.attestToScorecardFrom(_gameId, scorecardId);
+        uint256 weight = votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         assertGt(weight, 0, "attestation weight should be positive");
 
         // Verify count increased by weight.
-        uint256 countAfter = _gov.attestationCountOf(_gameId, scorecardId);
+        uint256 countAfter = votingReferee.attestationCountOf(_gameId, scorecardId);
         assertEq(countAfter, countBefore + weight, "count should increase by weight after attestation");
 
         // User 0 revokes.
         vm.prank(_users[0]);
-        _gov.revokeAttestationFrom(_gameId, scorecardId);
+        votingReferee.revokeAttestationFrom(_gameId, scorecardId);
 
         // Verify count decreased back to original.
-        uint256 countAfterRevoke = _gov.attestationCountOf(_gameId, scorecardId);
+        uint256 countAfterRevoke = votingReferee.attestationCountOf(_gameId, scorecardId);
         assertEq(countAfterRevoke, countBefore, "count should return to original after revocation");
     }
 
@@ -634,35 +633,35 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _toScoring();
 
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // All 4 users attest (this reaches quorum).
         for (uint256 i; i < 4; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, scorecardId);
+            votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         }
 
         // Before grace period ends, user 3 revokes.
         // The scorecard is still in ACTIVE state (grace period not done yet).
         assertEq(
-            uint256(_gov.stateOf(_gameId, scorecardId)),
+            uint256(votingReferee.stateOf(_gameId, scorecardId)),
             uint256(DefifaScorecardState.ACTIVE),
             "should be ACTIVE during grace period"
         );
 
         vm.prank(_users[3]);
-        _gov.revokeAttestationFrom(_gameId, scorecardId);
+        votingReferee.revokeAttestationFrom(_gameId, scorecardId);
 
         // Also revoke user 2 so we drop well below quorum.
         vm.prank(_users[2]);
-        _gov.revokeAttestationFrom(_gameId, scorecardId);
+        votingReferee.revokeAttestationFrom(_gameId, scorecardId);
 
         // After grace period, quorum should NOT be met because 2 users revoked.
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
-        DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
+        DefifaScorecardState state = votingReferee.stateOf(_gameId, scorecardId);
         assertEq(
             uint256(state),
             uint256(DefifaScorecardState.ACTIVE),
@@ -682,7 +681,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _toScoring();
 
         uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
-        uint256 baseQuorum = _gov.quorum(_gameId);
+        uint256 baseQuorum = votingReferee.quorum(_gameId);
 
         // --- Submit a somewhat concentrated scorecard ---
         // tier 1: 50%, tier 2: 30%, tier 3: 15%, tier 4: 5%.
@@ -692,23 +691,23 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         sc[2].cashOutWeight = (tw * 15) / 100;
         sc[3].cashOutWeight = (tw * 5) / 100;
 
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
         // --- Verify concentration-adjusted quorum is higher than base ---
         // maxShare = 50%, headroom = baseQuorum - MAX, penalty = headroom * maxShare².
-        uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
-        uint256 headroom = baseQuorum > maxPower + 4 ? baseQuorum - maxPower - 4 : 0;
+        uint256 maxPower = votingReferee.MAX_ATTESTATION_POWER_TIER();
+        uint256 headroom = baseQuorum > maxPower ? baseQuorum - maxPower : 0;
         uint256 maxShareSquared = mulDiv(sc[0].cashOutWeight, sc[0].cashOutWeight, tw);
         uint256 expectedPenalty = mulDiv(headroom, maxShareSquared, tw);
         assertGt(expectedPenalty, 0, "concentration penalty should be positive");
 
         // --- Verify BWA reduces beneficiary power ---
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
         uint48 snapshotTime = uint48(_tsReader.ts());
 
         // User 0 (tier 1, 50% weight) should have reduced BWA power.
-        uint256 rawPowerUser0 = _gov.getAttestationWeight(_gameId, _users[0], snapshotTime);
-        uint256 bwaPowerUser0 = _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[0], snapshotTime);
+        uint256 rawPowerUser0 = votingReferee.getAttestationWeight(_gameId, _users[0], snapshotTime);
+        uint256 bwaPowerUser0 = votingReferee.getBWAAttestationWeight(_gameId, scorecardId, _users[0], snapshotTime);
         assertLt(bwaPowerUser0, rawPowerUser0, "BWA should reduce beneficiary's attestation power");
 
         // User 0's expected BWA: rawPower * (1 - 0.5) = rawPower * 0.5.
@@ -718,22 +717,27 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         // --- Attest: all 4 users ---
         for (uint256 i; i < 4; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, scorecardId);
+            votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         }
 
         // --- Verify attestation withdrawal ---
         // User 3 revokes during ACTIVE, then re-attests.
         vm.prank(_users[3]);
-        _gov.revokeAttestationFrom(_gameId, scorecardId);
-        assertFalse(_gov.hasAttestedTo(_gameId, scorecardId, _users[3]), "user 3 should be un-attested after revoke");
+        votingReferee.revokeAttestationFrom(_gameId, scorecardId);
+        assertFalse(
+            votingReferee.hasAttestedTo(_gameId, scorecardId, _users[3]), "user 3 should be un-attested after revoke"
+        );
 
         // Re-attest.
         vm.prank(_users[3]);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
-        assertTrue(_gov.hasAttestedTo(_gameId, scorecardId, _users[3]), "user 3 should be attested after re-attest");
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
+        assertTrue(
+            votingReferee.hasAttestedTo(_gameId, scorecardId, _users[3]), "user 3 should be attested after re-attest"
+        );
 
-        // --- After grace period: QUEUED (timelock active) ---
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        // --- After grace period: forwarded, QUEUED in the governor (timelock active) ---
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+        votingReferee.forwardScorecardFor(_gameId, sc);
 
         DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
         assertEq(
@@ -754,7 +758,9 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _gov.ratifyScorecardFrom(_gameId, sc);
         assertTrue(_nft.cashOutWeightIsSet(), "weights should be set after ratification");
         assertEq(
-            uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.RATIFIED), "should be RATIFIED"
+            uint256(votingReferee.stateOf(_gameId, scorecardId)),
+            uint256(DefifaScorecardState.RATIFIED),
+            "should be RATIFIED"
         );
     }
 
@@ -772,19 +778,19 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         DefifaTierCashOutWeight[] memory sc = _buildScorecard(4);
         sc[0].cashOutWeight = tw;
 
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // User 0 (tier 1, 100% beneficiary) has BWA power = 0. Should revert.
         vm.prank(_users[0]);
-        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
 
         // Non-holder (no tokens at all) also has BWA power = 0. Should revert.
         address stranger = _addr(999);
         vm.prank(stranger);
-        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
     }
 
     // =========================================================================
@@ -798,7 +804,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _toScoring();
 
         uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
-        uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
+        uint256 maxPower = votingReferee.MAX_ATTESTATION_POWER_TIER();
 
         // Test with multiple scorecard distributions.
         uint256[4][3] memory distributions = [
@@ -813,14 +819,16 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
                 sc[i].cashOutWeight = distributions[d][i];
             }
 
-            uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
-            vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+            uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
+            vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
             // Sum BWA power across all 4 users (each sole holder of their tier).
             // forge-lint: disable-next-line(mixed-case-variable)
             uint256 totalBWA;
             for (uint256 i; i < 4; i++) {
-                totalBWA += _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
+                totalBWA += votingReferee.getBWAAttestationWeight(
+                    _gameId, scorecardId, _users[i], uint48(_tsReader.ts())
+                );
             }
 
             // Theoretical max: (N-1) * V_MAX = 3 * 1e9.
@@ -838,7 +846,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _toScoring();
 
         uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
-        uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
+        uint256 maxPower = votingReferee.MAX_ATTESTATION_POWER_TIER();
 
         // Bound weights to valid range and ensure they sum to <= tw.
         w1 = bound(w1, 0, tw);
@@ -852,13 +860,13 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         sc[2].cashOutWeight = w3;
         sc[3].cashOutWeight = w4;
 
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // forge-lint: disable-next-line(mixed-case-variable)
         uint256 totalBWA;
         for (uint256 i; i < 4; i++) {
-            totalBWA += _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
+            totalBWA += votingReferee.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
         }
 
         uint256 theoretical = 3 * maxPower;
@@ -892,14 +900,16 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
                 sc[i].cashOutWeight = distributions[d][i];
             }
 
-            uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
-            vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+            uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
+            vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
             // Compute total achievable BWA.
             // forge-lint: disable-next-line(mixed-case-variable)
             uint256 totalBWA;
             for (uint256 i; i < 5; i++) {
-                totalBWA += _gov.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
+                totalBWA += votingReferee.getBWAAttestationWeight(
+                    _gameId, scorecardId, _users[i], uint48(_tsReader.ts())
+                );
             }
 
             // Get the snapshotted quorum.
@@ -908,12 +918,20 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             // Attest all users and verify the scorecard can reach SUCCEEDED.
             for (uint256 i; i < 5; i++) {
                 vm.prank(_users[i]);
-                try _gov.attestToScorecardFrom(_gameId, scorecardId) {} catch {}
+                try votingReferee.attestToScorecardFrom(_gameId, scorecardId) {}
+                catch (bytes memory reason) {
+                    // Only a holder without attestation weight may fail to attest.
+                    assertEq(
+                        bytes4(reason),
+                        DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector,
+                        "unexpected attestation failure"
+                    );
+                }
             }
 
-            vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+            vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
-            DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
+            DefifaScorecardState state = votingReferee.stateOf(_gameId, scorecardId);
             assertTrue(
                 state == DefifaScorecardState.SUCCEEDED || state == DefifaScorecardState.QUEUED,
                 "quorum must be reachable for any valid scorecard"
@@ -941,21 +959,106 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         sc[3].cashOutWeight = w4;
         sc[4].cashOutWeight = w5;
 
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         for (uint256 i; i < 5; i++) {
             vm.prank(_users[i]);
-            try _gov.attestToScorecardFrom(_gameId, scorecardId) {} catch {}
+            try votingReferee.attestToScorecardFrom(_gameId, scorecardId) {}
+            catch (bytes memory reason) {
+                // Only a holder without attestation weight may fail to attest.
+                assertEq(
+                    bytes4(reason),
+                    DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector,
+                    "unexpected attestation failure"
+                );
+            }
         }
 
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
-        DefifaScorecardState state = _gov.stateOf(_gameId, scorecardId);
+        DefifaScorecardState state = votingReferee.stateOf(_gameId, scorecardId);
         assertTrue(
             state == DefifaScorecardState.SUCCEEDED || state == DefifaScorecardState.QUEUED,
             "fuzz: quorum must be reachable"
         );
+    }
+
+    /// @notice FV-5b: A winner-take-all scorecard submitted as one entry stays reachable when every tier has several
+    /// holders with uneven counts, so BWA floors once or twice per (delegate, tier) pair.
+    /// @dev Mirrors Base game 28: 21 tiers, quorumSnapshot 19,999,999,999 against 19,999,999,987 total BWA.
+    function test_fv_quorum_reachable_crowdedTiersSparseScorecard() external {
+        _setupCrowdedGame(21, 0);
+        _toScoring();
+
+        DefifaTierCashOutWeight[] memory sc = new DefifaTierCashOutWeight[](1);
+        sc[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT()});
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
+
+        assertLe(_quorumSnapshotOf(scorecardId), _totalBWA(scorecardId), "quorum must not exceed unanimous BWA");
+
+        for (uint256 i; i < _users.length; i++) {
+            vm.prank(_users[i]);
+            try votingReferee.attestToScorecardFrom(_gameId, scorecardId) {}
+            catch (bytes memory reason) {
+                // Only a holder without attestation weight may fail to attest.
+                assertEq(
+                    bytes4(reason),
+                    DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector,
+                    "unexpected attestation failure"
+                );
+            }
+        }
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+
+        DefifaScorecardState state = votingReferee.stateOf(_gameId, scorecardId);
+        assertTrue(
+            state == DefifaScorecardState.SUCCEEDED || state == DefifaScorecardState.QUEUED,
+            "unanimous attestation must reach quorum"
+        );
+    }
+
+    /// @notice FV-5c: Fuzz reachability over tier count, holders per tier, uneven counts, weight split and sparse or
+    /// full scorecard arrays.
+    /// forge-config: default.fuzz.runs = 256
+    function test_fv_fuzz_quorum_reachable_crowdedTiers(
+        uint8 nTiers,
+        uint256 seed,
+        uint256 winnerSeed,
+        bool sparse
+    )
+        external
+    {
+        // forge-lint: disable-next-line(unsafe-typecast)
+        nTiers = uint8(bound(nTiers, 3, 21));
+        _setupCrowdedGame(nTiers, seed);
+        _toScoring();
+
+        // Quorum is tightest near winner-take-all; lower concentration leaves headroom * (1 - maxShare²) of slack.
+        // The next tier takes a share of at most 1e-8, often zero.
+        uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
+        uint256[] memory weights = new uint256[](nTiers);
+        uint256 winner = winnerSeed % nTiers;
+        weights[(winner + 1) % nTiers] = bound(winnerSeed >> 8, 0, tw / 1e8);
+        weights[winner] = tw - weights[(winner + 1) % nTiers];
+
+        uint256 entries;
+        for (uint256 i; i < nTiers; i++) {
+            if (!sparse || weights[i] != 0) entries++;
+        }
+        DefifaTierCashOutWeight[] memory sc = new DefifaTierCashOutWeight[](entries);
+        entries = 0;
+        for (uint256 i; i < nTiers; i++) {
+            if (!sparse || weights[i] != 0) {
+                sc[entries++] = DefifaTierCashOutWeight({id: i + 1, cashOutWeight: weights[i]});
+            }
+        }
+
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
+
+        assertLe(_quorumSnapshotOf(scorecardId), _totalBWA(scorecardId), "fuzz: quorum must not exceed unanimous BWA");
     }
 
     // =========================================================================
@@ -974,7 +1077,7 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         for (uint256 i; i < 5; i++) {
             scEven[i].cashOutWeight = tw / 5;
         }
-        _gov.submitScorecardFor(_gameId, scEven);
+        uint256 scEvenId = votingReferee.submitScorecardFor(_gameId, scEven);
 
         // Concentrated scorecard (80/5/5/5/5).
         DefifaTierCashOutWeight[] memory scConc = _buildScorecard(5);
@@ -983,28 +1086,22 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         scConc[2].cashOutWeight = (tw * 5) / 100;
         scConc[3].cashOutWeight = (tw * 5) / 100;
         scConc[4].cashOutWeight = (tw * 5) / 100;
-        _gov.submitScorecardFor(_gameId, scConc);
+        uint256 scConcId = votingReferee.submitScorecardFor(_gameId, scConc);
 
         // Winner-take-all scorecard.
         // forge-lint: disable-next-line(mixed-case-variable)
         DefifaTierCashOutWeight[] memory scWTA = _buildScorecard(5);
         scWTA[0].cashOutWeight = tw;
-        _gov.submitScorecardFor(_gameId, scWTA);
+        // forge-lint: disable-next-line(mixed-case-variable)
+        uint256 scWTAId = votingReferee.submitScorecardFor(_gameId, scWTA);
 
-        // Attest all users to each scorecard and compare attestation counts needed.
-        // The even scorecard should need the least total attestation (lowest quorum).
-        // Winner-take-all should need the most (highest quorum).
-        // We verify this by checking that even scorecard reaches SUCCEEDED with fewer attestors.
-        // Since all users attest equally, the quorum snapshot determines pass/fail.
-
-        // All three should pass when all users attest (quorum reachability guarantee).
-        // The key metric: adjustedQuorum is monotonically increasing with concentration.
-        // We can verify this indirectly by checking that the even scorecard's state after 3/5 attestors
-        // may differ from the concentrated one's state after 3/5 attestors.
-
-        // For now, just verify the ordering holds: even passes, WTA is hardest.
-        // This is covered by FV-4 (reachability) — here we just verify relative ordering holds.
-        assertTrue(true, "concentration penalty monotonicity verified by FV-4 + FV-6 together");
+        // The quorum each scorecard snapshots grows with concentration.
+        uint256 evenQuorum = _quorumSnapshotOf(scEvenId);
+        uint256 concQuorum = _quorumSnapshotOf(scConcId);
+        uint256 wtaQuorum = _quorumSnapshotOf(scWTAId);
+        assertGt(evenQuorum, votingReferee.quorum(_gameId), "even scorecard pays a small penalty");
+        assertGt(concQuorum, evenQuorum, "concentrated needs more than even");
+        assertGt(wtaQuorum, concQuorum, "winner-take-all needs the most");
     }
 
     /// @notice FV-7: Penalty is exactly zero for a perfectly equal distribution (maxShare = 1/N).
@@ -1013,8 +1110,8 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _toScoring();
 
         uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
-        uint256 maxPower = _gov.MAX_ATTESTATION_POWER_TIER();
-        uint256 baseQuorum = _gov.quorum(_gameId);
+        uint256 maxPower = votingReferee.MAX_ATTESTATION_POWER_TIER();
+        uint256 baseQuorum = votingReferee.quorum(_gameId);
 
         // Even scorecard: each tier gets tw/8.
         DefifaTierCashOutWeight[] memory sc = _buildScorecard(8);
@@ -1022,11 +1119,10 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             sc[i].cashOutWeight = tw / 8;
         }
 
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
         // Compute expected penalty.
         uint256 headroom = baseQuorum - maxPower;
-        if (headroom > 8) headroom -= 8;
         uint256 maxWeight = tw / 8;
         uint256 maxShareSquared = mulDiv(maxWeight, maxWeight, tw);
         uint256 expectedPenalty = mulDiv(headroom, maxShareSquared, tw);
@@ -1036,14 +1132,14 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         assertLt(expectedPenalty, headroom / 10, "even distribution penalty should be <10% of headroom");
 
         // All users attest — should easily reach quorum.
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < 8; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, scorecardId);
+            votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         }
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
         assertEq(
-            uint256(_gov.stateOf(_gameId, scorecardId)),
+            uint256(votingReferee.stateOf(_gameId, scorecardId)),
             uint256(DefifaScorecardState.SUCCEEDED),
             "even scorecard should reach SUCCEEDED"
         );
@@ -1059,21 +1155,21 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _toScoring();
 
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // Record baseline.
-        uint256 countBaseline = _gov.attestationCountOf(_gameId, scorecardId);
+        uint256 countBaseline = votingReferee.attestationCountOf(_gameId, scorecardId);
 
         // All 4 users attest.
         uint256[] memory weights = new uint256[](4);
         for (uint256 i; i < 4; i++) {
             vm.prank(_users[i]);
-            weights[i] = _gov.attestToScorecardFrom(_gameId, scorecardId);
+            weights[i] = votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         }
 
-        uint256 countAfterAll = _gov.attestationCountOf(_gameId, scorecardId);
+        uint256 countAfterAll = votingReferee.attestationCountOf(_gameId, scorecardId);
         uint256 expectedSum = countBaseline;
         for (uint256 i; i < 4; i++) {
             expectedSum += weights[i];
@@ -1083,10 +1179,10 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         // All 4 users revoke.
         for (uint256 i; i < 4; i++) {
             vm.prank(_users[i]);
-            _gov.revokeAttestationFrom(_gameId, scorecardId);
+            votingReferee.revokeAttestationFrom(_gameId, scorecardId);
         }
 
-        uint256 countAfterRevoke = _gov.attestationCountOf(_gameId, scorecardId);
+        uint256 countAfterRevoke = votingReferee.attestationCountOf(_gameId, scorecardId);
         assertEq(countAfterRevoke, countBaseline, "count should return to baseline after all revocations");
     }
 
@@ -1102,44 +1198,60 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         _toScoring();
 
         DefifaTierCashOutWeight[] memory sc = _evenScorecard(4);
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
 
         assertEq(
-            uint256(_gov.stateOf(_gameId, scorecardId)),
+            uint256(votingReferee.stateOf(_gameId, scorecardId)),
             uint256(DefifaScorecardState.PENDING),
             "should be PENDING before next timestamp"
         );
 
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
-        assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.ACTIVE), "should be ACTIVE");
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
+        assertEq(
+            uint256(votingReferee.stateOf(_gameId, scorecardId)),
+            uint256(DefifaScorecardState.ACTIVE),
+            "should be ACTIVE"
+        );
 
         // Attest all users.
         for (uint256 i; i < 4; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, scorecardId);
+            votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         }
 
         // Still ACTIVE during grace period even with quorum met.
         assertEq(
-            uint256(_gov.stateOf(_gameId, scorecardId)),
+            uint256(votingReferee.stateOf(_gameId, scorecardId)),
             uint256(DefifaScorecardState.ACTIVE),
             "should be ACTIVE during grace period"
         );
 
-        // QUEUED: after grace period, during timelock.
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        // SUCCEEDED in the referee after the grace period.
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+        assertEq(
+            uint256(votingReferee.stateOf(_gameId, scorecardId)),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "should be SUCCEEDED"
+        );
+
+        // QUEUED in the governor once forwarded, during the timelock.
+        votingReferee.forwardScorecardFor(_gameId, sc);
         assertEq(uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.QUEUED), "should be QUEUED");
 
-        // SUCCEEDED: after timelock expires.
+        // SUCCEEDED in the governor after the timelock expires.
         vm.warp(_tsReader.ts() + timelockDuration + 1);
         assertEq(
-            uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.SUCCEEDED), "should be SUCCEEDED"
+            uint256(_gov.stateOf(_gameId, scorecardId)),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "ratifiable after timelock"
         );
 
         // RATIFIED: after ratifyScorecardFrom.
         _gov.ratifyScorecardFrom(_gameId, sc);
         assertEq(
-            uint256(_gov.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.RATIFIED), "should be RATIFIED"
+            uint256(votingReferee.stateOf(_gameId, scorecardId)),
+            uint256(DefifaScorecardState.RATIFIED),
+            "should be RATIFIED"
         );
     }
 
@@ -1158,40 +1270,212 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         scB[2].cashOutWeight = (tw * 20) / 100;
         scB[3].cashOutWeight = (tw * 10) / 100;
 
-        uint256 idA = _gov.submitScorecardFor(_gameId, scA);
-        uint256 idB = _gov.submitScorecardFor(_gameId, scB);
+        uint256 idA = votingReferee.submitScorecardFor(_gameId, scA);
+        uint256 idB = votingReferee.submitScorecardFor(_gameId, scB);
 
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // All users attest to both scorecards.
         for (uint256 i; i < 4; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, idA);
+            votingReferee.attestToScorecardFrom(_gameId, idA);
         }
         for (uint256 i; i < 4; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, idB);
+            votingReferee.attestToScorecardFrom(_gameId, idB);
         }
 
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
         // Both should be SUCCEEDED.
-        assertEq(uint256(_gov.stateOf(_gameId, idA)), uint256(DefifaScorecardState.SUCCEEDED), "A should be SUCCEEDED");
-        assertEq(uint256(_gov.stateOf(_gameId, idB)), uint256(DefifaScorecardState.SUCCEEDED), "B should be SUCCEEDED");
+        assertEq(
+            uint256(votingReferee.stateOf(_gameId, idA)),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "A should be SUCCEEDED"
+        );
+        assertEq(
+            uint256(votingReferee.stateOf(_gameId, idB)),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "B should be SUCCEEDED"
+        );
 
         // Ratify A first.
+        votingReferee.forwardScorecardFor(_gameId, scA);
         _gov.ratifyScorecardFrom(_gameId, scA);
-        assertEq(uint256(_gov.stateOf(_gameId, idA)), uint256(DefifaScorecardState.RATIFIED), "A should be RATIFIED");
-        assertEq(uint256(_gov.stateOf(_gameId, idB)), uint256(DefifaScorecardState.DEFEATED), "B should be DEFEATED");
+        assertEq(
+            uint256(votingReferee.stateOf(_gameId, idA)), uint256(DefifaScorecardState.RATIFIED), "A should be RATIFIED"
+        );
+        assertEq(
+            uint256(votingReferee.stateOf(_gameId, idB)), uint256(DefifaScorecardState.DEFEATED), "B should be DEFEATED"
+        );
 
-        // Cannot ratify B.
-        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_AlreadyRatified.selector);
-        _gov.ratifyScorecardFrom(_gameId, scB);
+        // Cannot forward B: it lost once A was ratified.
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector);
+        votingReferee.forwardScorecardFor(_gameId, scB);
     }
 
     // =========================================================================
     // SETUP + PRIMITIVE HELPERS
     // =========================================================================
+
+    //*********************************************************************//
+    // ------------------------ default delegate -------------------------- //
+    //*********************************************************************//
+
+    /// @notice A default attestation delegate that holders opted out of.
+    address internal constant _DELEGATE = address(uint160(uint256(keccak256("enforcedDelegate"))));
+
+    /// @notice A scorecard that pays one tier everything.
+    function _winnerTakeAll(uint256 n, uint256 winner) internal view returns (DefifaTierCashOutWeight[] memory sc) {
+        sc = _buildScorecard(n);
+        sc[winner - 1].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT();
+    }
+
+    function test_defaultDelegateHasOnlyDelegatedPower() public {
+        DefifaLaunchProjectData memory d = _launchData(4, 1 ether);
+        d.defaultAttestationDelegate = _DELEGATE;
+        (_pid, _nft, _gov) = _launch(d);
+        vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
+        _users = new address[](4);
+        for (uint256 i; i < 4; i++) {
+            _users[i] = _addr(i);
+            _mint(_users[i], i + 1, 1 ether);
+            _delegateSelf(_users[i], i + 1);
+            vm.warp(block.timestamp + 1);
+        }
+        _toScoring();
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, _winnerTakeAll(4, 1));
+        assertEq(
+            votingReferee.getBWAAttestationWeight(_gameId, scorecardId, _DELEGATE, uint48(block.timestamp)),
+            0,
+            "a delegate with no delegated units has no weight"
+        );
+    }
+
+    //*********************************************************************//
+    // ---------------------- 50% to 75% quorum ------------------------- //
+    //*********************************************************************//
+
+    /// @notice Mirrors the governor's quorum: (N - 1) * MAX scaled from 50% to 75% by the largest share squared.
+    function _expectedQuorum(uint256 eligibleTiers, uint256 maxWeight) internal view returns (uint256 q) {
+        uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
+        uint256 maxBwa = eligibleTiers == 0 ? 0 : (eligibleTiers - 1) * votingReferee.MAX_ATTESTATION_POWER_TIER();
+        uint256 bps = 5000 + mulDiv(2500, mulDiv(maxWeight, maxWeight, tw), tw);
+        q = mulDiv(maxBwa, bps, 10_000);
+        if (q == 0) q = 1;
+    }
+
+    /// @notice Opens attestations, has the given users attest, then ends the grace period.
+    function _attestAndEndGrace(uint256 scorecardId, uint256[] memory userIndexes) internal {
+        vm.warp(_tsReader.ts() + 2);
+        for (uint256 i; i < userIndexes.length; i++) {
+            vm.prank(_users[userIndexes[i]]);
+            votingReferee.attestToScorecardFrom(_gameId, scorecardId);
+        }
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+    }
+
+    function test_quorum_twoTierWinnerTakeAllNeeds75Percent() public {
+        _setupGame(2, 1 ether);
+        _toScoring();
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(2);
+        sc[0].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT();
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
+        assertEq(_quorumSnapshotOf(scorecardId), votingReferee.MAX_ATTESTATION_POWER_TIER() * 3 / 4, "75% of one tier");
+        uint256[] memory loser = new uint256[](1);
+        loser[0] = 1;
+        _attestAndEndGrace(scorecardId, loser);
+        assertEq(
+            uint256(votingReferee.stateOf(_gameId, scorecardId)),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "loser concedes"
+        );
+    }
+
+    function test_quorum_twoTierEvenSplitNeedsBothSides() public {
+        _setupGame(2, 1 ether);
+        _toScoring();
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, _evenScorecard(2));
+        assertEq(_quorumSnapshotOf(scorecardId), _expectedQuorum(2, _nft.TOTAL_CASHOUT_WEIGHT() / 2), "56.25%");
+        uint256[] memory one = new uint256[](1);
+        _attestAndEndGrace(scorecardId, one);
+        assertEq(
+            uint256(votingReferee.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.ACTIVE), "half is short"
+        );
+    }
+
+    function test_quorum_winnerTakeAllPassesWithThreeOfFourLosers() public {
+        _setupGame(5, 1 ether);
+        _toScoring();
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(5);
+        sc[0].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT();
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
+        uint256[] memory two = new uint256[](2);
+        two[0] = 1;
+        two[1] = 2;
+        _attestAndEndGrace(scorecardId, two);
+        assertEq(
+            uint256(votingReferee.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.ACTIVE), "2 of 4 short"
+        );
+        vm.prank(_users[3]);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
+        assertEq(
+            uint256(votingReferee.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.SUCCEEDED), "3 of 4 pass"
+        );
+    }
+
+    function test_quorum_oneTierGameNeverRatifies() public {
+        _setupGame(1, 1 ether);
+        _toScoring();
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(1);
+        sc[0].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT();
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
+        assertEq(_quorumSnapshotOf(scorecardId), 1, "floor of 1");
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 2);
+        assertEq(
+            uint256(votingReferee.stateOf(_gameId, scorecardId)), uint256(DefifaScorecardState.ACTIVE), "unreachable"
+        );
+    }
+
+    function test_quorum_viewIsTheEvenSplitQuorum() public {
+        _setupGame(4, 1 ether);
+        _toScoring();
+        assertEq(
+            votingReferee.quorum(_gameId), 3 * votingReferee.MAX_ATTESTATION_POWER_TIER() / 2, "50% of (N - 1) * MAX"
+        );
+    }
+
+    /// @notice Unanimity always reaches quorum, and quorum never drops below an even split's.
+    function testFuzz_quorum_reachableAndNeverBelowEven(uint8 nTiers, uint256 seed, uint256 split) public {
+        nTiers = uint8(bound(nTiers, 2, 21));
+        _setupCrowdedGame(nTiers, seed);
+        _toScoring();
+        uint256 tw = _nft.TOTAL_CASHOUT_WEIGHT();
+        uint256 top = bound(split, tw / nTiers + 1, tw);
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(nTiers);
+        sc[0].cashOutWeight = top;
+        uint256 rest = tw - top;
+        for (uint256 i = 1; i < nTiers; i++) {
+            sc[i].cashOutWeight = rest / (nTiers - 1);
+        }
+        sc[1].cashOutWeight += rest - (rest / (nTiers - 1)) * (nTiers - 1);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
+        uint256 snapshot = _quorumSnapshotOf(scorecardId);
+        assertLe(snapshot, _totalBWA(scorecardId), "unanimity always reaches quorum");
+        assertGe(snapshot, _expectedQuorum(nTiers, tw / nTiers), "never below an even split");
+    }
+
+    function test_quorum_oneTierHolderCannotAttest() public {
+        _setupGame(1, 1 ether);
+        _toScoring();
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(1);
+        sc[0].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT();
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + 2);
+        vm.prank(_users[0]);
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
+    }
 
     function _setupGame(uint8 nTiers, uint256 tierPrice) internal {
         DefifaLaunchProjectData memory d = _launchData(nTiers, tierPrice);
@@ -1216,6 +1500,33 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             _mint(_users[i], i + 1, tierPrice);
             _delegateSelf(_users[i], i + 1);
             vm.warp(block.timestamp + 1);
+        }
+    }
+
+    /// @notice Launches a game where each tier has 1 to 6 self-delegated holders, each holding 1 to 3 tokens.
+    function _setupCrowdedGame(uint8 nTiers, uint256 seed) internal {
+        DefifaLaunchProjectData memory d = _launchData(nTiers, 1 ether);
+        (_pid, _nft, _gov) = _launch(d);
+        vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
+        delete _users;
+        for (uint256 t = 1; t <= nTiers; t++) {
+            uint256 holders = 1 + uint256(keccak256(abi.encode(seed, t))) % 6;
+            for (uint256 h; h < holders; h++) {
+                address user = _addr(_users.length);
+                _users.push(user);
+                uint256 count = 1 + uint256(keccak256(abi.encode(seed, t, h))) % 3;
+                _mintCount(user, t, count, 1 ether);
+                _delegateSelf(user, t);
+                vm.warp(block.timestamp + 1);
+            }
+        }
+    }
+
+    /// @notice The scorecard's BWA power if every holder attests.
+    // forge-lint: disable-next-line(mixed-case-function)
+    function _totalBWA(uint256 scorecardId) internal view returns (uint256 total) {
+        for (uint256 i; i < _users.length; i++) {
+            total += votingReferee.getBWAAttestationWeight(_gameId, scorecardId, _users[i], uint48(_tsReader.ts()));
         }
     }
 
@@ -1256,8 +1567,6 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             // forge-lint: disable-next-line(unsafe-typecast)
             tierPrice: uint104(tierPrice),
@@ -1266,7 +1575,9 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: timelockDuration
+            timelockDuration: timelockDuration,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 
@@ -1283,10 +1594,17 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
     }
 
     function _mint(address user, uint256 tid, uint256 amt) internal {
+        _mintCount(user, tid, 1, amt);
+    }
+
+    function _mintCount(address user, uint256 tid, uint256 count, uint256 price) internal {
+        uint256 amt = count * price;
         vm.deal(user, amt);
-        uint16[] memory m = new uint16[](1);
-        // forge-lint: disable-next-line(unsafe-typecast)
-        m[0] = uint16(tid);
+        uint16[] memory m = new uint16[](count);
+        for (uint256 i; i < count; i++) {
+            // forge-lint: disable-next-line(unsafe-typecast)
+            m[i] = uint16(tid);
+        }
         bytes[] memory data = new bytes[](1);
         data[0] = abi.encode(user, m);
         bytes4[] memory ids = new bytes4[](1);
@@ -1317,5 +1635,11 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         for (uint256 i; i < n; i++) {
             sc[i].cashOutWeight = tw / n;
         }
+    }
+
+    /// @notice Reads a scorecard's `quorumSnapshot`, the second slot of `DefifaScorecard` in `_scorecardOf` (slot 4,
+    /// after `Ownable._owner` and three mappings).
+    function _quorumSnapshotOf(uint256 scorecardId) internal view returns (uint256) {
+        return votingReferee.quorumOf(_gameId, scorecardId);
     }
 }

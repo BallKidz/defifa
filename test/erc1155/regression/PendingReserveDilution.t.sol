@@ -1,0 +1,313 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.28;
+
+import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
+
+import {DefifaGovernor} from "../../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../../src/referees/DefifaVotingReferee.sol";
+import {DefifaDeployer} from "../../../src/DefifaDeployer.sol";
+import {Defifa1155Hook} from "../../../src/Defifa1155Hook.sol";
+import {DefifaTokenUriResolver} from "../../../src/DefifaTokenUriResolver.sol";
+import {DefifaTiersHookStore} from "../../../src/DefifaTiersHookStore.sol";
+import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/JB721TiersMintReservesConfig.sol";
+
+import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
+import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
+import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
+import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
+
+import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
+import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
+import {DefifaDelegation} from "../../../src/structs/DefifaDelegation.sol";
+import {DefifaLaunchProjectData} from "../../../src/structs/DefifaLaunchProjectData.sol";
+import {DefifaTierParams} from "../../../src/structs/DefifaTierParams.sol";
+import {DefifaTierCashOutWeight} from "../../../src/structs/DefifaTierCashOutWeight.sol";
+import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
+import {JBTerminalConfig} from "@bananapus/core-v6/src/structs/JBTerminalConfig.sol";
+import {JBRulesetConfig} from "@bananapus/core-v6/src/structs/JBRulesetConfig.sol";
+import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
+import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
+import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
+import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
+import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
+import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
+
+contract PendingReserveDilutionTest is JBTest, TestBaseWorkflow {
+    using JBRulesetMetadataResolver for JBRuleset;
+
+    address _protocolFeeProjectTokenAccount;
+    address _defifaProjectTokenAccount;
+    uint256 _protocolFeeProjectId;
+    uint256 _defifaProjectId;
+    uint256 _gameId = 3;
+
+    DefifaDeployer deployer;
+    Defifa1155Hook hook;
+    DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
+
+    address projectOwner = address(bytes20(keccak256("projectOwner")));
+    address reserveBeneficiary = address(bytes20(keccak256("reserveBeneficiary")));
+    address player = address(bytes20(keccak256("player")));
+    address disinterested1 = address(bytes20(keccak256("disinterested1")));
+    address disinterested2 = address(bytes20(keccak256("disinterested2")));
+    address disinterested3 = address(bytes20(keccak256("disinterested3")));
+
+    uint256 _pid;
+    Defifa1155Hook _nft;
+    DefifaGovernor _gov;
+
+    function setUp() public virtual override {
+        super.setUp();
+
+        JBAccountingContext[] memory _tokens = new JBAccountingContext[](1);
+        _tokens[0] = JBAccountingContext({token: JBConstants.NATIVE_TOKEN, decimals: 18, currency: JBCurrencyIds.ETH});
+        JBTerminalConfig[] memory tc = new JBTerminalConfig[](1);
+        tc[0] = JBTerminalConfig({terminal: jbMultiTerminal(), accountingContextsToAccept: _tokens});
+        JBRulesetConfig[] memory rc = new JBRulesetConfig[](1);
+        rc[0] = JBRulesetConfig({
+            mustStartAtOrAfter: 0,
+            duration: 10 days,
+            weight: 1e18,
+            weightCutPercent: 0,
+            approvalHook: IJBRulesetApprovalHook(address(0)),
+            metadata: JBRulesetMetadata({
+                reservedPercent: 0,
+                cashOutTaxRate: 0,
+                baseCurrency: JBCurrencyIds.ETH,
+                pausePay: false,
+                pauseCreditTransfers: false,
+                allowOwnerMinting: false,
+                allowSetCustomToken: false,
+                allowTerminalMigration: false,
+                allowSetTerminals: false,
+                allowSetController: false,
+                allowAddAccountingContext: false,
+                allowAddPriceFeed: false,
+                ownerMustSendPayouts: false,
+                holdFees: false,
+                scopeCashOutsToLocalBalances: true,
+                useDataHookForPay: true,
+                useDataHookForCashOut: true,
+                dataHook: address(0),
+                metadata: 0
+            }),
+            splitGroups: new JBSplitGroup[](0),
+            fundAccessLimitGroups: new JBFundAccessLimitGroup[](0)
+        });
+
+        _protocolFeeProjectId = jbController().launchProjectFor(projectOwner, "", rc, tc, "");
+        vm.prank(projectOwner);
+        _protocolFeeProjectTokenAccount =
+            address(jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+        _defifaProjectId = jbController().launchProjectFor(projectOwner, "", rc, tc, "");
+        vm.prank(projectOwner);
+        _defifaProjectTokenAccount =
+            address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+
+        hook = new Defifa1155Hook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
+        governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
+        deployer = new DefifaDeployer({
+            hookCodeOrigin: address(hook),
+            tokenUriResolver: new DefifaTokenUriResolver(address(this)),
+            governor: governor,
+            controller: jbController(),
+            registry: new JBAddressRegistry(),
+            defifaProjectId: _protocolFeeProjectId,
+            baseProtocolProjectId: _defifaProjectId,
+            hookStore: new DefifaTiersHookStore(),
+            trustedForwarder: address(0)
+        });
+        hook.transferOwnership(address(deployer));
+        governor.transferOwnership(address(deployer));
+    }
+
+    /// @notice Pending reserves dilute the paid holder's cash-out share.
+    /// The paid holder can no longer drain the full surplus; reserve holders retain their share.
+    ///
+    /// With BWA + HHI, a single-tier winner-take-all scorecard gives the beneficiary 0 attestation
+    /// power. We add 3 disinterested tiers (0 weight) so their attestors can meet the adjusted quorum.
+    function test_pendingReserveDilutesPaidHolderCashOut_afterFix() external {
+        (_pid, _nft, _gov) = _launch(_launchData());
+
+        // Mint phase: player mints tier 1, disinterested users mint tiers 2-4.
+        vm.warp(block.timestamp + 1 days + 1);
+        _mint(player, 1, 1 ether);
+        _delegateSelf(player, 1);
+        vm.warp(block.timestamp + 1);
+        _mint(disinterested1, 2, 1 ether);
+        _delegateSelf(disinterested1, 2);
+        vm.warp(block.timestamp + 1);
+        _mint(disinterested2, 3, 1 ether);
+        _delegateSelf(disinterested2, 3);
+        vm.warp(block.timestamp + 1);
+        _mint(disinterested3, 4, 1 ether);
+        _delegateSelf(disinterested3, 4);
+
+        assertEq(_nft.store().numberOfPendingReservesFor(address(_nft), 1), 1, "one reserve should be pending");
+
+        vm.warp(block.timestamp + 2 days + 1);
+
+        // Scorecard: tier 1 gets all weight; tiers 2-4 get 0.
+        DefifaTierCashOutWeight[] memory sc = new DefifaTierCashOutWeight[](4);
+        sc[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: _nft.TOTAL_CASHOUT_WEIGHT()});
+        sc[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: 0});
+        sc[2] = DefifaTierCashOutWeight({id: 3, cashOutWeight: 0});
+        sc[3] = DefifaTierCashOutWeight({id: 4, cashOutWeight: 0});
+        uint256 proposalId = votingReferee.submitScorecardFor(_gameId, sc);
+
+        vm.warp(block.timestamp + 1);
+
+        // Disinterested users attest (full BWA power since 0 weight tiers).
+        vm.prank(disinterested1);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
+        vm.prank(disinterested2);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
+        vm.prank(disinterested3);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
+
+        vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+        votingReferee.forwardScorecardFor(_gameId, sc);
+        _gov.ratifyScorecardFrom(_gameId, sc);
+
+        // Post-fee surplus from all 4 ETH (4 minters). Tier 1 gets 100% weight.
+        uint256 totalPot = 4 ether - (4 ether / 20) - (4 ether / 40);
+        // Player holds 1 of 2 units in tier 1 (1 paid + 1 pending reserve in denominator).
+        uint256 expectedPlayerReclaim = totalPot / 2;
+
+        uint256 beforePlayerBalance = player.balance;
+        _cashOut(player, 1, 1);
+        uint256 playerReclaim = player.balance - beforePlayerBalance;
+
+        // Paid holder gets only HALF because pending reserve dilutes the denominator.
+        assertApproxEqAbs(
+            playerReclaim,
+            expectedPlayerReclaim,
+            1, // 1 wei tolerance for rounding
+            "paid holder reclaims only half due to pending reserve dilution"
+        );
+        assertLt(playerReclaim, totalPot, "paid holder should NOT reclaim full surplus");
+
+        // Mint the reserve positions.
+        JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
+        reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
+        _nft.mintReservesFor(reserveConfigs);
+        assertEq(
+            _nft.balanceOf(reserveBeneficiary, 1 + _nft.RESERVE_TOKEN_ID_OFFSET()),
+            1,
+            "reserve position minted successfully"
+        );
+
+        // Reserve holder should now be able to cash out their share (not zero).
+        uint256 beforeReserveBalance = reserveBeneficiary.balance;
+        _cashOut(reserveBeneficiary, 1 + _nft.RESERVE_TOKEN_ID_OFFSET(), 1);
+        uint256 reserveReclaim = reserveBeneficiary.balance - beforeReserveBalance;
+        assertGt(reserveReclaim, 0, "reserve holder can reclaim their share");
+    }
+
+    function _launchData() internal view returns (DefifaLaunchProjectData memory) {
+        DefifaTierParams[] memory tp = new DefifaTierParams[](4);
+        // Tier 1: has reserves (the tier under test)
+        tp[0] = DefifaTierParams({
+            reservedRate: 1,
+            reservedTokenBeneficiary: reserveBeneficiary,
+            encodedIpfsUri: bytes32(0),
+            shouldUseReservedTokenBeneficiaryAsDefault: false,
+            name: "TEAM"
+        });
+        // Tiers 2-4: disinterested attestors (no reserves)
+        for (uint256 i = 1; i < 4; i++) {
+            tp[i] = DefifaTierParams({
+                reservedRate: 0,
+                reservedTokenBeneficiary: address(0),
+                encodedIpfsUri: bytes32(0),
+                shouldUseReservedTokenBeneficiaryAsDefault: false,
+                name: "TEAM"
+            });
+        }
+
+        return DefifaLaunchProjectData({
+            name: "DEFIFA",
+            projectUri: "",
+            contractUri: "",
+            baseUri: "",
+            token: JBAccountingContext({token: JBConstants.NATIVE_TOKEN, decimals: 18, currency: JBCurrencyIds.ETH}),
+            mintPeriodDuration: 1 days,
+            start: uint48(block.timestamp + 3 days),
+            refundPeriodDuration: 1 days,
+            splits: new JBSplit[](0),
+            defaultAttestationDelegate: address(0),
+            tierPrice: 1 ether,
+            tiers: tp,
+            defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
+            terminal: jbMultiTerminal(),
+            minParticipation: 0,
+            scorecardTimeout: type(uint32).max,
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
+        });
+    }
+
+    function _launch(DefifaLaunchProjectData memory d)
+        internal
+        returns (uint256 p, Defifa1155Hook n, DefifaGovernor g)
+    {
+        g = governor;
+        p = deployer.launchGameWith(d);
+        JBRuleset memory fc = jbRulesets().currentOf(p);
+        if (fc.dataHook() == address(0)) (fc,) = jbRulesets().latestQueuedOf(p);
+        n = Defifa1155Hook(fc.dataHook());
+    }
+
+    function _mint(address user, uint256 tid, uint256 amt) internal {
+        vm.deal(user, amt);
+        uint16[] memory m = new uint16[](1);
+        // forge-lint: disable-next-line(unsafe-typecast)
+        m[0] = uint16(tid);
+        uint256[] memory counts = new uint256[](1);
+        counts[0] = 1;
+        bytes[] memory data = new bytes[](1);
+        data[0] = abi.encode(user, m, counts);
+        bytes4[] memory ids = new bytes4[](1);
+        ids[0] = metadataHelper().getId("pay", address(hook));
+        bytes memory metadata = metadataHelper().createMetadata(ids, data);
+        vm.prank(user);
+        jbMultiTerminal().pay{value: amt}(_pid, JBConstants.NATIVE_TOKEN, amt, user, 0, "", metadata);
+    }
+
+    function _delegateSelf(address user, uint256 tid) internal {
+        DefifaDelegation[] memory dd = new DefifaDelegation[](1);
+        dd[0] = DefifaDelegation({delegatee: user, tierId: tid});
+        vm.prank(user);
+        _nft.setTierDelegatesTo(dd);
+    }
+
+    function _cashOut(address user, uint256 tokenId, uint256 amount) internal {
+        bytes memory meta = _cashOutMeta(tokenId, amount);
+        vm.prank(user);
+        jbMultiTerminal().cashOutTokensOf({
+            holder: user,
+            projectId: _pid,
+            cashOutCount: 0,
+            tokenToReclaim: JBConstants.NATIVE_TOKEN,
+            minTokensReclaimed: 0,
+            beneficiary: payable(user),
+            metadata: meta
+        });
+    }
+
+    function _cashOutMeta(uint256 tokenId, uint256 amount) internal view returns (bytes memory) {
+        uint256[] memory cid = new uint256[](1);
+        cid[0] = tokenId;
+        uint256[] memory amounts = new uint256[](1);
+        amounts[0] = amount;
+        bytes[] memory data = new bytes[](1);
+        data[0] = abi.encode(cid, amounts);
+        bytes4[] memory ids = new bytes4[](1);
+        ids[0] = metadataHelper().getId("cashOut", address(hook));
+        return metadataHelper().createMetadata(ids, data);
+    }
+}

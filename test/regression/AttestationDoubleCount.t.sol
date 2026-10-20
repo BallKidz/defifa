@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
@@ -14,7 +15,6 @@ import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRule
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
@@ -39,6 +39,7 @@ contract AttestationDoubleCountTest is JBTest, TestBaseWorkflow {
     DefifaDeployer internal deployer;
     DefifaHook internal hook;
     DefifaGovernor internal governor;
+    DefifaVotingReferee votingReferee;
 
     uint256 internal _mintPhaseStart;
 
@@ -88,16 +89,16 @@ contract AttestationDoubleCountTest is JBTest, TestBaseWorkflow {
         _protocolFeeProjectId =
             jbController().launchProjectFor(address(projectOwner), "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
-        address _nanaToken =
-            address(jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+        jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0));
 
         _defifaProjectId =
             jbController().launchProjectFor(address(projectOwner), "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
-        address _defifaToken = address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+        jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0));
 
-        hook = new DefifaHook(jbDirectory(), IERC20(_defifaToken), IERC20(_nanaToken));
+        hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -187,15 +188,15 @@ contract AttestationDoubleCountTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             tiers: tierParams,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
 
         _mintPhaseStart = d.start - d.mintPeriodDuration - d.refundPeriodDuration;

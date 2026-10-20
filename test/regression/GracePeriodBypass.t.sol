@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
@@ -15,7 +16,6 @@ import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRule
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
@@ -59,6 +59,7 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
 
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
@@ -115,10 +116,9 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
         _defifaProjectTokenAccount =
             address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
 
-        hook = new DefifaHook(
-            jbDirectory(), IERC20(address(_defifaProjectTokenAccount)), IERC20(_protocolFeeProjectTokenAccount)
-        );
+        hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         JBAddressRegistry _registry = new JBAddressRegistry();
         DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
         deployer = new DefifaDeployer({
@@ -151,7 +151,7 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
 
         DefifaLaunchProjectData memory defifaData =
             _getBasicLaunchDataWithAttestationTiming(nTiers, futureAttestationStart, gracePeriod);
-        (uint256 _projectId, DefifaHook _nft, DefifaGovernor _governor) = _createProject(defifaData);
+        (uint256 _projectId, DefifaHook _nft,) = _createProject(defifaData);
 
         // Phase 1: Mint
         vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
@@ -194,11 +194,11 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
         }
 
         uint256 submissionTime = _tsReader.timestamp();
-        uint256 _proposalId = _governor.submitScorecardFor(_gameId, scorecards);
+        uint256 _proposalId = votingReferee.submitScorecardFor(_gameId, scorecards);
 
         // The scorecard should be PENDING (attestations haven't started yet)
         assertEq(
-            uint256(_governor.stateOf(_gameId, _proposalId)),
+            uint256(votingReferee.stateOf(_gameId, _proposalId)),
             uint256(DefifaScorecardState.PENDING),
             "Scorecard should be PENDING before attestation start"
         );
@@ -209,31 +209,36 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
 
         // The scorecard should still be PENDING because attestationsBegin hasn't arrived yet.
         assertEq(
-            uint256(_governor.stateOf(_gameId, _proposalId)),
+            uint256(votingReferee.stateOf(_gameId, _proposalId)),
             uint256(DefifaScorecardState.PENDING),
             "Scorecard should still be PENDING even after old grace period would have ended"
         );
 
-        // Now warp to after attestation start (attestation begin + 1)
+        // Now warp to after attestation start (attestation begin + 1) and reach quorum at once.
         vm.warp(futureAttestationStart + 1);
+        for (uint256 i = 0; i < nTiers; i++) {
+            vm.prank(_users[i]);
+            votingReferee.attestToScorecardFrom(_gameId, _proposalId);
+        }
 
-        // Now the scorecard should be ACTIVE (attestations are open and grace period hasn't ended yet)
+        // Quorum is met, but the grace period runs from attestation start, so the scorecard is still ACTIVE and
+        // can't be forwarded. A grace period anchored to submission would already have ended.
         assertEq(
-            uint256(_governor.stateOf(_gameId, _proposalId)),
+            uint256(votingReferee.stateOf(_gameId, _proposalId)),
             uint256(DefifaScorecardState.ACTIVE),
-            "Scorecard should be ACTIVE after attestation start but before grace period ends"
+            "Scorecard should be ACTIVE until the grace period after attestation start ends"
         );
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector);
+        votingReferee.forwardScorecardFor(_gameId, scorecards);
 
-        // Warp to after attestation start + grace period
-        vm.warp(futureAttestationStart + gracePeriod + 1);
-
-        // Now grace period has truly ended, so the state should be ACTIVE (quorum not met)
-        // The key here is that it transitioned properly - grace period ran from attestation start
+        // At attestation start + grace period, the grace period has ended and the scorecard passes.
+        vm.warp(futureAttestationStart + gracePeriod);
         assertEq(
-            uint256(_governor.stateOf(_gameId, _proposalId)),
-            uint256(DefifaScorecardState.ACTIVE),
-            "Scorecard should be ACTIVE (no quorum) after grace period truly ends"
+            uint256(votingReferee.stateOf(_gameId, _proposalId)),
+            uint256(DefifaScorecardState.SUCCEEDED),
+            "Scorecard should be SUCCEEDED once the grace period after attestation start ends"
         );
+        votingReferee.forwardScorecardFor(_gameId, scorecards);
     }
 
     // ----- Internal helpers ------
@@ -269,15 +274,15 @@ contract GracePeriodBypass is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: attestationStartTime,
-            attestationGracePeriod: attestationGracePeriod,
             defaultAttestationDelegate: address(0),
             tiers: tierParams,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(attestationStartTime, attestationGracePeriod)
         });
     }
 

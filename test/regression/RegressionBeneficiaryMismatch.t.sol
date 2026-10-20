@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {DefifaFeeAccountingTest} from "../DefifaFeeAccounting.t.sol";
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaDelegation} from "../../src/structs/DefifaDelegation.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
@@ -45,14 +46,14 @@ contract RegressionBeneficiaryMismatchTest is DefifaFeeAccountingTest {
         vm.prank(holder);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: holder,
-            projectId: projectId,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: beneficiary,
-            metadata: cashOutMetadata
-        });
+                holder: holder,
+                projectId: projectId,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: beneficiary,
+                metadata: cashOutMetadata
+            });
 
         assertGt(beneficiary.balance, beneficiaryEthBefore, "terminal reclaim goes to beneficiary");
         assertEq(defifaToken.balanceOf(holder), holderDefifaBefore, "holder receives no DEFIFA fee tokens");
@@ -145,8 +146,6 @@ contract RegressionBeneficiaryMismatchTest is DefifaFeeAccountingTest {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             tierPrice: uint104(1 ether),
             tiers: tierParams,
@@ -154,7 +153,9 @@ contract RegressionBeneficiaryMismatchTest is DefifaFeeAccountingTest {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 

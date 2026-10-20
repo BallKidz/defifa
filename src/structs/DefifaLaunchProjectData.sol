@@ -23,11 +23,8 @@ import {DefifaTierParams} from "./DefifaTierParams.sol";
 /// but refunds are still allowed, measured in seconds.
 /// @custom:member start The time at which the game should start, measured in seconds since the Unix epoch.
 /// @custom:member splits Splits to distribute funds between during the game's scoring phase.
-/// @custom:member attestationStartTime The time the attestations will start for all submitted scorecards, measured in
-/// seconds. If in the past, scorecards will start accepting attestations right away.
-/// @custom:member attestationGracePeriod The time period the attestations must be active for once it has started even
-/// if it has already reached quorum, measured in seconds.
-/// @custom:member defaultAttestationDelegate The address that will be set as the attestation delegate by default.
+/// @custom:member defaultAttestationDelegate The address holders' tier attestation units are delegated to by default,
+/// for referees that count holder votes.
 /// @custom:member defaultTokenUriResolver The contract used to resolve token URIs if not provided by a tier
 /// specifically, serving as the fallback resolver for the game.
 /// @custom:member terminal The payment terminal that the project will accept funds through.
@@ -35,9 +32,12 @@ import {DefifaTierParams} from "./DefifaTierParams.sol";
 /// Compared against the hook's `totalMintCost` (immune to `addToBalanceOf` inflation). If below this when scoring
 /// would begin, the game enters NO_CONTEST. Set to 0 to disable.
 /// @custom:member scorecardTimeout The maximum time (in seconds) after the scoring phase begins for a scorecard to be
-/// ratified. If exceeded, the game enters NO_CONTEST. Set to 0 to disable.
-/// @custom:member timelockDuration The cooling period (in seconds) that must elapse after a scorecard reaches quorum
-/// (anchored to the later of quorum being met or the grace period ending) before that scorecard can be ratified.
+/// ratified. If exceeded, the game enters NO_CONTEST. Must be nonzero.
+/// @custom:member timelockDuration The time (in seconds) a submitted scorecard waits before anyone can ratify it. Must
+/// be less than `scorecardTimeout`.
+/// @custom:member referee The address that judges the game. Only it can submit scorecards. Any address; a contract can
+/// run its own rule, such as a holder vote.
+/// @custom:member refereeData Settings passed to the referee's `initializeGameFor` at launch. Empty to skip the call.
 struct DefifaLaunchProjectData {
     string name;
     string projectUri;
@@ -50,12 +50,12 @@ struct DefifaLaunchProjectData {
     uint24 refundPeriodDuration;
     uint48 start;
     JBSplit[] splits;
-    uint256 attestationStartTime;
-    uint256 attestationGracePeriod;
     address defaultAttestationDelegate;
     IJB721TokenUriResolver defaultTokenUriResolver;
     IJBTerminal terminal;
     uint256 minParticipation;
     uint32 scorecardTimeout;
     uint256 timelockDuration;
+    address referee;
+    bytes refereeData;
 }

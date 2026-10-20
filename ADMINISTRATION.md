@@ -5,18 +5,18 @@
 | Item | Details |
 | --- | --- |
 | Scope | Game launch configuration, scorecard governance, and no-contest recovery |
-| Control posture | Permissionless launch, then collective governance plus bounded contract-controlled lifecycle paths |
+| Control posture | Permissionless launch, then each game's referee (an address, or a contract such as the holder-vote `DefifaVotingReferee`) plus bounded contract-controlled lifecycle paths |
 | Highest-risk actions | Launching with wrong immutable game settings, misconfiguring governance thresholds, and misunderstanding no-contest handling |
 | Recovery posture | Mostly replacement or documented no-contest handling; there is no broad post-launch owner override |
 
 ## Purpose
 
-`defifa` is unusual because game creation is permissionless but ongoing game control is intentionally narrow. The main administration job is understanding what is fixed at launch, what collective governance can still do, and what the deployer must do to finish settlement.
+`defifa` is unusual because game creation is permissionless but ongoing game control is intentionally narrow. The main administration job is understanding what is fixed at launch, what each game's referee can still do, and what the deployer must do to finish settlement.
 
 ## Control model
 
 - `launchGameWith(...)` is the real governance commitment. Core game shape is fixed there.
-- `DefifaGovernor` controls scorecard submission, attestation, and ratification.
+- `DefifaGovernor` accepts scorecards only from each game's referee and lets anyone ratify after the timelock. Holder attestation, where a game uses it, lives in `DefifaVotingReferee`.
 - `DefifaHook` controls phase-aware mint and cash-out behavior but does not expose broad admin mutability.
 - `DefifaDeployer` still owns structural lifecycle duties such as fulfillment and no-contest queuing.
 
@@ -25,21 +25,21 @@
 | Role | How Assigned | Scope | Notes |
 | --- | --- | --- | --- |
 | Game creator | Calls `launchGameWith(...)` | Launch only | Does not receive broad runtime admin power afterward |
-| Scorecard participant | Holds or receives attestation power | Per game | Can submit, attest, revoke, and help ratify |
+| Referee | Named in `launchGameWith(...)` | Per game | The only address that can submit the game's scorecard; any address, or a contract such as `DefifaVotingReferee` that runs a holder vote |
 | Ratification path caller | Any caller who meets the documented conditions | Per game | Finalizes a valid scorecard |
 | Fulfillment path caller | Any valid caller once ratified | Per game | Must run the completion commitment path |
 
 ## Privileged surfaces
 
 - `launchGameWith(...)` fixes phase timing, tiers, fee routing, and governance shape
-- `submitScorecardFor(...)`, `attestToScorecardFrom(...)`, `revokeAttestationFrom(...)`, and `ratifyScorecardFrom(...)` govern outcome selection
+- The governor's `submitScorecardFor(...)` (referee only) and `ratifyScorecardFrom(...)` (anyone, after the timelock) govern outcome selection; a referee contract such as `DefifaVotingReferee` decides what its referee submits
 - `fulfillCommitmentsOf(...)` turns a ratified scorecard into real settlement
 - `triggerNoContestFor(...)` moves failed games into the documented recovery path
 
 ## Immutable and one-way
 
 - Game phase timing is fixed at launch.
-- Scorecard timeout, minimum participation, and default delegation choices are fixed at launch.
+- The referee, timelock, scorecard timeout, minimum participation, and default delegation choices are fixed at launch.
 - `setTierCashOutWeightsTo()` is effectively one-way once final weights are installed.
 - `cashOutWeightIsSet` permanently closes the score-setting path after success.
 - `fulfillCommitmentsOf()` and `triggerNoContestFor()` are single-use style lifecycle paths.

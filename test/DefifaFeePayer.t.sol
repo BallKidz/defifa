@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
@@ -11,7 +12,6 @@ import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IJBPayerTracker} from "@bananapus/core-v6/src/interfaces/IJBPayerTracker.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
@@ -50,6 +50,7 @@ contract DefifaFeePayerTest is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
 
     address projectOwner = address(bytes20(keccak256("projectOwner")));
     address _trustedForwarder = address(bytes20(keccak256("trustedForwarder")));
@@ -60,15 +61,15 @@ contract DefifaFeePayerTest is JBTest, TestBaseWorkflow {
         uint256 protocolFeeProjectId =
             jbController().launchProjectFor(projectOwner, "", _emptyRulesets(), _terminals(), "");
         vm.prank(projectOwner);
-        address protocolFeeToken =
-            address(jbController().deployERC20For(protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+        jbController().deployERC20For(protocolFeeProjectId, "Bananapus", "NANA", bytes32(0));
 
         uint256 defifaProjectId = jbController().launchProjectFor(projectOwner, "", _emptyRulesets(), _terminals(), "");
         vm.prank(projectOwner);
-        address defifaToken = address(jbController().deployERC20For(defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+        jbController().deployERC20For(defifaProjectId, "Defifa", "DEFIFA", bytes32(0));
 
-        hook = new DefifaHook(jbDirectory(), IERC20(defifaToken), IERC20(protocolFeeToken));
+        hook = new DefifaHook(jbDirectory(), jbTokens(), defifaProjectId, protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -154,8 +155,6 @@ contract DefifaFeePayerTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             tierPrice: 1 ether,
             tiers: tiers,
@@ -163,7 +162,9 @@ contract DefifaFeePayerTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 

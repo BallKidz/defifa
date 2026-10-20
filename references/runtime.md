@@ -5,14 +5,16 @@ Use this file when `defifa/SKILLS.md` has already routed you here and you need t
 ## Contract roles
 
 - [`src/DefifaDeployer.sol`](../src/DefifaDeployer.sol) launches games, manages phase progression, fulfills commitments, and triggers safety exits such as no-contest.
-- [`src/DefifaHook.sol`](../src/DefifaHook.sol) manages the NFT game pieces, delegation, and settlement-side cash-out behavior.
+- [`src/DefifaHook.sol`](../src/DefifaHook.sol) manages the ERC-721 game pieces, delegation, and settlement-side cash-out behavior.
+- [`src/Defifa1155Hook.sol`](../src/Defifa1155Hook.sol) is the ERC-1155 game: one balance per tier, reserve mints under `tierId + RESERVE_TOKEN_ID_OFFSET`, same delegation and settlement rules through [`src/libraries/DefifaHookLib.sol`](../src/libraries/DefifaHookLib.sol).
+- [`src/DefifaTiersHookStore.sol`](../src/DefifaTiersHookStore.sol) is the tier store both game types share: the upstream 721 store plus count-based records.
 - [`src/DefifaGovernor.sol`](../src/DefifaGovernor.sol) handles scorecard submission, attestation, quorum, and ratification.
-- [`src/DefifaTokenUriResolver.sol`](../src/DefifaTokenUriResolver.sol) renders game-card metadata.
+- [`src/DefifaTokenUriResolver.sol`](../src/DefifaTokenUriResolver.sol) renders game-card metadata for both game types.
 
 ## Lifecycle
 
 1. Countdown before minting opens.
-2. Mint phase where players buy outcome NFTs and can delegate attestation power.
+2. Mint phase where players buy outcome NFTs (ERC-721 game) or positions (ERC-1155 game) and can delegate attestation power.
 3. Optional refund phase if the launch configuration allows it.
 4. Scoring phase where scorecards are submitted, attested, and ratified.
 5. Complete or no-contest settlement depending on governance outcome and safety checks.
@@ -37,6 +39,7 @@ Use this file when `defifa/SKILLS.md` has already routed you here and you need t
 
 - [`test/DefifaGovernor.t.sol`](../test/DefifaGovernor.t.sol) for governance flow.
 - [`test/DefifaNoContest.t.sol`](../test/DefifaNoContest.t.sol) for safety exits.
-- [`test/DefifaFeeAccounting.t.sol`](../test/DefifaFeeAccounting.t.sol) and [`test/DefifaMintCostInvariant.t.sol`](../test/DefifaMintCostInvariant.t.sol) for economic correctness.
+- [`test/DefifaFeeAccounting.t.sol`](../test/DefifaFeeAccounting.t.sol) and [`test/DefifaMintCostInvariant.t.sol`](../test/DefifaMintCostInvariant.t.sol) for economic correctness. Both mint-cost invariant suites (721 and [`test/erc1155/DefifaMintCostInvariant.t.sol`](../test/erc1155/DefifaMintCostInvariant.t.sol)) end with an `afterInvariant` gate that fails a run unless it minted and refunded at least once. The 721 handler numbers a tier's token IDs by mint order, as the store does, so burns are not added back into the count.
+- [`test/erc1155/`](../test/erc1155/) for the same suites against the ERC-1155 game, and [`test/DefifaHookParity.t.sol`](../test/DefifaHookParity.t.sol) for the selectors both hooks must share.
 - [`test/DefifaHookRegressions.t.sol`](../test/DefifaHookRegressions.t.sol), [`test/regression/GracePeriodBypass.t.sol`](../test/regression/GracePeriodBypass.t.sol), [`test/regression/FulfillmentBlocksRatification.t.sol`](../test/regression/FulfillmentBlocksRatification.t.sol), and [`test/regression/AttestationDelegateBeneficiary.t.sol`](../test/regression/AttestationDelegateBeneficiary.t.sol) for pinned regressions.
 - [`test/DefifaSecurity.t.sol`](../test/DefifaSecurity.t.sol), [`test/DefifaGovernanceHardening.t.sol`](../test/DefifaGovernanceHardening.t.sol), [`test/DefifaAdversarialQuorum.t.sol`](../test/DefifaAdversarialQuorum.t.sol), and [`test/regression/`](../test/regression/) for adversarial and regression-derived cases.

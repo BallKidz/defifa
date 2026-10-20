@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
@@ -12,14 +13,12 @@ import {JB721TiersMintReservesConfig} from "@bananapus/721-hook-v6/src/structs/J
 
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {DefifaDelegation} from "../../src/structs/DefifaDelegation.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../../src/structs/DefifaTierParams.sol";
 import {DefifaTierCashOutWeight} from "../../src/structs/DefifaTierCashOutWeight.sol";
-import {DefifaScorecardState} from "../../src/enums/DefifaScorecardState.sol";
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
 import {JBTerminalConfig} from "@bananapus/core-v6/src/structs/JBTerminalConfig.sol";
 import {JBRulesetConfig} from "@bananapus/core-v6/src/structs/JBRulesetConfig.sol";
@@ -45,6 +44,7 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
     DefifaDeployer internal _deployer;
     DefifaHook internal _hookImpl;
     DefifaGovernor internal _governorImpl;
+    DefifaVotingReferee votingReferee;
 
     address internal _projectOwner = address(bytes20(keccak256("projectOwner")));
     address internal _reserveBeneficiary = address(bytes20(keccak256("reserveBeneficiary")));
@@ -101,16 +101,16 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         _protocolFeeProjectId =
             jbController().launchProjectFor(address(_projectOwner), "", rulesetConfigs, terminalConfigs, "");
         vm.prank(_projectOwner);
-        address nanaToken =
-            address(jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+        jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0));
 
         _defifaProjectId =
             jbController().launchProjectFor(address(_projectOwner), "", rulesetConfigs, terminalConfigs, "");
         vm.prank(_projectOwner);
-        address defifaToken = address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+        jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0));
 
-        _hookImpl = new DefifaHook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
+        _hookImpl = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         _governorImpl = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         _deployer = new DefifaDeployer({
             hookCodeOrigin: address(_hookImpl),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -148,15 +148,15 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         vm.warp(block.timestamp + 2 days + 1);
 
         DefifaTierCashOutWeight[] memory scorecard = _evenScorecard();
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, scorecard);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, scorecard);
         uint48 snapshotTime = uint48(block.timestamp);
 
-        uint256 preBwa0 = _gov.getBWAAttestationWeight(_gameId, scorecardId, _player0, snapshotTime);
-        uint256 preBwa1 = _gov.getBWAAttestationWeight(_gameId, scorecardId, _player1, snapshotTime);
+        uint256 preBwa0 = votingReferee.getBWAAttestationWeight(_gameId, scorecardId, _player0, snapshotTime);
+        uint256 preBwa1 = votingReferee.getBWAAttestationWeight(_gameId, scorecardId, _player1, snapshotTime);
 
         assertEq(preBwa0, 375_000_000, "pending reserve should dilute tier 1 holder at snapshot");
         assertEq(preBwa1, 750_000_000, "non-reserve tier holder keeps full post-BWA weight");
-        assertEq(preBwa0 + preBwa1 + preBwa1, 1_875_000_000, "three attestors start below adjusted quorum");
+        assertEq(preBwa0 + preBwa1 + preBwa1, 1_875_000_000, "three attestors' diluted weight at the snapshot");
 
         vm.warp(block.timestamp + 1);
 
@@ -164,8 +164,8 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
         _nft.mintReservesFor(reserveConfigs);
 
-        uint256 postRaw0 = _gov.getAttestationWeight(_gameId, _player0, snapshotTime);
-        uint256 postBwa0 = _gov.getBWAAttestationWeight(_gameId, scorecardId, _player0, snapshotTime);
+        uint256 postRaw0 = votingReferee.getAttestationWeight(_gameId, _player0, snapshotTime);
+        uint256 postBwa0 = votingReferee.getBWAAttestationWeight(_gameId, scorecardId, _player0, snapshotTime);
 
         // getAttestationWeight reads live state after reserve minting, so raw weight goes up.
         assertEq(postRaw0, 1_000_000_000, "minting reserves removes pending-reserve dilution in live view");
@@ -175,30 +175,30 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         assertEq(postBwa0, 375_000_000, "snapshot prevents reserve minting from inflating BWA power");
 
         vm.startPrank(_player0);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         vm.stopPrank();
         vm.startPrank(_player1);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         vm.stopPrank();
         vm.startPrank(_player2);
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
         vm.stopPrank();
 
-        vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
-        // Three attestors cannot reach quorum because the snapshot preserves the dilution.
-        // Their combined weight: 375M + 750M + 750M = 1,875M < quorum (2,000M base).
+        // The recorded attestations use the snapshot's diluted weight: 375M + 750M + 750M = 1,875M, not the 2,250M
+        // that reserve minting would give if it could remove the dilution.
         assertEq(
-            uint256(_gov.stateOf(_gameId, scorecardId)),
-            uint256(DefifaScorecardState.ACTIVE),
-            "reserve mint after snapshot does NOT let three attestors reach quorum"
+            votingReferee.attestationCountOf(_gameId, scorecardId),
+            1_875_000_000,
+            "reserve mint after snapshot does NOT inflate recorded attestations"
         );
     }
 
     /// @notice Pending reserve mints in the delayed-attestation window must not change BWA power.
     function test_mintingPendingReserveBeforeDelayedAttestationDoesNotChangeBWA() external {
         DefifaLaunchProjectData memory data = _launchData();
-        data.attestationStartTime = uint48(block.timestamp + 5 days);
+        data.refereeData = abi.encode(uint48(block.timestamp + 5 days), 100_381);
 
         (_pid, _nft, _gov) = _launch(data);
 
@@ -215,18 +215,18 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
         vm.warp(block.timestamp + 2 days);
 
         DefifaTierCashOutWeight[] memory scorecard = _evenScorecard();
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, scorecard);
-        uint48 futureSnapshotTime = uint48(_gov.attestationStartTimeOf(_gameId) - 1);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, scorecard);
+        uint48 futureSnapshotTime = uint48(votingReferee.attestationStartTimeOf(_gameId) - 1);
 
-        uint256 preRaw = _gov.getAttestationWeight(_gameId, _player0, futureSnapshotTime);
-        uint256 preBwa = _gov.getBWAAttestationWeight(_gameId, scorecardId, _player0, futureSnapshotTime);
+        uint256 preRaw = votingReferee.getAttestationWeight(_gameId, _player0, futureSnapshotTime);
+        uint256 preBwa = votingReferee.getBWAAttestationWeight(_gameId, scorecardId, _player0, futureSnapshotTime);
 
         JB721TiersMintReservesConfig[] memory reserveConfigs = new JB721TiersMintReservesConfig[](1);
         reserveConfigs[0] = JB721TiersMintReservesConfig({tierId: 1, count: 1});
         _nft.mintReservesFor(reserveConfigs);
 
-        uint256 postRaw = _gov.getAttestationWeight(_gameId, _player0, futureSnapshotTime);
-        uint256 postBwa = _gov.getBWAAttestationWeight(_gameId, scorecardId, _player0, futureSnapshotTime);
+        uint256 postRaw = votingReferee.getAttestationWeight(_gameId, _player0, futureSnapshotTime);
+        uint256 postBwa = votingReferee.getBWAAttestationWeight(_gameId, scorecardId, _player0, futureSnapshotTime);
 
         assertEq(preRaw, 500_000_000, "future raw snapshot includes the pending reserve exactly once");
         assertEq(preBwa, 375_000_000, "future BWA starts from the reserve-adjusted submission denominator");
@@ -274,14 +274,14 @@ contract PendingReserveSnapshotBypassTest is JBTest, TestBaseWorkflow {
             refundPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 

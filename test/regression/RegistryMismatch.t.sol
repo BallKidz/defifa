@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
@@ -24,7 +25,6 @@ import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
 import {JBTerminalConfig} from "@bananapus/core-v6/src/structs/JBTerminalConfig.sol";
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesets.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
 contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
@@ -76,14 +76,13 @@ contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
         uint256 protocolFeeProjectId =
             jbController().launchProjectFor(projectOwner, "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
-        address nanaToken =
-            address(jbController().deployERC20For(protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+        jbController().deployERC20For(protocolFeeProjectId, "Bananapus", "NANA", bytes32(0));
 
         uint256 defifaProjectId = jbController().launchProjectFor(projectOwner, "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
-        address defifaToken = address(jbController().deployERC20For(defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+        jbController().deployERC20For(defifaProjectId, "Defifa", "DEFIFA", bytes32(0));
 
-        DefifaHook hookCodeOrigin = new DefifaHook(jbDirectory(), IERC20(defifaToken), IERC20(nanaToken));
+        DefifaHook hookCodeOrigin = new DefifaHook(jbDirectory(), jbTokens(), defifaProjectId, protocolFeeProjectId);
         DefifaGovernor governor = new DefifaGovernor(jbController(), address(this));
         registry = new JBAddressRegistry();
         deployer = new DefifaDeployer({
@@ -139,14 +138,14 @@ contract RegistryMismatchTest is JBTest, TestBaseWorkflow {
             refundPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(0xBEEF),
+            refereeData: ""
         });
     }
 

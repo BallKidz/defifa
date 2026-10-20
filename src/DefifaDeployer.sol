@@ -44,6 +44,7 @@ import {IDefifaGamePhaseReporter} from "./interfaces/IDefifaGamePhaseReporter.so
 import {IDefifaGamePotReporter} from "./interfaces/IDefifaGamePotReporter.sol";
 import {IDefifaGovernor} from "./interfaces/IDefifaGovernor.sol";
 import {IDefifaHook} from "./interfaces/IDefifaHook.sol";
+import {IDefifaReferee} from "./interfaces/IDefifaReferee.sol";
 import {DefifaLaunchProjectData} from "./structs/DefifaLaunchProjectData.sol";
 import {DefifaOpsData} from "./structs/DefifaOpsData.sol";
 import {DefifaTierParams} from "./structs/DefifaTierParams.sol";
@@ -72,7 +73,9 @@ contract DefifaDeployer is
     error DefifaDeployer_CantFulfillYet(uint256 gameId);
 
     /// @notice Thrown when launching a game with non-sequential phase timestamps, no mint duration, more than 128
-    /// tiers, no scorecard timeout, or a scorecard timeout shorter than the full ratification window.
+    /// tiers, no scorecard timeout, a scorecard timeout no longer than the timelock, or no referee. Each guard keeps a
+    /// launched game able to finish: phases in order, a mint window, tier tables that fit, a refund path, a timelock
+    /// that ends before the timeout, and someone to submit the result.
     error DefifaDeployer_InvalidGameConfiguration(
         uint256 start, uint256 mintPeriodDuration, uint256 refundPeriodDuration, uint256 tierCount
     );
@@ -211,7 +214,8 @@ contract DefifaDeployer is
         JBAccountingContext memory context = terminal.accountingContextForTokenOf({projectId: gameId, token: token});
 
         // Get the current balance from the terminal's store.
-        uint256 pot = IJBMultiTerminal(address(terminal)).STORE()
+        uint256 pot = IJBMultiTerminal(address(terminal))
+            .STORE()
             .balanceOf({terminal: address(terminal), projectId: gameId, token: token});
 
         // Add any fulfilled commitments.
@@ -492,6 +496,16 @@ contract DefifaDeployer is
             });
         }
 
+        // Every game needs a referee to submit its scorecard.
+        if (launchProjectData.referee == address(0)) {
+            revert DefifaDeployer_InvalidGameConfiguration({
+                start: launchProjectData.start,
+                mintPeriodDuration: launchProjectData.mintPeriodDuration,
+                refundPeriodDuration: launchProjectData.refundPeriodDuration,
+                tierCount: launchProjectData.tiers.length
+            });
+        }
+
         // Reject ERC-20 games with a zero currency. A zero baseCurrency would cause payout limit lookups
         // in fulfillCommitmentsOf to silently fail, skipping all commitment payouts.
         if (launchProjectData.token.token != JBConstants.NATIVE_TOKEN && launchProjectData.token.currency == 0) {
@@ -500,25 +514,15 @@ contract DefifaDeployer is
             });
         }
 
-        // If a scorecard timeout is set, it must exceed the full ratification window:
-        // attestation delay (time from scoring start to attestation start) + grace period + timelock.
-        // Otherwise the game would enter NO_CONTEST before a scorecard could ever reach SUCCEEDED.
-        if (launchProjectData.scorecardTimeout > 0) {
-            // Attestation delay: how long after scoring starts before attestations can begin.
-            uint256 attestationDelay = launchProjectData.attestationStartTime > launchProjectData.start
-                ? launchProjectData.attestationStartTime - launchProjectData.start
-                : 0;
-            if (
-                launchProjectData.scorecardTimeout
-                    <= attestationDelay + launchProjectData.attestationGracePeriod + launchProjectData.timelockDuration
-            ) {
-                revert DefifaDeployer_InvalidGameConfiguration({
-                    start: launchProjectData.start,
-                    mintPeriodDuration: launchProjectData.mintPeriodDuration,
-                    refundPeriodDuration: launchProjectData.refundPeriodDuration,
-                    tierCount: launchProjectData.tiers.length
-                });
-            }
+        // The timeout must outlast the timelock, or the game would enter NO_CONTEST before any scorecard could be
+        // ratified. A referee's own windows are its creator's responsibility.
+        if (launchProjectData.scorecardTimeout <= launchProjectData.timelockDuration) {
+            revert DefifaDeployer_InvalidGameConfiguration({
+                start: launchProjectData.start,
+                mintPeriodDuration: launchProjectData.mintPeriodDuration,
+                refundPeriodDuration: launchProjectData.refundPeriodDuration,
+                tierCount: launchProjectData.tiers.length
+            });
         }
 
         address caller = _msgSender();
@@ -629,13 +633,17 @@ contract DefifaDeployer is
         // Launch the Juicebox rulesets for the reserved project.
         _launchGame({launchProjectData: launchProjectData, gameId: gameId, dataHook: address(hook)});
 
-        // Clone and initialize the new governor.
+        // Name the game's referee in the governor.
         GOVERNOR.initializeGame({
-            gameId: gameId,
-            attestationStartTime: uint256(launchProjectData.attestationStartTime),
-            attestationGracePeriod: uint256(launchProjectData.attestationGracePeriod),
-            timelockDuration: launchProjectData.timelockDuration
+            gameId: gameId, referee: launchProjectData.referee, timelockDuration: launchProjectData.timelockDuration
         });
+
+        // Give a contract referee its settings for this game.
+        if (launchProjectData.refereeData.length != 0) {
+            IDefifaReferee(launchProjectData.referee).initializeGameFor({
+                gameId: gameId, data: launchProjectData.refereeData
+            });
+        }
 
         // Transfer ownership to the specified owner.
         hook.transferOwnership(address(GOVERNOR));

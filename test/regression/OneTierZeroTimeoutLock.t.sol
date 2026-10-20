@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaGamePhase} from "../../src/enums/DefifaGamePhase.sol";
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
@@ -26,7 +27,6 @@ import {JBTerminalConfig} from "@bananapus/core-v6/src/structs/JBTerminalConfig.
 import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
 import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 
@@ -37,6 +37,7 @@ contract OneTierZeroTimeoutLockTest is JBTest, TestBaseWorkflow {
 
     DefifaDeployer internal deployer;
     DefifaGovernor internal governor;
+    DefifaVotingReferee votingReferee;
     DefifaHook internal hook;
 
     uint256 internal projectId;
@@ -89,15 +90,15 @@ contract OneTierZeroTimeoutLockTest is JBTest, TestBaseWorkflow {
         uint256 protocolFeeProjectId =
             jbController().launchProjectFor(projectOwner, "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
-        address protocolFeeToken =
-            address(jbController().deployERC20For(protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+        jbController().deployERC20For(protocolFeeProjectId, "Bananapus", "NANA", bytes32(0));
 
         uint256 defifaProjectId = jbController().launchProjectFor(projectOwner, "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
-        address defifaToken = address(jbController().deployERC20For(defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+        jbController().deployERC20For(defifaProjectId, "Defifa", "DEFIFA", bytes32(0));
 
-        hook = new DefifaHook(jbDirectory(), IERC20(defifaToken), IERC20(protocolFeeToken));
+        hook = new DefifaHook(jbDirectory(), jbTokens(), defifaProjectId, protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -153,14 +154,14 @@ contract OneTierZeroTimeoutLockTest is JBTest, TestBaseWorkflow {
             refundPeriodDuration: 1 days,
             start: uint48(block.timestamp + 3 days),
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: 0,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 

@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {Test} from "forge-std/Test.sol";
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
@@ -16,7 +17,6 @@ import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 import {DefifaLaunchProjectData} from "../src/structs/DefifaLaunchProjectData.sol";
 import {DefifaTierParams} from "../src/structs/DefifaTierParams.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {IJB721TiersHookStore} from "@bananapus/721-hook-v6/src/interfaces/IJB721TiersHookStore.sol";
 import {IJBMultiTerminal} from "@bananapus/core-v6/src/interfaces/IJBMultiTerminal.sol";
@@ -95,14 +95,17 @@ contract MintCostHandler is Test {
         data[0] = abi.encode(user, m);
         bytes4[] memory ids = new bytes4[](1);
         ids[0] = metaHelper.getId("pay", hookCodeOrigin);
+        // Build metadata before vm.prank so the external call to createMetadata doesn't consume the prank.
+        bytes memory metadata = metaHelper.createMetadata(ids, data);
 
+        uint256 balanceBefore = nft.balanceOf(user);
         vm.prank(user);
-        terminal.pay{value: tierPrice}(
-            pid, JBConstants.NATIVE_TOKEN, tierPrice, user, 0, "", metaHelper.createMetadata(ids, data)
-        );
+        terminal.pay{value: tierPrice}(pid, JBConstants.NATIVE_TOKEN, tierPrice, user, 0, "", metadata);
+        assertEq(nft.balanceOf(user), balanceBefore + 1, "minted NFT held");
 
-        uint256 nb = store.numberOfBurnedFor(address(nft), tierId);
-        uint256 tokenNumber = tier.initialSupply - tier.remainingSupply + 1 + nb;
+        // The store numbers a tier's tokens by mint order; burns do not free numbers.
+        uint256 tokenNumber = tier.initialSupply - tier.remainingSupply + 1;
+        assertEq(nft.ownerOf((tierId * 1_000_000_000) + tokenNumber), user, "tracked token ID");
 
         liveTokens.push(TokenInfo({holder: user, tierId: tierId, tokenNumber: tokenNumber}));
 
@@ -124,18 +127,22 @@ contract MintCostHandler is Test {
         data[0] = abi.encode(cid);
         bytes4[] memory bids = new bytes4[](1);
         bids[0] = metaHelper.getId("cashOut", hookCodeOrigin);
+        bytes memory metadata = metaHelper.createMetadata(bids, data);
 
+        uint256 holderBalanceBefore = info.holder.balance;
         vm.prank(info.holder);
         JBMultiTerminal(address(terminal))
             .cashOutTokensOf({
-            holder: info.holder,
-            projectId: pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(info.holder),
-            metadata: metaHelper.createMetadata(bids, data)
-        });
+                holder: info.holder,
+                projectId: pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(info.holder),
+                metadata: metadata
+            });
+
+        assertEq(info.holder.balance, holderBalanceBefore + tierPrice, "exact refund");
 
         expectedMintCost -= tierPrice;
         burnCount++;
@@ -166,10 +173,8 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hookImpl;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
     DefifaHook nft;
-
-    /// @dev Storage slot of _totalMintCost in DefifaHook (from `forge inspect DefifaHook storage-layout`).
-    uint256 constant TOTAL_MINT_COST_SLOT = 141;
 
     uint8 constant N_TIERS = 4;
     uint256 constant TIER_PRICE = 1 ether;
@@ -217,15 +222,15 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
 
         _protocolFeeProjectId = jbController().launchProjectFor(projectOwner, "", rc, tc, "");
         vm.prank(projectOwner);
-        address _nanaToken =
-            address(jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+        jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0));
 
         _defifaProjectId = jbController().launchProjectFor(projectOwner, "", rc, tc, "");
         vm.prank(projectOwner);
-        address _defifaToken = address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+        jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0));
 
-        hookImpl = new DefifaHook(jbDirectory(), IERC20(_defifaToken), IERC20(_nanaToken));
+        hookImpl = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hookImpl),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -262,8 +267,6 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 200 days),
             refundPeriodDuration: 100 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             // forge-lint: disable-next-line(unsafe-typecast)
             tierPrice: uint104(TIER_PRICE),
@@ -272,7 +275,9 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
 
         uint256 pid = deployer.launchGameWith(d);
@@ -296,9 +301,16 @@ contract DefifaMintCostInvariantTest is JBTest, TestBaseWorkflow {
         targetSelector(FuzzSelector({addr: address(handler), selectors: selectors}));
     }
 
-    /// @notice Read _totalMintCost directly from storage.
+    /// @notice Read totalMintCost from the hook.
     function _readTotalMintCost() internal view returns (uint256) {
-        return uint256(vm.load(address(nft), bytes32(TOTAL_MINT_COST_SLOT)));
+        return nft.totalMintCost();
+    }
+
+    /// @notice Every run must mint and refund. A failing handler call is discarded (fail_on_revert = false), so without
+    /// this check an always-reverting handler would leave the invariants holding over an empty game.
+    function afterInvariant() external view {
+        assertGt(handler.mintCount(), 0, "no mint succeeded");
+        assertGt(handler.burnCount(), 0, "no refund succeeded");
     }
 
     /// @notice INVARIANT: _totalMintCost always equals the handler's tracked expected value.

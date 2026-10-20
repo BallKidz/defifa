@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
@@ -14,7 +15,6 @@ import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRule
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {DefifaDelegation} from "../src/structs/DefifaDelegation.sol";
@@ -63,6 +63,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
     uint256 _pid;
@@ -118,9 +119,9 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         _defifaProjectTokenAccount =
             address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
 
-        hook =
-            new DefifaHook(jbDirectory(), IERC20(_defifaProjectTokenAccount), IERC20(_protocolFeeProjectTokenAccount));
+        hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -154,7 +155,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         for (uint256 i; i < 4; i++) {
             sc[i].cashOutWeight = tw / 4;
         }
-        _gov.submitScorecardFor(_gameId, sc);
+        votingReferee.submitScorecardFor(_gameId, sc);
 
         // Now the attacker mints in a new block (after the scorecard was submitted).
         // Payments are paused in scoring phase, so this would revert. But even if somehow
@@ -164,7 +165,7 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
 
         // Verify attacker has 0 attestation power at the snapshot timestamp.
         assertEq(
-            _gov.getAttestationWeight(_gameId, attacker, snapshotTime),
+            votingReferee.getAttestationWeight(_gameId, attacker, snapshotTime),
             0,
             "attacker who did not hold tokens at snapshot has 0 attestation power"
         );
@@ -172,7 +173,9 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         // Verify legitimate users still have full power.
         for (uint256 i; i < _users.length; i++) {
             assertGt(
-                _gov.getAttestationWeight(_gameId, _users[i], snapshotTime), 0, "legitimate user has attestation power"
+                votingReferee.getAttestationWeight(_gameId, _users[i], snapshotTime),
+                0,
+                "legitimate user has attestation power"
             );
         }
     }
@@ -221,19 +224,19 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         for (uint256 i; i < 4; i++) {
             sc[i].cashOutWeight = tw / 4;
         }
-        uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 proposalId = votingReferee.submitScorecardFor(_gameId, sc);
 
         // Wait for attestation start.
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // User 0 attests.
         vm.prank(_users[0]);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
 
         // User 0 tries to attest again.
         vm.prank(_users[0]);
-        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_AlreadyAttested.selector);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_AlreadyAttested.selector);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
     }
 
     // =========================================================================
@@ -248,26 +251,26 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
 
         // Verify that user 0 (sole holder of tier 1) has exactly MAX_ATTESTATION_POWER_TIER.
         vm.warp(_tsReader.ts() + 1);
-        uint256 power = _gov.getAttestationWeight(_gameId, _users[0], uint48(_tsReader.ts()));
+        uint256 power = votingReferee.getAttestationWeight(_gameId, _users[0], uint48(_tsReader.ts()));
         assertEq(
             power,
-            _gov.MAX_ATTESTATION_POWER_TIER(),
+            votingReferee.MAX_ATTESTATION_POWER_TIER(),
             "sole holder of one tier should have exactly MAX_ATTESTATION_POWER_TIER"
         );
     }
 
     // =========================================================================
-    // TEST 6: Quorum requires 50% of minted tier weight.
-    // With 4 minted tiers, quorum = 2 * MAX_ATTESTATION_POWER_TIER.
+    // TEST 6: Quorum requires 50% of the attestation possible.
+    // With 4 minted tiers, that is (4 - 1) * MAX_ATTESTATION_POWER_TIER, so quorum = 1.5 * MAX.
     // 1 out of 4 attestors cannot reach quorum alone.
     // =========================================================================
     function test_singleAttestorCannotReachQuorum() external {
         _setupGame(4, 1 ether);
         _toScoring();
 
-        uint256 quorum = _gov.quorum(_gameId);
-        uint256 expectedQuorum = (4 * _gov.MAX_ATTESTATION_POWER_TIER()) / 2;
-        assertEq(quorum, expectedQuorum, "quorum = 50% of 4 minted tiers");
+        uint256 quorum = votingReferee.quorum(_gameId);
+        uint256 expectedQuorum = (3 * votingReferee.MAX_ATTESTATION_POWER_TIER()) / 2;
+        assertEq(quorum, expectedQuorum, "quorum = 50% of (4 - 1) tiers' power");
 
         // Submit scorecard.
         DefifaTierCashOutWeight[] memory sc = _buildScorecard(4);
@@ -275,34 +278,34 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         for (uint256 i; i < 4; i++) {
             sc[i].cashOutWeight = tw / 4;
         }
-        uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 proposalId = votingReferee.submitScorecardFor(_gameId, sc);
 
         // Wait for attestation + grace period.
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // Only user 0 attests (25% of total power).
         vm.prank(_users[0]);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
 
         // After grace period, quorum should NOT be met.
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
         // The proposal should still be ACTIVE (not SUCCEEDED) because quorum is unmet.
-        DefifaScorecardState state = _gov.stateOf(_gameId, proposalId);
+        DefifaScorecardState state = votingReferee.stateOf(_gameId, proposalId);
         assertEq(uint256(state), uint256(DefifaScorecardState.ACTIVE), "1/4 attestors should not reach quorum");
 
         // Attempting to ratify should revert.
-        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
-        _gov.ratifyScorecardFrom(_gameId, sc);
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector);
+        votingReferee.forwardScorecardFor(_gameId, sc);
     }
 
     // =========================================================================
-    // TEST 7: Three out of four attestors can reach the HHI-adjusted quorum.
+    // TEST 7: Three out of four attestors can reach quorum.
     // With BWA (Benefit-Weighted Attestation), each attestor's power is reduced
     // by their tier's share of the scorecard. For an equal 4-tier scorecard:
     //   BWA power per user = MAX_ATTESTATION_POWER_TIER * 0.75 = 750_000_000
-    //   HHI-adjusted quorum = baseQuorum * 1.125 = 2_250_000_000
-    // So 3 users (2_250_000_000) just meets quorum, but 2 users (1_500_000_000) does not.
+    //   quorum = 51.56% of (4 - 1) * MAX = 1_546_800_000
+    // So 3 users (2_250_000_000) meet quorum, but 2 users (1_500_000_000) do not.
     // =========================================================================
     function test_halfAttestorsCanReachQuorum() external {
         _setupGame(4, 1 ether);
@@ -314,25 +317,26 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         for (uint256 i; i < 4; i++) {
             sc[i].cashOutWeight = tw / 4;
         }
-        uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        uint256 proposalId = votingReferee.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // Users 0, 1, and 2 attest (75% of raw power, but BWA-adjusted to meet quorum).
         vm.prank(_users[0]);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(_users[1]);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(_users[2]);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
 
         // After grace period.
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
         // The proposal should be SUCCEEDED.
-        DefifaScorecardState state = _gov.stateOf(_gameId, proposalId);
+        DefifaScorecardState state = votingReferee.stateOf(_gameId, proposalId);
         assertEq(uint256(state), uint256(DefifaScorecardState.SUCCEEDED), "3/4 attestation should reach quorum");
 
         // Ratification should succeed.
+        votingReferee.forwardScorecardFor(_gameId, sc);
         _gov.ratifyScorecardFrom(_gameId, sc);
         assertTrue(_nft.cashOutWeightIsSet(), "weights should be set after ratification");
     }
@@ -356,48 +360,49 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
             scB[i].cashOutWeight = tw / 4;
         }
 
-        uint256 proposalA = _gov.submitScorecardFor(_gameId, scA);
-        uint256 proposalB = _gov.submitScorecardFor(_gameId, scB);
+        uint256 proposalA = votingReferee.submitScorecardFor(_gameId, scA);
+        uint256 proposalB = votingReferee.submitScorecardFor(_gameId, scB);
 
         // Wait for attestation.
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         // User 0 (tier 1, 100% beneficiary of scorecard A) has BWA power = 0 and cannot attest.
         vm.prank(_users[0]);
-        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
-        _gov.attestToScorecardFrom(_gameId, proposalA);
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector);
+        votingReferee.attestToScorecardFrom(_gameId, proposalA);
 
         // Users 1, 2, 3 like scorecard B (3/4, quorum met).
         vm.prank(_users[1]);
-        _gov.attestToScorecardFrom(_gameId, proposalB);
+        votingReferee.attestToScorecardFrom(_gameId, proposalB);
         vm.prank(_users[2]);
-        _gov.attestToScorecardFrom(_gameId, proposalB);
+        votingReferee.attestToScorecardFrom(_gameId, proposalB);
         vm.prank(_users[3]);
-        _gov.attestToScorecardFrom(_gameId, proposalB);
+        votingReferee.attestToScorecardFrom(_gameId, proposalB);
 
         // After grace period.
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
         // Scorecard A should still be ACTIVE (no quorum).
         assertEq(
-            uint256(_gov.stateOf(_gameId, proposalA)),
+            uint256(votingReferee.stateOf(_gameId, proposalA)),
             uint256(DefifaScorecardState.ACTIVE),
             "scorecard A should not reach quorum"
         );
 
         // Scorecard B should be SUCCEEDED.
         assertEq(
-            uint256(_gov.stateOf(_gameId, proposalB)),
+            uint256(votingReferee.stateOf(_gameId, proposalB)),
             uint256(DefifaScorecardState.SUCCEEDED),
             "scorecard B should reach quorum"
         );
 
         // Ratify scorecard B.
+        votingReferee.forwardScorecardFor(_gameId, scB);
         _gov.ratifyScorecardFrom(_gameId, scB);
 
         // After ratification, scorecard A is DEFEATED.
         assertEq(
-            uint256(_gov.stateOf(_gameId, proposalA)),
+            uint256(votingReferee.stateOf(_gameId, proposalA)),
             uint256(DefifaScorecardState.DEFEATED),
             "scorecard A defeated after B is ratified"
         );
@@ -412,19 +417,16 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
     // than a snapshot, so when tokens are burned the quorum threshold
     // decreases. This is documented and accepted behavior.
     //
-    // With BWA + HHI-adjusted quorum, a minimum of 4 remaining tiers is needed
-    // for a balanced scorecard to reach quorum (since total BWA power for n tiers
-    // is MAX*(n-1) and the adjusted quorum for n=2 always exceeds that).
     // We use 6 tiers, burn 2, leaving 4 tiers where 3/4 attestors suffice.
     // =========================================================================
     function test_burnTiersLowersQuorumAllowsRatification() external {
         // --- Step 1: Setup 6 tiers, 1 user per tier ---
         _setupGame(6, 1 ether);
 
-        // Verify initial quorum: 6 minted tiers -> quorum = 3 * MAX_ATTESTATION_POWER_TIER.
-        uint256 initialQuorum = _gov.quorum(_gameId);
-        uint256 maxTier = _gov.MAX_ATTESTATION_POWER_TIER();
-        assertEq(initialQuorum, (6 * maxTier) / 2, "initial quorum = 50% of 6 tiers");
+        // Verify initial quorum: 6 minted tiers -> 50% of (6 - 1) * MAX_ATTESTATION_POWER_TIER.
+        uint256 initialQuorum = votingReferee.quorum(_gameId);
+        uint256 maxTier = votingReferee.MAX_ATTESTATION_POWER_TIER();
+        assertEq(initialQuorum, (5 * maxTier) / 2, "initial quorum = 50% of 5 tiers' power");
 
         // --- Step 2: Warp to REFUND phase, users 4 and 5 refund ---
         _toRefund();
@@ -438,8 +440,8 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         assertEq(_nft.currentSupplyOfTier(6), 0, "tier 6 supply = 0 after refund");
 
         // Quorum should now reflect only 4 minted tiers.
-        uint256 newQuorum = _gov.quorum(_gameId);
-        assertEq(newQuorum, (4 * maxTier) / 2, "quorum drops to 50% of 4 remaining tiers");
+        uint256 newQuorum = votingReferee.quorum(_gameId);
+        assertEq(newQuorum, (3 * maxTier) / 2, "quorum drops to 50% of 3 tiers' power");
         assertLt(newQuorum, initialQuorum, "new quorum < initial quorum");
 
         // --- Step 3: Advance to SCORING phase ---
@@ -455,30 +457,31 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         sc[3].cashOutWeight = tw / 4;
         // sc[4].cashOutWeight = 0; (default, tier 5 burned)
         // sc[5].cashOutWeight = 0; (default, tier 6 burned)
-        uint256 proposalId = _gov.submitScorecardFor(_gameId, sc);
+        uint256 proposalId = votingReferee.submitScorecardFor(_gameId, sc);
 
         // --- Step 5: Users 0, 1, and 2 attest (3 of 4 remaining tiers) ---
         // BWA power per user (25% tier weight): 1e9 * 0.75 = 750_000_000.
-        // HHI-adjusted quorum for equal 4-tier scorecard = 2e9 * 1.125 = 2_250_000_000.
-        // 3 users * 750M = 2_250_000_000, meeting the adjusted quorum exactly.
-        vm.warp(_tsReader.ts() + _gov.attestationStartTimeOf(_gameId) + 1);
+        // Quorum for an equal 4-tier scorecard = 3e9 * 51.56% = 1_546_800_000.
+        // 3 users * 750M = 2_250_000_000, above quorum.
+        vm.warp(_tsReader.ts() + votingReferee.attestationStartTimeOf(_gameId) + 1);
 
         vm.prank(_users[0]);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(_users[1]);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
         vm.prank(_users[2]);
-        _gov.attestToScorecardFrom(_gameId, proposalId);
+        votingReferee.attestToScorecardFrom(_gameId, proposalId);
 
         // --- Step 6: After grace period, proposal should be SUCCEEDED ---
-        vm.warp(_tsReader.ts() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(_tsReader.ts() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
-        DefifaScorecardState state = _gov.stateOf(_gameId, proposalId);
+        DefifaScorecardState state = votingReferee.stateOf(_gameId, proposalId);
         assertEq(
             uint256(state), uint256(DefifaScorecardState.SUCCEEDED), "3 attestors reach quorum after tiers 5+6 burned"
         );
 
         // --- Step 7: Ratification should succeed ---
+        votingReferee.forwardScorecardFor(_gameId, sc);
         _gov.ratifyScorecardFrom(_gameId, sc);
         assertTrue(_nft.cashOutWeightIsSet(), "scorecard ratified - weights are set");
 
@@ -531,8 +534,6 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             // forge-lint: disable-next-line(unsafe-typecast)
             tierPrice: uint104(tierPrice),
@@ -541,7 +542,9 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 
@@ -596,14 +599,14 @@ contract DefifaAdversarialQuorumTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: meta
-        });
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: meta
+            });
     }
 
     function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {

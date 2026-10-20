@@ -1,0 +1,285 @@
+// SPDX-License-Identifier: UNLICENSED
+pragma solidity 0.8.28;
+
+import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
+
+import {DefifaGovernor} from "../../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../../src/referees/DefifaVotingReferee.sol";
+import {DefifaDeployer} from "../../../src/DefifaDeployer.sol";
+import {Defifa1155Hook} from "../../../src/Defifa1155Hook.sol";
+import {DefifaTokenUriResolver} from "../../../src/DefifaTokenUriResolver.sol";
+import {DefifaScorecardState} from "../../../src/enums/DefifaScorecardState.sol";
+import {IDefifaDeployer} from "../../../src/interfaces/IDefifaDeployer.sol";
+import {DefifaTiersHookStore} from "../../../src/DefifaTiersHookStore.sol";
+
+import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
+import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
+import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
+
+import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
+import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
+import {Strings} from "@openzeppelin/contracts/utils/Strings.sol";
+import {DefifaLaunchProjectData} from "../../../src/structs/DefifaLaunchProjectData.sol";
+import {DefifaTierParams} from "../../../src/structs/DefifaTierParams.sol";
+import {DefifaTierCashOutWeight} from "../../../src/structs/DefifaTierCashOutWeight.sol";
+import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
+import {JBTerminalConfig} from "@bananapus/core-v6/src/structs/JBTerminalConfig.sol";
+import {JBRulesetConfig} from "@bananapus/core-v6/src/structs/JBRulesetConfig.sol";
+import {JBRulesetMetadata} from "@bananapus/core-v6/src/structs/JBRulesetMetadata.sol";
+import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
+import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
+import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
+import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
+import {JBConstants} from "@bananapus/core-v6/src/libraries/JBConstants.sol";
+import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
+import {IJBRulesetApprovalHook} from "@bananapus/core-v6/src/interfaces/IJBRulesetApprovalHook.sol";
+import {JBMultiTerminal} from "@bananapus/core-v6/src/JBMultiTerminal.sol";
+
+/// @dev Helper to read block.timestamp via an external call, bypassing the via-ir optimizer's timestamp caching.
+contract TimestampReader3 {
+    function timestamp() external view returns (uint256) {
+        return block.timestamp;
+    }
+}
+
+/// @title FulfillmentBlocksRatification
+/// @notice Regression test: ratification should succeed even when sendPayoutsOf reverts inside fulfillCommitmentsOf.
+/// @dev Tests the internal try-catch wrapper around sendPayoutsOf in fulfillCommitmentsOf.
+///      The test verifies that the CommitmentPayoutFailed event is emitted and ratification completes.
+contract FulfillmentBlocksRatification is JBTest, TestBaseWorkflow {
+    using JBRulesetMetadataResolver for JBRuleset;
+
+    TimestampReader3 private _tsReader = new TimestampReader3();
+
+    address _protocolFeeProjectTokenAccount;
+    address _defifaProjectTokenAccount;
+    uint256 _protocolFeeProjectId;
+    uint256 _defifaProjectId;
+    uint256 _gameId = 3;
+
+    DefifaDeployer deployer;
+    Defifa1155Hook hook;
+    DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
+
+    address projectOwner = address(bytes20(keccak256("projectOwner")));
+
+    function setUp() public virtual override {
+        super.setUp();
+
+        JBAccountingContext[] memory _tokens = new JBAccountingContext[](1);
+        _tokens[0] = JBAccountingContext({token: JBConstants.NATIVE_TOKEN, decimals: 18, currency: JBCurrencyIds.ETH});
+
+        JBTerminalConfig[] memory terminalConfigs = new JBTerminalConfig[](1);
+        terminalConfigs[0] = JBTerminalConfig({terminal: jbMultiTerminal(), accountingContextsToAccept: _tokens});
+
+        JBRulesetConfig[] memory rulesetConfigs = new JBRulesetConfig[](1);
+        rulesetConfigs[0] = JBRulesetConfig({
+            mustStartAtOrAfter: 0,
+            duration: 10 days,
+            weight: 1e18,
+            weightCutPercent: 0,
+            approvalHook: IJBRulesetApprovalHook(address(0)),
+            metadata: JBRulesetMetadata({
+                reservedPercent: 0,
+                cashOutTaxRate: 0,
+                baseCurrency: JBCurrencyIds.ETH,
+                pausePay: false,
+                pauseCreditTransfers: false,
+                allowOwnerMinting: false,
+                allowSetCustomToken: false,
+                allowTerminalMigration: false,
+                allowSetTerminals: false,
+                allowSetController: false,
+                allowAddAccountingContext: false,
+                allowAddPriceFeed: false,
+                ownerMustSendPayouts: false,
+                holdFees: false,
+                scopeCashOutsToLocalBalances: true,
+                useDataHookForPay: true,
+                useDataHookForCashOut: true,
+                dataHook: address(0),
+                metadata: 0
+            }),
+            splitGroups: new JBSplitGroup[](0),
+            fundAccessLimitGroups: new JBFundAccessLimitGroup[](0)
+        });
+
+        _protocolFeeProjectId =
+            jbController().launchProjectFor(address(projectOwner), "", rulesetConfigs, terminalConfigs, "");
+        vm.prank(projectOwner);
+        _protocolFeeProjectTokenAccount =
+            address(jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+
+        _defifaProjectId =
+            jbController().launchProjectFor(address(projectOwner), "", rulesetConfigs, terminalConfigs, "");
+        vm.prank(projectOwner);
+        _defifaProjectTokenAccount =
+            address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+
+        hook = new Defifa1155Hook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
+        governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
+        JBAddressRegistry _registry = new JBAddressRegistry();
+        DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
+        deployer = new DefifaDeployer({
+            hookCodeOrigin: address(hook),
+            tokenUriResolver: _tokenUriResolver,
+            governor: governor,
+            controller: jbController(),
+            registry: _registry,
+            defifaProjectId: _defifaProjectId,
+            baseProtocolProjectId: _protocolFeeProjectId,
+            hookStore: new DefifaTiersHookStore(),
+            trustedForwarder: address(0)
+        });
+
+        hook.transferOwnership(address(deployer));
+        governor.transferOwnership(address(deployer));
+    }
+
+    /// @notice Test that ratification emits CommitmentPayoutFailed when sendPayoutsOf reverts,
+    ///         but the scorecard is still ratified and the final ruleset is queued.
+    /// @dev We mock sendPayoutsOf to revert, then verify ratification still succeeds.
+    function test_ratificationSucceedsWhenPayoutReverts() public {
+        uint8 nTiers = 4;
+        address[] memory _users = new address[](nTiers);
+        DefifaLaunchProjectData memory defifaData = _getBasicLaunchData(nTiers);
+        (uint256 _projectId, Defifa1155Hook _nft, DefifaGovernor _governor) = _createProject(defifaData);
+
+        // Phase 1: Mint
+        vm.warp(defifaData.start - defifaData.mintPeriodDuration - defifaData.refundPeriodDuration);
+        for (uint256 i = 0; i < nTiers; i++) {
+            _users[i] = address(bytes20(keccak256(abi.encode("user", Strings.toString(i)))));
+            vm.deal(_users[i], 1 ether);
+            uint16[] memory rawMetadata = new uint16[](1);
+            // forge-lint: disable-next-line(unsafe-typecast)
+            rawMetadata[0] = uint16(i + 1);
+            uint256[] memory counts = new uint256[](1);
+            counts[0] = 1;
+            bytes memory metadata = _buildPayMetadata(abi.encode(_users[i], rawMetadata, counts));
+            vm.prank(_users[i]);
+            jbMultiTerminal().pay{value: 1 ether}(
+                _projectId, JBConstants.NATIVE_TOKEN, 1 ether, _users[i], 0, "", metadata
+            );
+            vm.warp(_tsReader.timestamp() + 1);
+        }
+
+        // Warp to scoring phase
+        vm.warp(defifaData.start + 1);
+
+        // Build scorecards
+        DefifaTierCashOutWeight[] memory scorecards = new DefifaTierCashOutWeight[](nTiers);
+        uint256 weightPerTier = _nft.TOTAL_CASHOUT_WEIGHT() / nTiers;
+        uint256 assigned;
+        for (uint256 i = 0; i < nTiers; i++) {
+            scorecards[i].id = i + 1;
+            scorecards[i].cashOutWeight = weightPerTier;
+            assigned += weightPerTier;
+        }
+        if (assigned < _nft.TOTAL_CASHOUT_WEIGHT()) {
+            scorecards[0].cashOutWeight += _nft.TOTAL_CASHOUT_WEIGHT() - assigned;
+        }
+
+        // Submit and attest
+        uint256 _proposalId = votingReferee.submitScorecardFor(_gameId, scorecards);
+        vm.warp(_tsReader.timestamp() + votingReferee.attestationStartTimeOf(_gameId) + 1);
+        for (uint256 i = 0; i < _users.length; i++) {
+            vm.prank(_users[i]);
+            votingReferee.attestToScorecardFrom(_gameId, _proposalId);
+        }
+        vm.warp(_tsReader.timestamp() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+
+        // Mock sendPayoutsOf on the terminal to revert
+        vm.mockCallRevert(
+            address(jbMultiTerminal()),
+            abi.encodeWithSelector(JBMultiTerminal.sendPayoutsOf.selector),
+            abi.encodeWithSignature("Error(string)", "simulated payout failure")
+        );
+
+        votingReferee.forwardScorecardFor(_gameId, scorecards);
+
+        // Ratification should succeed. CommitmentPayoutFailed is emitted from the deployer.
+        vm.expectEmit(true, false, false, false);
+        emit IDefifaDeployer.CommitmentPayoutFailed(_gameId, 0, "", address(_governor));
+
+        _governor.ratifyScorecardFrom(_gameId, scorecards);
+
+        // Clear mock
+        vm.clearMockedCalls();
+
+        // Verify the scorecard was ratified
+        assertEq(
+            _governor.ratifiedScorecardIdOf(_gameId), _proposalId, "Scorecard should be ratified despite payout failure"
+        );
+
+        // Verify the state is RATIFIED
+        assertEq(
+            uint256(votingReferee.stateOf(_gameId, _proposalId)),
+            uint256(DefifaScorecardState.RATIFIED),
+            "Scorecard state should be RATIFIED"
+        );
+
+        // Verify commitments have been fulfilled.
+        assertTrue(deployer.commitmentsFulfilledFor(_projectId), "commitments should be fulfilled");
+        assertEq(deployer.fulfilledCommitmentsOf(_projectId), 0, "no fee amount when payout reverted");
+    }
+
+    // ----- Internal helpers ------
+
+    function _getBasicLaunchData(uint8 nTiers) internal view returns (DefifaLaunchProjectData memory) {
+        DefifaTierParams[] memory tierParams = new DefifaTierParams[](nTiers);
+        for (uint256 i = 0; i < nTiers; i++) {
+            tierParams[i] = DefifaTierParams({
+                reservedRate: 0,
+                reservedTokenBeneficiary: address(0),
+                encodedIpfsUri: bytes32(0),
+                shouldUseReservedTokenBeneficiaryAsDefault: false,
+                name: "DEFIFA"
+            });
+        }
+
+        return DefifaLaunchProjectData({
+            name: "DEFIFA",
+            projectUri: "",
+            contractUri: "",
+            baseUri: "",
+            tierPrice: 1 ether,
+            token: JBAccountingContext({token: JBConstants.NATIVE_TOKEN, decimals: 18, currency: JBCurrencyIds.ETH}),
+            mintPeriodDuration: 1 days,
+            start: uint48(block.timestamp + 3 days),
+            refundPeriodDuration: 1 days,
+            splits: new JBSplit[](0),
+            defaultAttestationDelegate: address(0),
+            tiers: tierParams,
+            defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
+            terminal: jbMultiTerminal(),
+            minParticipation: 0,
+            scorecardTimeout: type(uint32).max,
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
+        });
+    }
+
+    function _createProject(DefifaLaunchProjectData memory defifaLaunchData)
+        internal
+        returns (uint256 projectId, Defifa1155Hook nft, DefifaGovernor _governor)
+    {
+        _governor = governor;
+        (projectId) = deployer.launchGameWith(defifaLaunchData);
+        JBRuleset memory _fc = jbRulesets().currentOf(projectId);
+        if (_fc.dataHook() == address(0)) {
+            (_fc,) = jbRulesets().latestQueuedOf(projectId);
+        }
+        nft = Defifa1155Hook(_fc.dataHook());
+    }
+
+    function _buildPayMetadata(bytes memory metadata) internal view returns (bytes memory) {
+        bytes[] memory data = new bytes[](1);
+        data[0] = metadata;
+        bytes4[] memory ids = new bytes4[](1);
+        ids[0] = metadataHelper().getId("pay", address(hook));
+        return metadataHelper().createMetadata(ids, data);
+    }
+}

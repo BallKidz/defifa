@@ -1,8 +1,10 @@
 # Defifa
 
-Defifa is an onchain prediction game system built on Juicebox. Each game is a Juicebox project with staged rulesets, tiered NFT game pieces, scorecard governance, and a final settlement path that turns the project's surplus into winner payouts.
+Defifa is an onchain prediction game system built on Juicebox. Each game is a Juicebox project with staged rulesets, tiered NFT game pieces, a referee that submits the game's scorecard, and a final settlement path that turns the project's surplus into winner payouts.
 
-Use this repo when the question is about game lifecycle, scorecard ratification, attestation power, or Defifa-specific settlement behavior. Do not start here for generic project accounting, terminal behavior, or standard 721-tier mechanics.
+Defifa ships two game types side by side: the ERC-721 game (`DefifaHook`, one NFT per position) and the ERC-1155 game (`Defifa1155Hook`, one balance per tier, so large entries mint in one transfer). Each has its own `DefifaDeployer` and `DefifaGovernor`; both share one `DefifaTiersHookStore`, one `DefifaTokenUriResolver`, and one `DefifaVotingReferee`.
+
+Use this repo when the question is about game lifecycle, referees and scorecard ratification, holder attestation in the voting referee, or Defifa-specific settlement behavior. Do not start here for generic project accounting, terminal behavior, or standard 721-tier mechanics.
 
 ## Documentation
 
@@ -22,8 +24,10 @@ Use this repo when the question is about game lifecycle, scorecard ratification,
 Defifa adds game-specific behavior on top of Juicebox and the 721 hook stack:
 
 - phased game launch and completion packaging in `DefifaDeployer`
-- game-piece behavior, delegation, and settlement weighting in `DefifaHook`
-- scorecard submission, attestation, quorum, grace periods, and ratification in `DefifaGovernor`
+- game-piece behavior, delegation, and settlement weighting in `DefifaHook` (ERC-721) and `Defifa1155Hook` (ERC-1155)
+- count-based tier records in `DefifaTiersHookStore`, the upstream `JB721TiersHookStore` plus `recordMintCounts`, `recordBurnCounts` and a count form of `recordTransferForTier`
+- each game's referee, timelock, and scorecard ratification in `DefifaGovernor`
+- the sample holder-vote referee in `DefifaVotingReferee`: attestation, BWA power, quorum, grace periods, and revocation
 - onchain card rendering and token metadata in `DefifaTokenUriResolver`
 
 This repo does not own:
@@ -34,11 +38,14 @@ This repo does not own:
 
 ## Mental model
 
-Defifa is easiest to read as one state machine split across three contracts:
+Defifa is easiest to read as one state machine split across three contracts, plus the game's referee:
 
 1. `DefifaDeployer` launches the game and wires the components together
-2. `DefifaGovernor` decides which scorecard, if any, becomes final
-3. `DefifaHook` converts that ratified result into cash-out weights for game-piece holders
+2. the game's referee decides the result and submits it to the governor. A referee is any address: a person, a multisig, or a contract that runs its own rule, such as `DefifaVotingReferee`'s holder vote
+3. `DefifaGovernor` holds the referee's pending scorecard through the game's timelock, then lets anyone ratify it
+4. the game hook (`DefifaHook` or `Defifa1155Hook`) converts that ratified result into cash-out weights for game-piece holders
+
+The governor counts no votes. A game is as safe as its referee.
 
 Most real issues live at the seams between those contracts.
 
@@ -47,10 +54,13 @@ Most real issues live at the seams between those contracts.
 1. [`src/DefifaDeployer.sol`](./src/DefifaDeployer.sol)
 2. [`src/DefifaHook.sol`](./src/DefifaHook.sol)
 3. [`src/DefifaGovernor.sol`](./src/DefifaGovernor.sol)
-4. [`src/libraries/DefifaHookLib.sol`](./src/libraries/DefifaHookLib.sol)
-5. [`test/DefifaGovernor.t.sol`](./test/DefifaGovernor.t.sol)
-6. [`test/DefifaFeeAccounting.t.sol`](./test/DefifaFeeAccounting.t.sol)
-7. [`test/DefifaNoContest.t.sol`](./test/DefifaNoContest.t.sol)
+4. [`src/referees/DefifaVotingReferee.sol`](./src/referees/DefifaVotingReferee.sol) and [`src/interfaces/IDefifaReferee.sol`](./src/interfaces/IDefifaReferee.sol)
+5. [`src/libraries/DefifaHookLib.sol`](./src/libraries/DefifaHookLib.sol)
+6. [`src/Defifa1155Hook.sol`](./src/Defifa1155Hook.sol) and [`src/libraries/Defifa1155HookLib.sol`](./src/libraries/Defifa1155HookLib.sol) for the ERC-1155 game
+7. [`test/referee/DefifaGovernorCore.t.sol`](./test/referee/DefifaGovernorCore.t.sol) and [`test/referee/DefifaVotingReferee.t.sol`](./test/referee/DefifaVotingReferee.t.sol)
+8. [`test/DefifaGovernor.t.sol`](./test/DefifaGovernor.t.sol)
+9. [`test/DefifaFeeAccounting.t.sol`](./test/DefifaFeeAccounting.t.sol)
+10. [`test/DefifaNoContest.t.sol`](./test/DefifaNoContest.t.sol)
 
 Then read the upstream repos this package depends on:
 
@@ -61,24 +71,30 @@ Then read the upstream repos this package depends on:
 
 | Contract | Role |
 | --- | --- |
-| `DefifaDeployer` | Launches games, clones hooks, resolves ERC-2771 callers for launch attribution, initializes governance, and fulfills post-game fee commitments. |
+| `DefifaDeployer` | Launches games, clones hooks, resolves ERC-2771 callers for launch attribution, names each game's referee in the governor, passes `refereeData` to a contract referee, and fulfills post-game fee commitments. |
 | `DefifaHook` | ERC-721 game-piece hook that tracks tiers, delegation, pending reserves, and cash-out weights for settlement. |
-| `DefifaGovernor` | Scorecard governance surface that accepts submissions, attestations, quorum checks, grace periods, and ratification. |
-| `DefifaHookLib` | Shared validation and weight logic extracted from the hook. |
-| `DefifaTokenUriResolver` | Onchain metadata renderer for game cards. |
+| `DefifaGovernor` | Accepts scorecards from each game's referee only, holds the pending one through the game's timelock, and lets anyone ratify it. Counts no votes. |
+| `DefifaVotingReferee` | Sample referee, one deployment for both game types. Anyone submits; holders attest with BWA power; a scorecard at its 50% to 75% quorum after the grace period is forwarded to the governor. Only the first approved scorecard per game is forwarded. |
+| `Defifa1155Hook` | ERC-1155 game-piece hook (one balance per tier) that tracks delegation, pending reserves, and cash-out weights for settlement. |
+| `DefifaHookLib` | Shared validation and weight logic extracted from the hook, used by both hooks. |
+| `Defifa1155HookLib` | ERC-1155 ID and amount logic for `Defifa1155Hook`; calls `DefifaHookLib` for shared rules. |
+| `DefifaTiersHookStore` | `JB721TiersHookStore` plus count-based records. Shared by both game types, required by the ERC-1155 hook. |
+| `DefifaTokenUriResolver` | Onchain metadata renderer for game cards, shared by both game types. |
 
 ## Lifecycle
 
 Each Defifa game is a Juicebox project with a staged lifecycle:
 
 1. countdown before minting opens
-2. mint phase where players buy outcome NFTs
+2. mint phase where players buy outcome NFTs (ERC-721 game) or outcome positions (ERC-1155 game)
 3. optional refund or no-contest handling if the game cannot settle normally
-4. scoring phase where participants submit and attest to scorecards
-5. completion after a scorecard reaches quorum and survives its grace period
+4. scoring phase where the game's referee submits a scorecard. A new submission replaces the pending one and restarts the timelock
+5. completion after anyone ratifies the pending scorecard once the timelock has passed
 6. final cash out where winning pieces redeem against the prize pot
 
-The important boundary is that the pot is still ordinary Juicebox project value until governance ratifies a scorecard. Defifa-specific settlement starts only when the governor installs final cash-out weights on the hook.
+If no scorecard is ratified within `scorecardTimeout`, the game ends in `NO_CONTEST` and players refund at mint price.
+
+The important boundary is that the pot is still ordinary Juicebox project value until the governor ratifies a scorecard. Defifa-specific settlement starts only when the governor installs final cash-out weights on the hook.
 
 ## Install
 
@@ -119,9 +135,12 @@ src/
   enums/
   interfaces/
   libraries/
+  referees/
+    DefifaVotingReferee.sol
   structs/
 test/
   governance, fee-accounting, no-contest, adversarial, regression, fork, and review coverage
+  referee/: core governor and voting referee tests
 script/
   Deploy.s.sol
   helpers/
@@ -138,12 +157,23 @@ references/
 - `DefifaGovernor` and `DefifaHook` must be read together
 - fee accounting and prize accounting are coupled
 - a timeout into `NO_CONTEST` is a real terminal state
+- a game's result is whatever its referee submits; read `DefifaGovernor.refereeOf(gameId)` and show it before a player mints. Holder attestation means something only when the referee is a voting referee such as `DefifaVotingReferee`
+- an address referee decides alone; trust it as you'd trust a bookmaker
+- the deployer checks only that `scorecardTimeout` exceeds `timelockDuration`; a voting referee's attestation delay and grace period must also fit inside the timeout, and the UI should check that
 - `NO_CONTEST` view state should not be shown as refund-ready until the relevant settlement path is actually available
-- games with many outcome tiers need curation around scorecard liveness and attestation overhead
+- games with many outcome tiers need curation around scorecard liveness and, under a voting referee, attestation overhead
 - the shared `JB721TiersHookStore` surface is an upstream ecosystem dependency, not a Defifa-only detail
+- detect the game type (for example `supportsInterface(type(IERC1155).interfaceId)`) before encoding pay or cash-out
+  metadata or reading holdings: the two hooks use different metadata layouts
+- in an ERC-1155 game, paid positions use token ID = tier ID and reserve-minted positions use
+  `tierId + RESERVE_TOKEN_ID_OFFSET` (`1 << 16`); read holdings with `hook.balanceOf(account, id)`, because the store's
+  per-holder views (`balanceOf`, `tierBalanceOf`, `votingUnitsOf`, `tierVotingUnitsOf`) count a tier's paid and
+  reserve IDs together
 
 ## High-signal tests
 
+- [`test/referee/DefifaGovernorCore.t.sol`](./test/referee/DefifaGovernorCore.t.sol): referee-only submit, timelock, replacement, ratify, states, timeout
+- [`test/referee/DefifaVotingReferee.t.sol`](./test/referee/DefifaVotingReferee.t.sol): the voting referee, including first-forwarded-wins
 - [`test/DefifaGovernor.t.sol`](./test/DefifaGovernor.t.sol)
 - [`test/DefifaGovernanceHardening.t.sol`](./test/DefifaGovernanceHardening.t.sol)
 - [`test/DefifaFeeAccounting.t.sol`](./test/DefifaFeeAccounting.t.sol)
@@ -152,24 +182,29 @@ references/
 - [`test/regression/PendingReserveDilution.t.sol`](./test/regression/PendingReserveDilution.t.sol)
 - [`test/regression/AttestationDoubleCount.t.sol`](./test/regression/AttestationDoubleCount.t.sol)
 - [`test/regression/GracePeriodBypass.t.sol`](./test/regression/GracePeriodBypass.t.sol)
+- [`test/erc1155/`](./test/erc1155/): the ERC-1155 suite, same file names as the 721 suite, plus [`test/erc1155/DefifaERC1155.t.sol`](./test/erc1155/DefifaERC1155.t.sol)
+- [`test/DefifaHookParity.t.sol`](./test/DefifaHookParity.t.sol): both hooks expose the selectors the shared deployer, governor and resolver call
+- [`test/DefifaTiersHookStore.t.sol`](./test/DefifaTiersHookStore.t.sol): count-based store records match the per-position originals
 
 ## Deployment notes
 
-Deployments are handled through Sphinx. The deployer composes Juicebox core, the 721 hook stack, Defifa-specific governance, metadata rendering, and the core trusted forwarder into one ERC-2771-aware game-launch surface.
+Deployments are handled through Sphinx. The deployer composes Juicebox core, the 721 hook stack, Defifa-specific governance, metadata rendering, and the core trusted forwarder into one ERC-2771-aware game-launch surface. `script/Deploy.s.sol` deploys one `DefifaDeployer` plus `DefifaGovernor` pair per game type over one shared `DefifaTiersHookStore` and `DefifaTokenUriResolver`; the ERC-1155 pair uses the salt `keccak256(abi.encode(_salt, "ERC1155"))`. It also deploys one `DefifaVotingReferee` (salt `DefifaVotingRefereeV6_`) for both game types; it finds each game's governor through the game's project owner.
 
 ## Where state lives
 
 - game lifecycle config and post-game fulfillment bookkeeping: `DefifaDeployer`
-- submitted scorecards, attestations, quorum state, and ratification timing: `DefifaGovernor`
-- tier state, delegation, pending reserve awareness, and final cash-out weights: `DefifaHook`
+- each game's referee, timelock, pending scorecard, and ratified scorecard: `DefifaGovernor`
+- voting windows, submitted scorecards, attestations, quorum snapshots, reserve snapshots, and the forwarded scorecard: `DefifaVotingReferee`
+- tier state, delegation, pending reserve awareness, and final cash-out weights: `DefifaHook` (ERC-721) or `Defifa1155Hook` (ERC-1155 position balances)
+- tier config, supply, reserve, and burn accounting for both game types: `DefifaTiersHookStore`
 - base project balance and terminal settlement: `nana-core-v6`
 - shared 721 tier store semantics: `nana-721-hook-v6`
 
 ## For AI agents
 
 - Treat Defifa as a game-specific layer on top of `nana-core-v6` and `nana-721-hook-v6`, not as a standalone accounting system.
-- Use `DefifaDeployer`, `DefifaHook`, and `DefifaGovernor` as the primary execution surfaces.
-- Treat `NO_CONTEST`, refund handling, and grace-period logic as normal product behavior.
+- Use `DefifaDeployer`, `DefifaHook` or `Defifa1155Hook`, and `DefifaGovernor` as the primary execution surfaces. Both game types are supported products. Holder voting lives in `DefifaVotingReferee`, not the governor.
+- Treat `NO_CONTEST`, refund handling, the governor's timelock, and a voting referee's grace period as normal product behavior.
 - Do not describe Defifa as an unlimited-outcome market deployer; game parameters should be curated for practical
   settlement and scorecard review.
 - If the question is about generic tier storage, terminal settlement, or project accounting, hand off to upstream repos first.

@@ -196,6 +196,11 @@ interface IDefifaHook is IJB721Hook {
     /// @return The array of tier cash-out weights.
     function tierCashOutWeights() external view returns (uint256[128] memory);
 
+    /// @notice The tier a token ID belongs to.
+    /// @param tokenId The token ID.
+    /// @return The tier ID.
+    function tierIdOf(uint256 tokenId) external view returns (uint256);
+
     /// @notice The name of a specific tier.
     /// @param tierId The ID of the tier.
     /// @return The tier name.

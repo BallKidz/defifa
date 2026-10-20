@@ -4,6 +4,7 @@ pragma solidity 0.8.28;
 import {TestBaseWorkflow} from "@bananapus/core-v6/test/helpers/TestBaseWorkflow.sol";
 
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../../src/DefifaDeployer.sol";
 import {DefifaHook} from "../../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../../src/DefifaTokenUriResolver.sol";
@@ -14,7 +15,6 @@ import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRule
 import {JBRuleset} from "@bananapus/core-v6/src/structs/JBRuleset.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {DefifaLaunchProjectData} from "../../src/structs/DefifaLaunchProjectData.sol";
@@ -43,6 +43,7 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
 
     function setUp() public virtual override {
         super.setUp();
@@ -88,16 +89,16 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
         _protocolFeeProjectId =
             jbController().launchProjectFor(address(projectOwner), "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
-        address _nanaToken =
-            address(jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0)));
+        jbController().deployERC20For(_protocolFeeProjectId, "Bananapus", "NANA", bytes32(0));
 
         _defifaProjectId =
             jbController().launchProjectFor(address(projectOwner), "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
-        address _defifaToken = address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+        jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0));
 
-        hook = new DefifaHook(jbDirectory(), IERC20(_defifaToken), IERC20(_nanaToken));
+        hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -212,12 +213,50 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
         assertEq(payerDelegate, address(0), "Payer should have no delegation when payer != beneficiary");
     }
 
+    /// @notice A reserve mint with nothing to mint, in a tier with no reserve beneficiary, must not delegate the
+    /// zero address. Mints move units from the zero address's delegate, so a delegated zero address would charge the
+    /// default delegate for every later mint in the tier and revert pays on underflow.
+    function test_emptyReserveMintDoesNotDelegateTheZeroAddress() public {
+        address oracle = address(bytes20(keccak256("oracle")));
+        address beneficiary = address(bytes20(keccak256("beneficiary3")));
+        (uint256 _projectId, DefifaHook _nft) = _launchGameWith(oracle);
+
+        // COUNTDOWN, when reserve minting is not paused.
+        vm.prank(address(bytes20(keccak256("stranger"))));
+        _nft.mintReservesFor(1, 0);
+        assertEq(_nft.getTierDelegateOf(address(0), 1), address(0), "zero address has no delegate");
+
+        vm.warp(_mintPhaseStart);
+        uint16[] memory tierIds = new uint16[](1);
+        tierIds[0] = 1;
+        bytes memory metadata = _buildPayMetadata(abi.encode(address(0), tierIds));
+        vm.deal(beneficiary, 1 ether);
+        vm.prank(beneficiary);
+        jbMultiTerminal().pay{value: 1 ether}({
+            projectId: _projectId,
+            token: JBConstants.NATIVE_TOKEN,
+            amount: 1 ether,
+            beneficiary: beneficiary,
+            minReturnedTokens: 0,
+            memo: "",
+            metadata: metadata
+        });
+
+        address delegate = _nft.getTierDelegateOf(beneficiary, 1);
+        assertEq(_nft.getTierAttestationUnitsOf(delegate, 1), 1 ether, "the payer's delegate holds the units");
+        assertEq(_nft.getTierTotalAttestationUnitsOf(1), 1 ether, "tier total");
+    }
+
     // ----- Internal helpers ------
 
     /// @dev MINT phase starts at `start - mintPeriodDuration - refundPeriodDuration`.
     uint256 internal _mintPhaseStart;
 
     function _launchGame() internal returns (uint256 projectId, DefifaHook nft) {
+        return _launchGameWith(address(0));
+    }
+
+    function _launchGameWith(address defaultAttestationDelegate) internal returns (uint256 projectId, DefifaHook nft) {
         DefifaTierParams[] memory tierParams = new DefifaTierParams[](2);
         for (uint256 i = 0; i < 2; i++) {
             tierParams[i] = DefifaTierParams({
@@ -240,15 +279,15 @@ contract AttestationDelegateBeneficiary is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
-            defaultAttestationDelegate: address(0), // No default delegate -- should fall back to beneficiary
+            defaultAttestationDelegate: defaultAttestationDelegate,
             tiers: tierParams,
             defaultTokenUriResolver: IJB721TokenUriResolver(address(0)),
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
 
         _mintPhaseStart = d.start - d.mintPeriodDuration - d.refundPeriodDuration;

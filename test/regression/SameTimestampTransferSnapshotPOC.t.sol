@@ -3,6 +3,7 @@ pragma solidity 0.8.28;
 
 import {DefifaGovernanceHardeningTest} from "../DefifaGovernanceHardening.t.sol";
 import {DefifaGovernor} from "../../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../../src/referees/DefifaVotingReferee.sol";
 import {DefifaTierCashOutWeight} from "../../src/structs/DefifaTierCashOutWeight.sol";
 
 /// @notice Regression test for the same-timestamp checkpoint-overwrite class: a transfer (or reserve mint)
@@ -16,7 +17,7 @@ contract SameTimestampTransferSnapshotPOC is DefifaGovernanceHardeningTest {
         _toScoring();
 
         DefifaTierCashOutWeight[] memory scorecard = _evenScorecard(4);
-        uint256 scorecardId = _gov.submitScorecardFor(_gameId, scorecard);
+        uint256 scorecardId = votingReferee.submitScorecardFor(_gameId, scorecard);
 
         address attacker = address(0xBEEF);
 
@@ -36,14 +37,16 @@ contract SameTimestampTransferSnapshotPOC is DefifaGovernanceHardeningTest {
         // no power and attesting reverts on the zero-weight guard.
         vm.prank(attacker);
         vm.expectRevert(
-            abi.encodeWithSelector(DefifaGovernor.DefifaGovernor_NotAllowed.selector, _gameId, scorecardId, attacker)
+            abi.encodeWithSelector(
+                DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector, _gameId, scorecardId, attacker
+            )
         );
-        _gov.attestToScorecardFrom(_gameId, scorecardId);
+        votingReferee.attestToScorecardFrom(_gameId, scorecardId);
 
         // Each original holder kept its pre-submission snapshot power and can still attest with it.
         for (uint256 i; i < 3; i++) {
             vm.prank(_users[i]);
-            uint256 weight = _gov.attestToScorecardFrom(_gameId, scorecardId);
+            uint256 weight = votingReferee.attestToScorecardFrom(_gameId, scorecardId);
             assertGt(weight, 0, "pre-submission holder retains its frozen attestation power");
         }
     }

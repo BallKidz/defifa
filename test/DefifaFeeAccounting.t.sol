@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
@@ -27,7 +28,6 @@ import {JBSplit} from "@bananapus/core-v6/src/structs/JBSplit.sol";
 import {JBSplitGroup} from "@bananapus/core-v6/src/structs/JBSplitGroup.sol";
 import {JBFundAccessLimitGroup} from "@bananapus/core-v6/src/structs/JBFundAccessLimitGroup.sol";
 import {JBRulesetConfig, JBTerminalConfig} from "@bananapus/core-v6/src/interfaces/IJBController.sol";
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {JBMultiTerminal} from "@bananapus/core-v6/src/JBMultiTerminal.sol";
 import {JBCurrencyIds} from "@bananapus/core-v6/src/libraries/JBCurrencyIds.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
@@ -45,6 +45,7 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
     uint256 _gameId = 3;
 
     function setUp() public virtual override {
@@ -99,13 +100,11 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         _defifaProjectId =
             jbController().launchProjectFor(address(projectOwner), "", rulesetConfigs, terminalConfigs, "");
         vm.prank(projectOwner);
-        address _defifaToken = address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
+        jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0));
 
-        // Look up NANA token.
-        address _nanaToken = address(jbTokens().tokenOf(_protocolFeeProjectId));
-
-        hook = new DefifaHook(jbDirectory(), IERC20(_defifaToken), IERC20(_nanaToken));
+        hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         JBAddressRegistry _registry = new JBAddressRegistry();
         DefifaTokenUriResolver _tokenUriResolver = new DefifaTokenUriResolver(address(this));
         deployer = new DefifaDeployer({
@@ -242,14 +241,14 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
             vm.prank(users[i]);
             JBMultiTerminal(address(jbMultiTerminal()))
                 .cashOutTokensOf({
-                holder: users[i],
-                projectId: projectId,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(users[i]),
-                metadata: cashOutMetadata
-            });
+                    holder: users[i],
+                    projectId: projectId,
+                    cashOutCount: 0,
+                    tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                    minTokensReclaimed: 0,
+                    beneficiary: payable(users[i]),
+                    metadata: cashOutMetadata
+                });
 
             totalCashedOut += users[i].balance - balBefore;
         }
@@ -370,14 +369,14 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
             vm.prank(users[i]);
             JBMultiTerminal(address(jbMultiTerminal()))
                 .cashOutTokensOf({
-                holder: users[i],
-                projectId: projectId,
-                cashOutCount: 0,
-                tokenToReclaim: JBConstants.NATIVE_TOKEN,
-                minTokensReclaimed: 0,
-                beneficiary: payable(users[i]),
-                metadata: cashOutMetadata
-            });
+                    holder: users[i],
+                    projectId: projectId,
+                    cashOutCount: 0,
+                    tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                    minTokensReclaimed: 0,
+                    beneficiary: payable(users[i]),
+                    metadata: cashOutMetadata
+                });
 
             totalCashedOut += users[i].balance - balBefore;
         }
@@ -478,8 +477,6 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: splits,
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             tierPrice: uint104(1 ether),
             tiers: tierParams,
@@ -487,7 +484,9 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 
@@ -566,19 +565,20 @@ contract DefifaFeeAccountingTest is JBTest, TestBaseWorkflow {
         scorecards[nTiers - 1].cashOutWeight += totalCashOutWeight - assigned;
 
         // Submit scorecard.
-        uint256 proposalId = _governor.submitScorecardFor(_gameId, scorecards);
+        uint256 proposalId = votingReferee.submitScorecardFor(_gameId, scorecards);
 
         // Advance to attestation period and vote.
-        vm.warp(block.timestamp + _governor.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i = 0; i < users.length; i++) {
             vm.prank(users[i]);
-            _governor.attestToScorecardFrom(_gameId, proposalId);
+            votingReferee.attestToScorecardFrom(_gameId, proposalId);
         }
 
         // Advance past grace period.
-        vm.warp(block.timestamp + _governor.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(_gameId) + 1);
 
         // Ratify (this calls fulfillCommitmentsOf internally).
+        votingReferee.forwardScorecardFor(_gameId, scorecards);
         _governor.ratifyScorecardFrom(_gameId, scorecards);
     }
 

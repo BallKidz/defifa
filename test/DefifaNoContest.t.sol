@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
@@ -12,7 +13,6 @@ import {JBTest} from "@bananapus/core-v6/test/helpers/JBTest.sol";
 import {JBRulesetMetadataResolver} from "@bananapus/core-v6/src/libraries/JBRulesetMetadataResolver.sol";
 import {JBAddressRegistry} from "@bananapus/address-registry-v6/src/JBAddressRegistry.sol";
 
-import {IERC20} from "@openzeppelin/contracts/token/ERC20/IERC20.sol";
 import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {IJB721TokenUriResolver} from "@bananapus/721-hook-v6/src/interfaces/IJB721TokenUriResolver.sol";
 import {JB721Tier} from "@bananapus/721-hook-v6/src/structs/JB721Tier.sol";
@@ -48,6 +48,7 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
     // Shared test state
@@ -104,9 +105,9 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         _defifaProjectTokenAccount =
             address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
 
-        hook =
-            new DefifaHook(jbDirectory(), IERC20(_defifaProjectTokenAccount), IERC20(_protocolFeeProjectTokenAccount));
+        hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -400,16 +401,25 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         for (uint256 i; i < 4; i++) {
             sc[i].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT() / 4;
         }
-        uint256 pid = _gov.submitScorecardFor(_gameId, sc);
+        uint256 pid = votingReferee.submitScorecardFor(_gameId, sc);
         _attestAllFor(pid);
+
+        // The approved scorecard reaches the governor while the game is still scoring.
+        votingReferee.forwardScorecardFor(_gameId, sc);
 
         // Now warp past timeout → NO_CONTEST
         vm.warp(d.start + 7 days + 1);
         assertEq(uint256(deployer.currentGamePhaseOf(_pid)), uint256(DefifaGamePhase.NO_CONTEST));
 
-        // Attempting to ratify should revert because setTierCashOutWeightsTo checks for SCORING phase
+        // A late referee can't submit: the governor only accepts scorecards during SCORING.
+        vm.expectPartialRevert(DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector);
+        votingReferee.submitScorecardFor(_gameId, _buildScorecard(4));
+
+        // Ratifying the forwarded scorecard reverts because setTierCashOutWeightsTo checks for the SCORING phase.
         vm.expectPartialRevert(DefifaHook.DefifaHook_GameIsntScoringYet.selector);
         _gov.ratifyScorecardFrom(_gameId, sc);
+        assertEq(_gov.ratifiedScorecardIdOf(_gameId), 0, "nothing ratified");
+        assertFalse(_nft.cashOutWeightIsSet(), "weights unset");
     }
 
     // =========================================================================
@@ -704,14 +714,14 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         vm.expectPartialRevert(DefifaHook.DefifaHook_NothingToClaim.selector);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: _users[0],
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(_users[0]),
-            metadata: meta
-        });
+                holder: _users[0],
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(_users[0]),
+                metadata: meta
+            });
     }
 
     // =========================================================================
@@ -809,8 +819,6 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             // forge-lint: disable-next-line(unsafe-typecast)
             tierPrice: uint104(tierPrice),
@@ -819,7 +827,9 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: minParticipation,
             scorecardTimeout: scorecardTimeout,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 
@@ -869,19 +879,28 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
     }
 
     function _attestAndRatify(DefifaTierCashOutWeight[] memory sc) internal {
-        uint256 pid = _gov.submitScorecardFor(_gameId, sc);
+        uint256 pid = votingReferee.submitScorecardFor(_gameId, sc);
         _attestAllFor(pid);
+        votingReferee.forwardScorecardFor(_gameId, sc);
         _gov.ratifyScorecardFrom(_gameId, sc);
         vm.warp(block.timestamp + 1);
     }
 
     function _attestAllFor(uint256 pid) internal {
-        vm.warp(block.timestamp + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            try _gov.attestToScorecardFrom(_gameId, pid) {} catch {}
+            try votingReferee.attestToScorecardFrom(_gameId, pid) {}
+            catch (bytes memory reason) {
+                // Only a holder without attestation weight may fail to attest.
+                assertEq(
+                    bytes4(reason),
+                    DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector,
+                    "unexpected attestation failure"
+                );
+            }
         }
-        vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(_gameId) + 1);
     }
 
     function _surplus() internal view returns (uint256) {
@@ -893,14 +912,14 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: meta
-        });
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: meta
+            });
     }
 
     function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {
@@ -921,13 +940,13 @@ contract DefifaNoContestTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: meta
-        });
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: meta
+            });
     }
 }

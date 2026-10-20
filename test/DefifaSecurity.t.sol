@@ -2,6 +2,7 @@
 pragma solidity 0.8.28;
 
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../src/referees/DefifaVotingReferee.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
@@ -58,6 +59,7 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
     DefifaDeployer deployer;
     DefifaHook hook;
     DefifaGovernor governor;
+    DefifaVotingReferee votingReferee;
     address projectOwner = address(bytes20(keccak256("projectOwner")));
 
     // Shared test state (set by _setupGame helpers)
@@ -114,9 +116,9 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         _defifaProjectTokenAccount =
             address(jbController().deployERC20For(_defifaProjectId, "Defifa", "DEFIFA", bytes32(0)));
 
-        hook =
-            new DefifaHook(jbDirectory(), IERC20(_defifaProjectTokenAccount), IERC20(_protocolFeeProjectTokenAccount));
+        hook = new DefifaHook(jbDirectory(), jbTokens(), _defifaProjectId, _protocolFeeProjectId);
         governor = new DefifaGovernor(jbController(), address(this));
+        votingReferee = new DefifaVotingReferee(jbController());
         deployer = new DefifaDeployer({
             hookCodeOrigin: address(hook),
             tokenUriResolver: new DefifaTokenUriResolver(address(this)),
@@ -222,9 +224,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
 
     // =========================================================================
     // ROUNDING: extreme weights at 1000 ETH per tier
-    // With BWA + HHI, highly concentrated scorecards on fewer than 4 tiers
-    // cannot reach quorum (total BWA = MAX*(n-1) < adjusted quorum for HHI~1).
-    // Using 5 tiers ensures total BWA (4*MAX) exceeds the adjusted quorum.
+    // A highly concentrated scorecard needs 75% of the attestation possible, MAX*(n-1).
+    // Five tiers give every losing tier's holder a share of that power.
     // =========================================================================
     function testRounding_extremeWeights() external {
         _setupGame(5, 1000 ether);
@@ -257,7 +258,7 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         }
 
         vm.expectPartialRevert(DefifaHookLib.DefifaHook_InvalidCashoutWeights.selector);
-        _gov.submitScorecardFor(_gameId, sc);
+        votingReferee.submitScorecardFor(_gameId, sc);
     }
 
     // =========================================================================
@@ -280,22 +281,21 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
     }
 
     // =========================================================================
-    // QUORUM: 50% of minted tiers
+    // QUORUM: 50% of the attestation possible across minted tiers
     // =========================================================================
     function testQuorum_50pctMintedTiers() external {
         // Launch game with 10 tiers but only mint 6
         _setupPartial(10, 6, 1 ether);
-        uint256 expected = (6 * _gov.MAX_ATTESTATION_POWER_TIER()) / 2;
-        assertEq(_gov.quorum(_gameId), expected, "quorum = 50% of minted tiers");
+        uint256 expected = (5 * votingReferee.MAX_ATTESTATION_POWER_TIER()) / 2;
+        assertEq(votingReferee.quorum(_gameId), expected, "quorum = 50% of (minted tiers - 1) * MAX");
     }
 
     // =========================================================================
     // FUZZ: fund conservation across varying tier/player counts
     // =========================================================================
     function testFuzz_fundConservation(uint8 rawTiers, uint8 rawPlayers) external {
-        // Minimum 3 tiers: with BWA + HHI-adjusted quorum, 2-tier games with equal scorecards
-        // can never reach quorum (total BWA = MAX*(n-1) < adjusted quorum when n < 3).
-        uint8 nTiers = uint8(bound(rawTiers, 3, 12));
+        // Two tiers is the smallest game whose scorecards can reach quorum.
+        uint8 nTiers = uint8(bound(rawTiers, 2, 12));
         uint8 nPpt = uint8(bound(rawPlayers, 1, 3));
 
         _setupMultiN(nTiers, nPpt, 1 ether);
@@ -350,10 +350,8 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
 
     // =========================================================================
     // C-D3: reserved minters get proportional fee tokens ($DEFIFA/$NANA)
-    // With BWA + HHI, 2-tier games cannot reach quorum (total BWA power for
-    // n tiers = MAX*(n-1) which is always less than HHI-adjusted quorum for n=2).
-    // We use 4 tiers with equal weight, all having reserveRate=1. This ensures
-    // enough attestation power from all participants to meet the adjusted quorum.
+    // We use 4 tiers with equal weight, all having reserveRate=1, so every
+    // participant contributes attestation power toward quorum.
     // =========================================================================
     function testC_D3_reservedMintersGetFeeTokens() external {
         // Setup: 4 tiers, reservedRate=1, reserveBeneficiary = _reserveAddr
@@ -379,8 +377,6 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             tierPrice: uint104(1 ether),
             tiers: tp,
@@ -388,7 +384,9 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
         (_pid, _nft, _gov) = _launch(d);
         vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
@@ -435,15 +433,16 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         vm.warp(_tsReader.timestamp() + 1);
 
         // Paid minters and reserve beneficiary attest; both minted before the submission block, so both count.
-        uint256 pid = _gov.submitScorecardFor(_gameId, sc);
-        vm.warp(_tsReader.timestamp() + _gov.attestationStartTimeOf(_gameId) + 1);
+        uint256 pid = votingReferee.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.timestamp() + votingReferee.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            _gov.attestToScorecardFrom(_gameId, pid);
+            votingReferee.attestToScorecardFrom(_gameId, pid);
         }
         vm.prank(_reserveAddr);
-        _gov.attestToScorecardFrom(_gameId, pid);
-        vm.warp(_tsReader.timestamp() + _gov.attestationGracePeriodOf(_gameId) + 1);
+        votingReferee.attestToScorecardFrom(_gameId, pid);
+        vm.warp(_tsReader.timestamp() + votingReferee.attestationGracePeriodOf(_gameId) + 1);
+        votingReferee.forwardScorecardFor(_gameId, sc);
         _gov.ratifyScorecardFrom(_gameId, sc);
         vm.warp(_tsReader.timestamp() + 1);
 
@@ -462,27 +461,27 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         vm.prank(_reserveAddr);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: _reserveAddr,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(_reserveAddr),
-            metadata: meta1
-        });
+                holder: _reserveAddr,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(_reserveAddr),
+                metadata: meta1
+            });
 
         bytes memory meta2 = _cashOutMeta(2, 2);
         vm.prank(_reserveAddr);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: _reserveAddr,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(_reserveAddr),
-            metadata: meta2
-        });
+                holder: _reserveAddr,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(_reserveAddr),
+                metadata: meta2
+            });
 
         // Reserved minter should have gotten fee tokens from tiers 1+2 cash-outs
         uint256 reserveDefifa = IERC20(_defifaProjectTokenAccount).balanceOf(_reserveAddr);
@@ -510,14 +509,14 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         vm.prank(_users[0]);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: _users[0],
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(_users[0]),
-            metadata: meta
-        });
+                holder: _users[0],
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(_users[0]),
+                metadata: meta
+            });
         // NFT should NOT have been burned (revert rolled it back)
         assertEq(_nft.balanceOf(_users[0]), 1, "NFT not burned on revert");
     }
@@ -617,8 +616,6 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             start: uint48(block.timestamp + 3 days),
             refundPeriodDuration: 1 days,
             splits: new JBSplit[](0),
-            attestationStartTime: 0,
-            attestationGracePeriod: 100_381,
             defaultAttestationDelegate: address(0),
             // forge-lint: disable-next-line(unsafe-typecast)
             tierPrice: uint104(tierPrice),
@@ -627,7 +624,9 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
             terminal: jbMultiTerminal(),
             minParticipation: 0,
             scorecardTimeout: type(uint32).max,
-            timelockDuration: 0
+            timelockDuration: 0,
+            referee: address(votingReferee),
+            refereeData: abi.encode(0, 100_381)
         });
     }
 
@@ -673,19 +672,28 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
     }
 
     function _attestAndRatify(DefifaTierCashOutWeight[] memory sc) internal {
-        uint256 pid = _gov.submitScorecardFor(_gameId, sc);
+        uint256 pid = votingReferee.submitScorecardFor(_gameId, sc);
         _attestAllFor(pid);
+        votingReferee.forwardScorecardFor(_gameId, sc);
         _gov.ratifyScorecardFrom(_gameId, sc);
         vm.warp(block.timestamp + 1);
     }
 
     function _attestAllFor(uint256 pid) internal {
-        vm.warp(block.timestamp + _gov.attestationStartTimeOf(_gameId) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationStartTimeOf(_gameId) + 1);
         for (uint256 i; i < _users.length; i++) {
             vm.prank(_users[i]);
-            try _gov.attestToScorecardFrom(_gameId, pid) {} catch {}
+            try votingReferee.attestToScorecardFrom(_gameId, pid) {}
+            catch (bytes memory reason) {
+                // Only a holder without attestation weight may fail to attest.
+                assertEq(
+                    bytes4(reason),
+                    DefifaVotingReferee.DefifaVotingReferee_NotAllowed.selector,
+                    "unexpected attestation failure"
+                );
+            }
         }
-        vm.warp(block.timestamp + _gov.attestationGracePeriodOf(_gameId) + 1);
+        vm.warp(block.timestamp + votingReferee.attestationGracePeriodOf(_gameId) + 1);
     }
 
     function _surplus() internal view returns (uint256) {
@@ -697,14 +705,14 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: meta
-        });
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: meta
+            });
     }
 
     function _cashOutMeta(uint256 tid, uint256 tnum) internal view returns (bytes memory) {
@@ -734,13 +742,13 @@ contract DefifaSecurityTest is JBTest, TestBaseWorkflow {
         vm.prank(user);
         JBMultiTerminal(address(jbMultiTerminal()))
             .cashOutTokensOf({
-            holder: user,
-            projectId: _pid,
-            cashOutCount: 0,
-            tokenToReclaim: JBConstants.NATIVE_TOKEN,
-            minTokensReclaimed: 0,
-            beneficiary: payable(user),
-            metadata: meta
-        });
+                holder: user,
+                projectId: _pid,
+                cashOutCount: 0,
+                tokenToReclaim: JBConstants.NATIVE_TOKEN,
+                minTokensReclaimed: 0,
+                beneficiary: payable(user),
+                metadata: meta
+            });
     }
 }
