@@ -23,6 +23,7 @@ import {DefifaLaunchProjectData} from "../src/structs/DefifaLaunchProjectData.so
 import {DefifaTierParams} from "../src/structs/DefifaTierParams.sol";
 import {DefifaTierCashOutWeight} from "../src/structs/DefifaTierCashOutWeight.sol";
 import {DefifaScorecardState} from "../src/enums/DefifaScorecardState.sol";
+import {DefifaGamePhase} from "../src/enums/DefifaGamePhase.sol";
 import {JBAccountingContext} from "@bananapus/core-v6/src/structs/JBAccountingContext.sol";
 import {JBTerminalConfig} from "@bananapus/core-v6/src/structs/JBTerminalConfig.sol";
 import {JBRulesetConfig} from "@bananapus/core-v6/src/structs/JBRulesetConfig.sol";
@@ -1481,6 +1482,32 @@ contract DefifaGovernanceHardeningTest is JBTest, TestBaseWorkflow {
         uint256 snapshot = _quorumSnapshotOf(scorecardId);
         assertLe(snapshot, _totalBWA(scorecardId), "unanimity always reaches quorum");
         assertGe(snapshot, _expectedQuorum(nTiers, tw / nTiers), "never below an even split");
+    }
+
+    function test_quorum_oneTierHolderCannotAttest() public {
+        _setupGame(1, 1 ether);
+        _toScoring();
+        DefifaTierCashOutWeight[] memory sc = _buildScorecard(1);
+        sc[0].cashOutWeight = _nft.TOTAL_CASHOUT_WEIGHT();
+        uint256 scorecardId = _gov.submitScorecardFor(_gameId, sc);
+        vm.warp(_tsReader.ts() + 2);
+        vm.prank(_users[0]);
+        vm.expectPartialRevert(DefifaGovernor.DefifaGovernor_NotAllowed.selector);
+        _gov.attestToScorecardFrom(_gameId, scorecardId);
+    }
+
+    function test_enforced_inactiveDelegateEndsInNoContest() public {
+        DefifaLaunchProjectData memory d = _launchData(3, 1 ether);
+        d.defaultAttestationDelegate = _DELEGATE;
+        d.enforceDefaultAttestationDelegate = true;
+        d.scorecardTimeout = 200_000;
+        (_pid, _nft, _gov) = _launch(d);
+        vm.warp(d.start - d.mintPeriodDuration - d.refundPeriodDuration);
+        for (uint256 i; i < 3; i++) {
+            _mint(_addr(i), i + 1, 1 ether);
+        }
+        vm.warp(d.start + 200_001);
+        assertEq(uint256(deployer.currentGamePhaseOf(_pid)), uint256(DefifaGamePhase.NO_CONTEST), "timeout backstop");
     }
 
     function _setupGame(uint8 nTiers, uint256 tierPrice) internal {

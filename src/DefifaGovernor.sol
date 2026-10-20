@@ -77,8 +77,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     uint256 public constant override QUORUM_EVEN_BPS = 5000;
 
     /// @notice The share of the attestation possible that a winner-take-all scorecard needs, in basis points.
-    /// @dev Kept below 100% so a quarter of a losing side can be silent, and so BWA rounding (under 2 units per
-    /// attesting delegate and tier) can never put quorum out of reach of unanimous attestation.
+    /// @dev Kept below 100% so a quarter of a losing side can be silent. BWA rounding loses under 2 units per attesting
+    /// delegate and tier, so unanimous attestation reaches quorum while each tier has fewer than 100,000,000 attesting
+    /// delegates.
     uint256 public constant override QUORUM_WINNER_TAKE_ALL_BPS = 7500;
 
     //*********************************************************************//
@@ -105,7 +106,8 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
     //*********************************************************************//
 
     /// @notice The scorecard information, packed into a uint256.
-    /// @dev Bits 0-47: attestationStartTime, bits 48-95: attestationGracePeriod, bits 96-143: timelockDuration.
+    /// @dev Bits 0-47: attestationStartTime, bits 48-95: attestationGracePeriod, bits 96-143: timelockDuration,
+    /// bit 144: whether only the default attestation delegate can attest.
     /// @custom:param gameId The ID of the game for which the scorecard info applies.
     mapping(uint256 => uint256) internal _packedScorecardInfoOf;
 
@@ -737,10 +739,9 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
                 : hook.getPastTierAttestationUnitsOf({account: account, tier: tierId, timestamp: timestamp});
 
             if (enforced || tierAttestationUnitsForAccount != 0) {
-                // The tier's attestation units at the scorecard's snapshot, each reserve unit counted once.
-                uint256 tierTotalAttestationUnits = _tierAttestationUnitsAt({
-                    gameId: gameId, scorecardId: scorecardId, hook: hook, tierId: tierId, timestamp: timestamp
-                });
+                // The tier's attestation units frozen at the scorecard's submission.
+                uint256 tierTotalAttestationUnits =
+                    _tierAttestationUnitsAt({gameId: gameId, scorecardId: scorecardId, hook: hook, tierId: tierId});
 
                 // Raw power for this tier. An enforced delegate holds the whole tier whenever the tier has units.
                 uint256 rawPower;
@@ -874,16 +875,26 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         return uint256(keccak256(abi.encode(gameHook, calldataBytes)));
     }
 
+    /// @notice A share of the most attestation possible.
+    /// @dev Never below 1, so a game with no possible attestation (a single eligible tier) can never ratify and falls
+    /// through to NO_CONTEST.
+    /// @param maxAttestationWeight The most attestation possible.
+    /// @param bps The share, in basis points.
+    /// @return quorumWeight The attestation needed.
+    function _quorumOf(uint256 maxAttestationWeight, uint256 bps) internal pure returns (uint256 quorumWeight) {
+        quorumWeight = mulDiv({x: maxAttestationWeight, y: bps, denominator: 10_000});
+        if (quorumWeight == 0) quorumWeight = 1;
+    }
+
     //*********************************************************************//
     // ------------------------- internal views -------------------------- //
     //*********************************************************************//
 
     /// @notice The most attestation any scorecard of a game can collect: `(N - 1) * MAX_ATTESTATION_POWER_TIER` for N
     /// quorum-eligible tiers.
-    /// @dev A tier is quorum-eligible if it has circulating tokens or unminted pending reserves. Pending reserves still
-    /// belong to the reserve beneficiary after the last paid token in a tier is burned during REFUND, so excluding
-    /// them would let a burner erase another participant's quorum contribution without erasing their claim. No
-    /// snapshot is needed: during SCORING, supply is frozen, and reserve mints never change which tiers count.
+    /// @dev A tier is quorum-eligible if it has circulating tokens or pending reserves net of refund-phase burns
+    /// (`adjustedPendingReservesFor`), so a reserve beneficiary still owed reserves keeps the tier counted. No snapshot
+    /// is needed: during SCORING, paid supply is frozen, and reserve mints never change which tiers count.
     /// @param gameId The ID of the game.
     /// @return maxAttestationWeight The most attestation possible.
     function _maxAttestationWeightOf(uint256 gameId) internal view returns (uint256 maxAttestationWeight) {
@@ -915,46 +926,31 @@ contract DefifaGovernor is Ownable, IDefifaGovernor {
         if (eligibleTiers != 0) maxAttestationWeight = (eligibleTiers - 1) * MAX_ATTESTATION_POWER_TIER;
     }
 
-    /// @notice A share of the most attestation possible.
-    /// @dev Never below 1, so a game with no possible attestation (a single eligible tier) can never ratify and falls
-    /// through to NO_CONTEST.
-    /// @param maxAttestationWeight The most attestation possible.
-    /// @param bps The share, in basis points.
-    /// @return quorumWeight The attestation needed.
-    function _quorumOf(uint256 maxAttestationWeight, uint256 bps) internal pure returns (uint256 quorumWeight) {
-        quorumWeight = mulDiv({x: maxAttestationWeight, y: bps, denominator: 10_000});
-        if (quorumWeight == 0) quorumWeight = 1;
-    }
-
-    /// @notice A tier's attestation units at a scorecard's snapshot.
-    /// @dev Starts from the checkpointed tier total at `timestamp`, clamps it to the units minted when the scorecard
-    /// was submitted so reserve mints after submission are excluded, then adds the pending reserves snapshotted at
-    /// submission, so each reserve unit is counted exactly once.
+    /// @notice A tier's attestation units for a scorecard, frozen at its submission.
+    /// @dev The units minted when the scorecard was submitted plus the pending reserves snapshotted then. Account
+    /// numerators are read one second before submission, so reserves minted in the submission block (before or after
+    /// the submission) must stay in this total, or an account would attest with a larger share of its tier than it
+    /// holds. Each reserve unit is counted exactly once: minted reserves are in the submitted units, pending ones in
+    /// the snapshot.
     /// @param gameId The ID of the game.
     /// @param scorecardId The ID of the scorecard whose snapshot to use.
     /// @param hook The game's hook.
     /// @param tierId The ID of the tier.
-    /// @param timestamp The snapshot timestamp.
     /// @return units The tier's attestation units.
     function _tierAttestationUnitsAt(
         uint256 gameId,
         uint256 scorecardId,
         IDefifaHook hook,
-        uint256 tierId,
-        uint48 timestamp
+        uint256 tierId
     )
         internal
         view
         returns (uint256 units)
     {
-        // Start from the checkpointed tier total at the requested timestamp.
-        units = hook.getPastTierTotalAttestationUnitsOf({tier: tierId, timestamp: timestamp});
+        // Start from the units minted when the scorecard was submitted.
+        units = _submittedTierAttestationUnitsOf[gameId][scorecardId][tierId];
 
-        // Clamp the total to the submitted snapshot to exclude post-submission reserve mints.
-        uint256 submittedTierAttestationUnits = _submittedTierAttestationUnitsOf[gameId][scorecardId][tierId];
-        if (units > submittedTierAttestationUnits) units = submittedTierAttestationUnits;
-
-        // Add back the snapshotted pending reserves.
+        // Add the pending reserves snapshotted at submission.
         uint256 pendingReserves = _pendingReservesSnapshotOf[gameId][scorecardId][tierId];
         if (pendingReserves != 0) {
             JB721Tier memory tier = hook.store().tierOf({hook: address(hook), id: tierId, includeResolvedUri: false});

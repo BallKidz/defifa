@@ -79,6 +79,46 @@ contract SameTimestampReserveMintSnapshotPOC is DefifaGovernorTest {
         );
     }
 
+    /// @notice Reserves minted in the submission block, before submission, must stay in the tier's attestation
+    /// total, so a holder of 3 of a tier's 8 units cannot attest as if they held 3 of 4.
+    function test_reserveMintBeforeSameTimestampSubmissionCannotInflatePower() public {
+        DefifaLaunchProjectData memory data = getBasicDefifaLaunchData(2);
+        data.tiers[0].reservedRate = 1;
+        data.tiers[0].reservedTokenBeneficiary = RESERVE_BENEFICIARY;
+
+        (uint256 projectId, DefifaHook nft, DefifaGovernor gov) = createDefifaProject(data);
+
+        vm.warp(data.start - data.mintPeriodDuration - data.refundPeriodDuration);
+        _mintOne(projectId, LOSING_HOLDER, 1);
+        _mintOne(projectId, LOSING_HOLDER, 1);
+        _mintOne(projectId, LOSING_HOLDER, 1);
+        _mintOne(projectId, address(0x1004), 1);
+        _mintOne(projectId, WINNING_HOLDER, 2);
+        assertEq(nft.adjustedPendingReservesFor(1), 4, "tier 1 owes four reserves");
+
+        vm.warp(data.start + 1);
+
+        // Same block: mint every pending reserve, then submit a scorecard paying the attacker's other tier.
+        nft.mintReservesFor(1, 4);
+        DefifaTierCashOutWeight[] memory weights = new DefifaTierCashOutWeight[](2);
+        weights[0] = DefifaTierCashOutWeight({id: 1, cashOutWeight: 0});
+        weights[1] = DefifaTierCashOutWeight({id: 2, cashOutWeight: nft.TOTAL_CASHOUT_WEIGHT()});
+        uint256 scorecardId = gov.submitScorecardFor(projectId, weights);
+
+        vm.warp(block.timestamp + 1);
+
+        // The attacker holds 3 of tier 1's 8 units.
+        vm.prank(LOSING_HOLDER);
+        uint256 weight = gov.attestToScorecardFrom(projectId, scorecardId);
+        assertEq(weight, gov.MAX_ATTESTATION_POWER_TIER() * 3 / 8, "3 of 8 units");
+
+        vm.warp(block.timestamp + gov.attestationGracePeriodOf(projectId));
+        assertTrue(
+            gov.stateOf(projectId, scorecardId) != DefifaScorecardState.SUCCEEDED,
+            "a minority of the losing tier cannot pass a winner-take-all scorecard"
+        );
+    }
+
     function _mintOne(uint256 projectId, address beneficiary, uint16 tierId) internal {
         uint16[] memory tiers = new uint16[](1);
         tiers[0] = tierId;
