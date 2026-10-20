@@ -2,13 +2,15 @@
 
 ## Repo purpose
 
-This repo turns a Juicebox project into a prediction-game lifecycle with fixed phase timing, tiered outcome pieces, attestation-based scorecard governance, and final cash-out weights that decide how the pot settles. It owns Defifa's game-specific launch, scoring, no-contest, and settlement logic.
+This repo turns a Juicebox project into a prediction-game lifecycle with fixed phase timing, tiered outcome pieces, a referee that submits each game's scorecard, and final cash-out weights that decide how the pot settles. It owns Defifa's game-specific launch, scoring, no-contest, and settlement logic.
 
 ## Primary actors
 
 - game creators launching a new Defifa market with fixed timing, tiers, and fee routing
 - players minting outcome pieces during MINT and later redeeming or refunding them
-- attestors and delegates submitting, supporting, revoking, and ratifying scorecards during SCORING
+- referees submitting scorecards during SCORING, and anyone ratifying them after the timelock
+- holders and delegates attesting to and revoking from scorecards in a game whose referee is `DefifaVotingReferee`
+- developers writing referee contracts
 - auditors tracing where game fairness depends on shared 721-store behavior, governor state, and core terminal flows
 - operators handling no-contest recovery or optional fee-project ownership locking
 
@@ -18,7 +20,8 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 - `DefifaHook.afterPayRecordedWith(...)`: mints outcome NFTs when players pay during the mintable phase (ERC-721 game)
 - `Defifa1155Hook.afterPayRecordedWith(...)`: mints outcome positions (ERC-1155 balances, token ID = tier ID) when players pay during the mintable phase (ERC-1155 game)
 - `beforeCashOutRecordedWith(...)` and `afterCashOutRecordedWith(...)` on either hook: define refund, winning-piece redemption, and fee-token claim behavior
-- `DefifaGovernor.submitScorecardFor(...)`, `attestToScorecardFrom(...)`, `revokeAttestationFrom(...)`, `ratifyScorecardFrom(...)`: scorecard governance lifecycle
+- `DefifaGovernor.submitScorecardFor(...)` (referee only) and `ratifyScorecardFrom(...)` (anyone, after the timelock): scorecard lifecycle
+- `DefifaVotingReferee.submitScorecardFor(...)`, `attestToScorecardFrom(...)`, `revokeAttestationFrom(...)`, `forwardScorecardFor(...)`: the sample referee's holder vote
 - `DefifaDeployer.fulfillCommitmentsOf(...)` and `triggerNoContestFor(...)`: finalize commitments after ratification or unlock refund-oriented no-contest recovery
 
 ## Journey 1: Launch a Defifa game
@@ -36,9 +39,9 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 
 **Main Flow**
 
-1. Prepare launch data with timing, tiers, splits, fee-project settings, terminal, and governance params (attestation start, grace period, timelock, `defaultAttestationDelegate`, and `enforceDefaultAttestationDelegate`).
+1. Prepare launch data with timing, tiers, splits, fee-project settings, terminal, and scoring params: `referee` (required), `refereeData`, `timelockDuration`, `scorecardTimeout` (must exceed `timelockDuration`), and `defaultAttestationDelegate`. For a holder vote, set `referee` to the `DefifaVotingReferee` deployment and `refereeData` to `abi.encode(attestationStartTime, attestationGracePeriod)`.
 2. Call `launchGameWith(...)` on the `DefifaDeployer` for the chosen game type: the ERC-721 deployer clones `DefifaHook`, the ERC-1155 deployer clones `Defifa1155Hook`.
-3. The deployer resolves the ERC-2771 caller, advertises that account as the creation-fee payer while reserving the JB project, clones and initializes the game hook, initializes the governor state, and stores the game's immutable ops data.
+3. The deployer resolves the ERC-2771 caller, advertises that account as the creation-fee payer while reserving the JB project, clones and initializes the game hook, names the referee and timelock in the governor, calls the referee's `initializeGameFor(gameId, refereeData)` when `refereeData` is not empty, and stores the game's immutable ops data.
 4. The game advances through its documented phase sequence.
 
 **Failure Modes**
@@ -46,6 +49,8 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 - launch parameters are wrong, but the creator assumes they can patch them later
 - fee routing, token decimals, or terminal assumptions drift from the terminal actually configured
 - the creator mistakes permissionless launch for ongoing admin power
+- `referee` is the zero address, or `scorecardTimeout` does not exceed `timelockDuration`: launch reverts with `DefifaDeployer_InvalidGameConfiguration`
+- a voting referee's attestation delay, grace period and the timelock together outlast `scorecardTimeout`: the deployer does not check this, and the game can only end in no-contest
 
 **Postconditions**
 
@@ -83,25 +88,34 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 
 ## Journey 3: Submit and ratify a scorecard
 
-**Actor:** proposer, attestor, or delegate.
+**Actor:** the game's referee, then any caller.
 
 **Intent:** turn the game's result into a ratified scorecard.
 
 **Preconditions**
 
 - the game is in SCORING
-- the actor understands quorum, grace-period, and timeout rules
+- the actor understands the timelock and timeout rules
 
 **Main Flow**
 
-1. Submit a scorecard candidate.
-2. Attest or revoke while the scorecard is active.
-3. Wait for quorum and the grace period.
-4. Ratify one winning scorecard.
+1. The referee calls `DefifaGovernor.submitScorecardFor(gameId, tierWeights)`. The governor checks the weights as the hook will, makes the scorecard pending, and starts the timelock. `stateOf` reads QUEUED.
+2. To correct a mistake, the referee submits a different scorecard. It replaces the pending one, which reads DEFEATED, and restarts the timelock.
+3. Once `timelockDuration` has passed, `stateOf` reads SUCCEEDED and anyone calls `ratifyScorecardFrom(gameId, tierWeights)` with the pending weights. The governor sets the hook's cash-out weights and fulfills commitments in the same transaction.
+
+In a game whose referee is `DefifaVotingReferee`, steps 1 and 2 run through the referee:
+
+1. Anyone calls `DefifaVotingReferee.submitScorecardFor(gameId, tierWeights)`. The referee freezes BWA power one second before submission, snapshots pending reserves, and fixes the scorecard's quorum (50% to 75% by concentration).
+2. Holders, or their delegates, call `attestToScorecardFrom` once attestations open, and can `revokeAttestationFrom` while the scorecard is ACTIVE.
+3. After the grace period (at least 1 day), a scorecard at quorum reads SUCCEEDED, and anyone calls `forwardScorecardFor(gameId, tierWeights)`. The referee submits it to the governor, starting the timelock. Only the first approved scorecard per game is forwarded; later ones revert with `DefifaVotingReferee_AlreadyForwarded`.
 
 **Failure Modes**
 
-- attestation power is concentrated enough to capture the result
+- a caller other than the referee submits to the governor: `DefifaGovernor_NotReferee`
+- the referee resubmits the pending scorecard: `DefifaGovernor_DuplicateScorecard`
+- ratify before the timelock passes, or with weights that are not the pending scorecard: `DefifaGovernor_NotAllowed`
+- the referee submits a new scorecard late enough that its timelock runs past `scorecardTimeout`: the game ends in no-contest
+- under a voting referee, attestation power is concentrated enough to capture the result (see RISKS.md, "A game is as safe as its referee")
 - timeout is reached before ratification
 - integrations misread live attestation power or pending-reserve dilution
 
@@ -162,37 +176,66 @@ This repo turns a Juicebox project into a prediction-game lifecycle with fixed p
 
 - the game moves onto the documented no-contest recovery track
 
-## Journey 6: Launch an enforced-delegate game
+## Journey 6: Launch a game with a named referee
 
-**Actor:** game creator who will report the result.
+**Actor:** game creator, and the person or multisig who will report the result.
 
-**Intent:** launch a game whose result always comes from one known address, so disengaged holders cannot stall scoring.
+**Intent:** launch a game whose result comes from one known address, so disengaged holders cannot stall scoring.
 
 **Preconditions**
 
-- the creator controls the address that will attest to the result, and players accept it as the game's oracle
+- the referee address is controlled by whoever will report the result, and players accept it as the game's oracle
 - the usual launch preconditions from Journey 1 hold
 
 **Main Flow**
 
-1. Prepare launch data as in Journey 1, with `defaultAttestationDelegate` set to the reporting address and `enforceDefaultAttestationDelegate = true`.
-2. Call `launchGameWith(...)`. The deployer passes the flag to `DefifaGovernor.initializeGame`, and `GameInitialized` records it; `enforcesDefaultAttestationDelegate(gameId)` reads it back.
-3. During SCORING, anyone submits the scorecard and the delegate attests to it. The delegate's attestation carries every eligible tier's full power, so it meets quorum alone; no other account's attestation counts.
-4. After the grace period (at least 1 day) and any timelock, anyone ratifies the SUCCEEDED scorecard.
+1. Prepare launch data as in Journey 1, with `referee` set to the reporting address and `refereeData` empty, so the deployer makes no referee call.
+2. Call `launchGameWith(...)`. The governor records the referee; `GameInitialized` emits it and `refereeOf(gameId)` reads it back.
+3. During SCORING, the referee calls `DefifaGovernor.submitScorecardFor(...)` with the result.
+4. After `timelockDuration`, anyone ratifies the pending scorecard. During the timelock the scorecard is public, and the referee can still replace it.
 
 **Failure Modes**
 
-- the flag is set without a `defaultAttestationDelegate`: launch reverts with `DefifaDeployer_InvalidGameConfiguration`
-- the delegate never attests: the game reaches `scorecardTimeout` and falls through to no-contest refunds (Journey 5)
-- players expect their own attestations or redelegation to matter; in this game they do not
+- the referee never submits: the game reaches `scorecardTimeout` and falls through to no-contest refunds (Journey 5)
+- the referee submits a wrong or self-serving result: nothing in the protocol stops it; players trust the referee as they would a bookmaker
+- players expect their own attestations or delegation to matter; in this game they do not
 
 **Postconditions**
 
-- the game's result is whatever scorecard the delegate attests to, after the public grace period
+- the game's result is whatever scorecard the referee last submitted, once its timelock has passed
+
+## Journey 7: Write a referee contract
+
+**Actor:** developer.
+
+**Intent:** decide games by a rule of your own (a holder vote, a jury, an attested committee) instead of a single address.
+
+**Preconditions**
+
+- you have read [`src/referees/DefifaVotingReferee.sol`](./src/referees/DefifaVotingReferee.sol), the sample referee
+- your rule decides one scorecard per game, in time for the governor's timelock to pass before `scorecardTimeout`
+
+**Main Flow**
+
+1. If your referee needs per-game settings, implement `IDefifaReferee.initializeGameFor(gameId, data)` and decode your settings from `data`. Accept the call only when `msg.sender` is the game's project owner (`CONTROLLER.PROJECTS().ownerOf(gameId)`), which is the deployer at launch. A referee without settings needs no interface; game creators pass empty `refereeData`.
+2. Find the game's governor through its project owner: `IDefifaDeployer(CONTROLLER.PROJECTS().ownerOf(gameId)).GOVERNOR()`. One referee deployment can then serve 721 and 1155 games.
+3. Run your rule. When it decides, call the governor's `submitScorecardFor(gameId, tierWeights)`. Only the game's named referee can call it.
+4. Decide whether a decision is final. A new submission replaces the pending scorecard and restarts the timelock, so a referee that lets competing results replace each other can be pushed past `scorecardTimeout`. `DefifaVotingReferee` forwards only the first approved scorecard per game for this reason.
+
+**Failure Modes**
+
+- `initializeGameFor` accepts any caller: anyone can rewrite a game's settings
+- the rule's windows plus the timelock outlast `scorecardTimeout`: every game ends in no-contest
+- the rule can be bought: see RISKS.md, "A game is as safe as its referee"
+
+**Postconditions**
+
+- game creators name your contract as `referee` and pass your settings as `refereeData`
 
 ## Trust boundaries
 
-- this repo is trusted for game-specific phase logic, governance, and settlement weighting
+- this repo is trusted for game-specific phase logic, ratification, and settlement weighting
+- each game's referee is trusted for its result; the governor does not check what the referee submits beyond its shape
 - terminal accounting still comes from `nana-core-v6`
 - shared tier-storage behavior still comes from `nana-721-hook-v6`, through `DefifaTiersHookStore` (the upstream store plus count-based records) for both game types
 

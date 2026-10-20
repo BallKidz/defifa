@@ -10,7 +10,7 @@
 
 ## Abstract
 
-Defifa is a prediction-game protocol built on Juicebox V6 that transforms NFT minting into a parimutuel wagering mechanism with governance-ratified outcomes. Players purchase ERC-721 game pieces representing competing tiers (teams, candidates, outcomes), forming a shared treasury. After the event concludes, a decentralized attestation process ratifies a scorecard that assigns weights to each tier, redistributing the treasury proportionally. This paper formalizes the cryptoeconomic mechanics of Defifa games: the prize distribution formula, the attestation governance model, the fee extraction pipeline, the protocol-token incentive layer, and the rational actor strategies that emerge. We derive solvency guarantees, characterize equilibrium behavior under various participation profiles, analyze the game-theoretic properties of the scorecard ratification process, and identify the parameter regimes that maximize game integrity and participant welfare.
+Defifa is a prediction-game protocol built on Juicebox V6 that transforms NFT minting into a parimutuel wagering mechanism with governance-ratified outcomes. Players purchase ERC-721 game pieces representing competing tiers (teams, candidates, outcomes), forming a shared treasury. After the event concludes, the game's referee submits a scorecard that assigns weights to each tier, and the governor ratifies it after a timelock, redistributing the treasury proportionally. A referee is any address; the sample referee, `DefifaVotingReferee`, lets holders attest. This paper formalizes the cryptoeconomic mechanics of Defifa games: the prize distribution formula, the voting referee's attestation model, the fee extraction pipeline, the protocol-token incentive layer, and the rational actor strategies that emerge. We derive solvency guarantees, characterize equilibrium behavior under various participation profiles, analyze the game-theoretic properties of the scorecard ratification process, and identify the parameter regimes that maximize game integrity and participant welfare.
 
 Throughout, we illustrate the mechanics with a running example: a **FIFA World Cup game with 32 tiers** — one per national team — priced at 0.01 ETH each.
 
@@ -29,7 +29,7 @@ Throughout, we illustrate the mechanics with a running example: a **FIFA World C
    4. [Prize Distribution — The Scorecard Formula](#24-prize-distribution--the-scorecard-formula)
    5. [Fee Extraction Pipeline](#25-fee-extraction-pipeline)
    6. [Protocol Token Allocation](#26-protocol-token-allocation)
-3. [Attestation Governance and Scorecard Ratification](#3-attestation-governance-and-scorecard-ratification)
+3. [Referees and Scorecard Ratification](#3-referees-and-scorecard-ratification)
    1. [Voting Power Model](#31-voting-power-model)
    2. [Quorum and Ratification Conditions](#32-quorum-and-ratification-conditions)
    3. [Scorecard Lifecycle](#33-scorecard-lifecycle)
@@ -78,7 +78,7 @@ A Defifa game is a *tokenized parimutuel pool*: money goes in via NFT purchases,
 Defifa games are:
 
 - **Deterministic in structure**: all phases, durations, tier prices, and fee schedules are fixed at deployment.
-- **Governance-minimal**: the only human input is the scorecard — a mapping from tiers to weights — ratified through an attestation process.
+- **Governance-minimal**: the only human input is the scorecard — a mapping from tiers to weights — submitted by the game's referee and ratified after a timelock.
 - **Self-custodial**: all funds remain in the Juicebox treasury; no operator can access them outside the protocol rules.
 - **Composable**: games are standard Juicebox projects, inheriting the full protocol's accounting, terminal, and hook infrastructure.
 
@@ -88,13 +88,13 @@ Defifa games are:
 
 2. **Refund (optional exit window).** If configured, a refund phase follows minting. During this period, players may burn their NFTs to reclaim the original mint price, allowing a risk-free exit for those who change their minds. No new mints are accepted.
 
-3. **Score (outcome resolution).** Once the real-world event concludes, anyone may propose a *scorecard* — a vector of weights summing to $W_{\text{total}} = 10^{18}$ — assigning each tier its share of the pot. NFT holders attest to the scorecard they believe reflects the correct outcome. Once a scorecard achieves quorum, it can be ratified. Scorecard submission is restricted to the SCORING phase — no pre-scoring submissions are allowed.
+3. **Score (outcome resolution).** Once the real-world event concludes, the game's referee submits a *scorecard* — a vector of weights summing to $W_{\text{total}} = 10^{18}$ — assigning each tier its share of the pot. Once the game's timelock has passed, anyone can ratify it. Under `DefifaVotingReferee`, anyone may propose a scorecard, NFT holders attest to the one they believe reflects the correct outcome, and a scorecard that achieves quorum is forwarded to the governor. Scorecard submission is restricted to the SCORING phase — no pre-scoring submissions are allowed.
 
 4. **Complete (prize distribution).** After ratification, protocol fees are extracted, and the remaining pot is available for claims. Each NFT holder burns their token to receive their proportional share, plus any accrued protocol tokens ($\text{DEFIFA}$ and $\text{NANA}$).
 
 5. **No contest (safety fallback).** If the game fails to attract sufficient participation or the scorecard is not ratified within the configured timeout, the game enters a NO_CONTEST state where all players can reclaim their original mint prices.
 
-**World Cup example.** The World Cup game mints for 30 days before the tournament. Fans buy Argentina NFTs, France NFTs, etc. After the final, someone submits a scorecard: the champion's tier gets 40% of the weight, the runner-up gets 20%, semifinalists get 10% each, and quarterfinalists share the remaining 20%. Holders attest, the scorecard is ratified, fees are extracted, and holders of the champion's NFTs receive their proportional share of a now-concentrated prize pool.
+**World Cup example.** The World Cup game mints for 30 days before the tournament. Fans buy Argentina NFTs, France NFTs, etc. After the final, someone submits a scorecard: the champion's tier gets 40% of the weight, the runner-up gets 20%, semifinalists get 10% each, and quarterfinalists share the remaining 20%. Holders attest through the voting referee, the scorecard is forwarded and, after the timelock, ratified, fees are extracted, and holders of the champion's NFTs receive their proportional share of a now-concentrated prize pool.
 
 ### 1.3 The design parameters
 
@@ -120,13 +120,15 @@ Where:
 
 8. **Splits** ($\mathcal{S}$): Additional payout splits configured at deployment (e.g., for game organizers, charities).
 
-9. **Attestation start time** ($\tau_{\text{attest}}$): The earliest time at which attestation voting opens on submitted scorecards.
+9. **Attestation start time** ($\tau_{\text{attest}}$): Under `DefifaVotingReferee`, the earliest time at which attestation voting opens on submitted scorecards. Passed in `refereeData`.
 
-10. **Attestation grace period** ($\tau_{\text{grace}}$): Minimum duration attestations must remain open after $\tau_{\text{attest}}$, even if quorum is already met. Protocol-enforced minimum: 1 day.
+10. **Attestation grace period** ($\tau_{\text{grace}}$): Under `DefifaVotingReferee`, the minimum duration attestations must remain open after $\tau_{\text{attest}}$, even if quorum is already met. Passed in `refereeData`. Minimum: 1 day.
 
 11. **Minimum participation** ($m_{\text{min}}$): The minimum treasury balance required for the game to proceed to scoring. If the balance is below this threshold when SCORING would begin, the game enters NO_CONTEST. Set to 0 to disable.
 
-12. **Scorecard timeout** ($\tau_{\text{timeout}}$): The maximum time (in seconds) after the scoring phase begins for a scorecard to be ratified. If exceeded without ratification, the game enters NO_CONTEST. Set to 0 to disable.
+12. **Scorecard timeout** ($\tau_{\text{timeout}}$): The maximum time (in seconds) after the scoring phase begins for a scorecard to be ratified. If exceeded without ratification, the game enters NO_CONTEST. Required, and must exceed the timelock $\tau_{\text{lock}}$.
+
+Each game also names its **referee** $R$, the only address that can submit a scorecard, and a **timelock** $\tau_{\text{lock}}$, the time a submitted scorecard waits before anyone can ratify it (Section 3). $\tau_{\text{attest}}$ and $\tau_{\text{grace}}$ apply only when $R$ is `DefifaVotingReferee`.
 
 Once set, the tuple $\mathcal{G}$ is immutable. Phase transitions occur automatically by timestamp, with the scoring phase having infinite duration (duration = 0) until the scorecard is ratified or the timeout elapses.
 
@@ -360,7 +362,11 @@ The computation uses `mulDiv` for precision: `mulDiv(tokenBalance, cumulativeMin
 
 ---
 
-## 3 Attestation governance and scorecard ratification
+## 3 Referees and scorecard ratification
+
+`DefifaGovernor` counts no votes. Each game names one referee $R$ at launch. Only $R$ submits a scorecard to the governor; a new submission replaces the pending one and restarts the game's timelock $\tau_{\text{lock}}$. Once $\tau_{\text{lock}}$ has passed, anyone ratifies the pending scorecard. A referee is any address: a person or multisig decides alone, and a contract can run its own rule and then submit.
+
+The rest of this section describes the rule of `DefifaVotingReferee`, the sample referee: holders attest with benefit-weighted power, and a scorecard that reaches its quorum after the grace period is forwarded to the governor. Sections 5.3, 9.2, 9.3 and 9.4 analyze the same rule. None of it applies to a game whose referee is a single address.
 
 ### 3.1 Voting power model
 
@@ -403,12 +409,14 @@ An even split needs 50% of the possible attestation (`QUORUM_EVEN_BPS = 5_000`) 
 
 Each scorecard's quorum is computed when it is submitted and stored in `quorumSnapshot`, so later burns or reserve mints do not move it. `quorum(gameId)` reports the even-split quorum, $V_{\text{BWA}} / 2$.
 
-**World Cup example.** All 32 tiers have minted tokens, so $V_{\text{BWA}} = 31 \times 10^9$. An even scorecard needs $15.5 \times 10^9$; the World Cup scorecard below (largest share 40%) needs 54%, about $16.7 \times 10^9$; a winner-take-all scorecard needs $23.25 \times 10^9$. A default delegate holding the delegated power of most minters across the losing tiers can meet quorum alone, which is the intended fast path for games with trusted organizers. A game can also make that path the only one (Section 9.1.6).
+**World Cup example.** All 32 tiers have minted tokens, so $V_{\text{BWA}} = 31 \times 10^9$. An even scorecard needs $15.5 \times 10^9$; the World Cup scorecard below (largest share 40%) needs 54%, about $16.7 \times 10^9$; a winner-take-all scorecard needs $23.25 \times 10^9$. A default delegate holding the delegated power of most minters across the losing tiers can meet quorum alone, which is the intended fast path for games with trusted organizers. A game that wants one address to decide names it as the referee instead (Section 9.1.6).
 
-**Ratification conditions.** A scorecard can be ratified when all three conditions are met:
+**Approval conditions.** A scorecard is SUCCEEDED in the voting referee when all three conditions are met:
 1. The scorecard's grace period has expired ($\texttt{gracePeriodEnds} \leq \texttt{block.timestamp}$),
 2. The attestation count meets or exceeds quorum ($\texttt{attestations.count} \geq Q$),
-3. No other scorecard has been ratified for this game.
+3. No scorecard has been ratified for this game.
+
+Anyone can then forward it to the governor with `forwardScorecardFor`. The referee forwards only the first approved scorecard per game, and the governor ratifies it once $\tau_{\text{lock}}$ has passed.
 
 ### 3.3 Scorecard lifecycle
 
@@ -422,7 +430,7 @@ Each submitted scorecard passes through five states:
 | **DEFEATED** | A different scorecard was ratified |
 | **RATIFIED** | This scorecard was ratified |
 
-Multiple scorecards may coexist in ACTIVE or SUCCEEDED state simultaneously, but only one can ever be ratified. Scorecards that fail to reach quorum remain ACTIVE indefinitely — there is no expiry on individual scorecards. The game's `scorecardTimeout` provides the ultimate backstop (see Section 9.1).
+Multiple scorecards may coexist in ACTIVE or SUCCEEDED state simultaneously, but only the first one forwarded reaches the governor, where it reads QUEUED while $\tau_{\text{lock}}$ runs and SUCCEEDED once anyone can ratify it. Scorecards that fail to reach quorum remain ACTIVE indefinitely — there is no expiry on individual scorecards. The game's `scorecardTimeout` provides the ultimate backstop (see Section 9.1).
 
 The grace period is computed relative to `attestationsBegin`, not submission time: $t_{\text{grace\_end}} = t_{\text{attest\_begin}} + \tau_{\text{grace}}$. This prevents the grace period from expiring before attestations even start when a scorecard is submitted early in the scoring phase.
 
@@ -436,7 +444,7 @@ The attestation model incorporates several defenses against strategic manipulati
 
 **Defense 3: Mint-phase-only delegation.** Delegation is locked after the mint phase, preventing last-minute delegation changes during the scoring phase.
 
-**Defense 4: 50% to 75% quorum.** Quorum is 50% of the attestation possible for an even scorecard and 75% for winner-take-all (Section 3.2). A coalition must hold that share of the non-beneficiary tiers' attestation power to ratify a scorecard alone, even with 100% participation within its tiers.
+**Defense 4: 50% to 75% quorum.** Quorum is 50% of the attestation possible for an even scorecard and 75% for winner-take-all (Section 3.2). A coalition must hold that share of the aggregate non-beneficiary attestation power, not of each tier, to pass a scorecard alone, even with 100% participation within its tiers.
 
 **Defense 5: Scoring-phase-only submission.** Scorecard submission is restricted to the SCORING phase. This prevents pre-accumulation of attestations during minting, which could otherwise allow a coordinated group to achieve SUCCEEDED status before the real-world event even occurs.
 
@@ -572,7 +580,7 @@ A rational player exercises (refunds) when $V_i(t_{\text{refund\_end}}) < p$, wh
 
 ### 5.3 Scoring-phase strategy: attestation delegation
 
-During the scoring phase, the key strategic variable is attestation. Rational players attest to the scorecard that maximizes their expected payout.
+Under an address referee, holders have no scoring-phase move. Under `DefifaVotingReferee`, the key strategic variable is attestation. Rational players attest to the scorecard that maximizes their expected payout.
 
 **Default delegation.** Games may specify a `defaultAttestationDelegate` — a trusted address (e.g., the game organizer) whose scorecard proposals are flagged. Players delegating to this address at mint time reduce coordination costs.
 
@@ -582,6 +590,8 @@ During the scoring phase, the key strategic variable is attestation. Rational pl
 
 1. All holders attest to the *truthful* scorecard — the one reflecting the actual event outcome.
 2. The truthful scorecard achieves quorum, as holders of winning tiers have the strongest incentive to attest (they benefit from high weight) and holders of losing tiers are indifferent between truthful scorecards (their weight is zero regardless).
+
+This equilibrium leaves out two incentives. Holders of losing tiers are not indifferent between ratification and NO_CONTEST: a refund returns their stake, so if they hold enough losing-tier power to block quorum (more than 25% of it against a winner-take-all scorecard), withholding pays them. And since they lose nothing under either scorecard, a small bribe can buy their attestation for a false one. Default delegation is what usually puts their power behind the truthful scorecard.
 
 ### 5.4 Complete-phase strategy: claim vs hold
 
@@ -743,9 +753,11 @@ $$t_{\text{mint}} \approx \min(\text{time until event}, \; 30 \text{ days}) \tag
 
 **Refund duration** ($t_{\text{refund}}$): Creates optionality value. Longer refund periods increase the option value for minters but may reduce pot stability (more uncertainty about final pot size). A refund period of 1–7 days provides meaningful optionality without excessive uncertainty.
 
-**Attestation start time** ($\tau_{\text{attest}}$): The earliest time at which attestation voting opens. Longer delays give more holders time to review scorecards. Recommended: set to a time shortly after the event concludes.
+**Timelock** ($\tau_{\text{lock}}$): The time every submitted scorecard waits before anyone can ratify it, under any referee. It is the public notice window. Recommended: 3–7 days.
 
-**Attestation grace period** ($\tau_{\text{grace}}$): Minimum duration of the voting window after attestation opens. Must be long enough for broad participation but short enough to deliver results promptly. Protocol-enforced minimum: 1 day. Recommended: 3–7 days.
+**Attestation start time** ($\tau_{\text{attest}}$, voting referee): The earliest time at which attestation voting opens. Longer delays give more holders time to review scorecards. Recommended: set to a time shortly after the event concludes.
+
+**Attestation grace period** ($\tau_{\text{grace}}$, voting referee): Minimum duration of the voting window after attestation opens. Must be long enough for broad participation but short enough to deliver results promptly. Minimum: 1 day. Recommended: 3–7 days. The deployer checks only $\tau_{\text{timeout}} > \tau_{\text{lock}}$; the attestation delay, $\tau_{\text{grace}}$ and $\tau_{\text{lock}}$ together must also fit inside $\tau_{\text{timeout}}$, or no scorecard can be ratified in time.
 
 **Scorecard timeout** ($\tau_{\text{timeout}}$): Maximum time for governance resolution. Longer timeouts reduce deadline pressure but extend the period during which funds are locked. Recommended: 90–180 days for permissionless games, 30 days for trusted-organizer games.
 
@@ -791,14 +803,14 @@ Defifa includes a comprehensive safety system — the **NO_CONTEST** mechanism �
 **Mechanism.** At game creation, the organizer sets `scorecardTimeout` — a duration (in seconds) after the SCORING phase begins. The `currentGamePhaseOf()` function checks `block.timestamp > scoringRulesetStart + scorecardTimeout`. If the timeout has elapsed and no scorecard has been ratified, it returns NO_CONTEST.
 
 **What it solves.** All governance deadlock scenarios:
-- No scorecard submitted
+- No scorecard submitted (including a referee that never acts)
 - Scorecard submitted but quorum unreachable (fragmented attestation)
 - Default attestation delegate is inaccessible (lost keys, dead multisig)
 - Attestation power locked in dead addresses
 
 This is the only mechanism that provides a hard, trustless, time-bounded guarantee that funds cannot be locked permanently.
 
-**Configuration.** Set to 0 to disable. Recommended: 90 days for permissionless games.
+**Configuration.** Required: the deployer rejects a timeout that does not exceed $\tau_{\text{lock}}$. Recommended: 90 days for permissionless games. A referee that submits a new scorecard late restarts $\tau_{\text{lock}}$ and can push the game past its timeout.
 
 #### 9.1.3 Trigger 3: explicit no-contest activation
 
@@ -825,9 +837,9 @@ The phase resolution follows strict priority:
 
 #### 9.1.5 The default attestation delegate
 
-Beyond the automated NO_CONTEST triggers, the `defaultAttestationDelegate` provides a social fast-path for governance resolution. When set, every minter who does not specify a custom delegate has their attestation units delegated to this address. If no minter re-delegates, the delegate holds 100% of attestation power across all minted tiers, which meets any quorum.
+Beyond the automated NO_CONTEST triggers, the `defaultAttestationDelegate` provides a social fast-path for resolution in games whose referee counts holder votes. When set, every minter who does not specify a custom delegate has their attestation units delegated to this address. If no minter re-delegates, the delegate holds 100% of attestation power across all minted tiers, which meets any quorum.
 
-The delegate can submit a scorecard, attest to it, and once quorum is met, anyone can ratify. This resolves most governance deadlocks in practice. However, it depends on:
+Under `DefifaVotingReferee`, the delegate can submit a scorecard and attest to it; once quorum is met after the grace period, anyone can forward it, and after $\tau_{\text{lock}}$ anyone can ratify. This resolves most governance deadlocks in practice. However, it depends on:
 1. The delegate being set (optional parameter; `address(0)` is valid),
 2. The delegate remaining operational (multi-sigs lose keys; DAOs cease operating),
 3. The delegate acting honestly (a delegate could submit a self-serving scorecard),
@@ -835,13 +847,15 @@ The delegate can submit a scorecard, attest to it, and once quorum is met, anyon
 
 **Defense in depth.** The combination of `defaultAttestationDelegate` (fast-path social resolution) + `scorecardTimeout` (hard backstop) + `minParticipation` (early exit for ghost games) provides layered safety where each mechanism covers the failure modes of the others.
 
-#### 9.1.6 Enforced default delegate
+#### 9.1.6 Named referee
 
-A game launched with `enforceDefaultAttestationDelegate` removes the fourth dependency above. Only the default delegate's attestation counts: every other account has zero weight, and the delegate attests with each eligible tier's full power, $V_{\text{max}}$ per tier with any attestation units, scaled by BWA. Its weight on any scorecard is the full $V_{\text{BWA}}$ for that scorecard, so it meets every quorum alone, and no holder's delegation choice can change the result. The deployer rejects the flag without a nonzero `defaultAttestationDelegate`.
+A game that wants one known address to decide names that address as its referee and passes empty `refereeData`. The referee submits the result to the governor directly; holder attestation and delegation play no part. It removes the first and fourth dependencies above; the second and third remain: the referee must stay operational and act honestly. Nothing in the protocol checks what it submits, so players trust it as they would a bookmaker.
 
-Everything else is the normal flow: anyone submits, attestation opens one second after submission, the grace period (at least 1 day) and any timelock apply, and anyone ratifies a SUCCEEDED scorecard. The grace period still gives players public notice of the scorecard before it can be ratified, and `scorecardTimeout` ends an inactive delegate's game in NO_CONTEST with full refunds. Players in an enforced game trust the delegate with the result, in exchange for a game that disengaged holders cannot stall.
+The governor's timelock still applies: every scorecard is public for $\tau_{\text{lock}}$ before anyone can ratify it, and the referee can replace it during that window. `scorecardTimeout` ends an inactive referee's game in NO_CONTEST with full refunds. In exchange for that trust, disengaged holders cannot stall the game.
 
 ### 9.2 Governance attack economics
+
+This section and the next analyze `DefifaVotingReferee`'s rule. Under a named-address referee, the attack is to corrupt the referee, and none of this applies.
 
 **All governance systems are manipulatable with sufficient capital.** The relevant question is not *whether* an attack is possible, but whether the **mechanism structurally prevents profit** regardless of how much the attacker spends. Making attacks "more expensive" is insufficient — a sufficiently capitalized adversary will pay any price. The defense must be structural, not economic.
 
@@ -912,7 +926,7 @@ The attacker's fallback: buy into *non-winning* tiers to accumulate attestation 
 - 16 honest tiers (tiny share): $\approx 0.03 \times V_{\text{max}}$
 - **Total: 15.03 × $V_{\text{max}}$ < 23.25 × $V_{\text{max}}$ = winner-take-all quorum (75% of $31 \times V_{\text{max}}$).** Fails.
 
-Far short, because the winning tier contributes zero and winner-take-all needs 75% of every other tier's power.
+Far short, because the winning tier contributes zero and winner-take-all needs 75% of the other tiers' aggregate power.
 
 **Attacker buys massively into honest tiers to compensate (542 tokens each next to 500 honest tokens, about 87 ETH):**
 
@@ -959,7 +973,7 @@ For the default fee rate ($\phi = 0.075$):
 |:------|:----------|:---------------|
 | **Structural** | Benefit-weighted attestation | Self-interested scorecard manipulation |
 | **Economic** | Dead token tax + fee extraction | Profitability of residual attacks |
-| **Temporal** | Post-ratification timelock (Section 9.4) | Fraud that slips through BWA |
+| **Temporal** | Governor timelock (Section 9.4) | Gives notice of fraud that slips through BWA |
 | **Adaptive** | Graduated quorum by concentration (Section 9.4) | Concentrated fraudulent scorecards |
 | **Corrective** | Attestation withdrawal (Section 9.4) | Social engineering / phishing |
 | **Social** | Trusted delegate | Coordination failure among honest holders |
@@ -968,9 +982,9 @@ For the default fee rate ($\phi = 0.075$):
 
 The delegate handles the common case. BWA makes self-interested scorecards structurally unratifiable. Dead token economics ensure that even attacks overcoming BWA are unprofitable. The timelock, graduated quorum, and attestation withdrawal (Section 9.4) provide defense-in-depth against residual attack vectors. Safety parameters provide the hard backstop. And resilient game design (Section 9.3) makes the 51% threshold prohibitively expensive.
 
-**The irreducible limit.** Like all proof-of-stake systems, Defifa has a 51% security threshold: an attacker who controls >50% of every tier's tokens can ratify any scorecard. This is the fundamental limit of all token-weighted governance and cannot be eliminated by mechanism design alone. The defense is *game design* — structuring games so that organic participation makes 51% ownership prohibitively expensive.
+**The irreducible limit.** Like all proof-of-stake systems, the voting referee has a majority threshold: an attacker who holds enough of the losing tiers' aggregate power to meet quorum (50% to 75% of it, by concentration) can pass any scorecard. Holders of more than half the tiers can also split the pot among their own tiers without outside help, since BWA discounts each tier only by its own share (Section 9.3). This is the fundamental limit of all token-weighted governance and cannot be eliminated by mechanism design alone. The defense is *game design* — structuring games so that organic participation makes 51% ownership prohibitively expensive.
 
-**The bottom line:** Benefit-weighted attestation transforms Defifa governance from an economic arms race (who can spend more?) into a structural equilibrium (beneficiaries can't ratify their own winnings). The "perfect proportion" — linear reduction `power = 1 - benefit` — is the unique function that preserves constant total attestation across all valid scorecards while maximally separating beneficiary power from non-beneficiary power. Combined with dead token economics and fee extraction, self-serving governance is not just structurally difficult — it is provably unprofitable under the conditions identified in Section 9.3.
+**The bottom line:** Benefit-weighted attestation transforms Defifa governance from an economic arms race (who can spend more?) into a structural equilibrium (beneficiaries can't ratify their own winnings). The "perfect proportion" — linear reduction `power = 1 - benefit` — is the unique function that preserves constant total attestation across all valid scorecards while maximally separating beneficiary power from non-beneficiary power. Combined with dead token economics and fee extraction, self-serving governance is structurally difficult and, for an attacker who buys every tier evenly, unprofitable (Section 9.3). It is not unprofitable for an attacker who buys selectively and ends up holding most of the money, and the voting referee can also be captured by bribing holders who lose nothing by a result (see RISKS.md, "A game is as safe as its referee").
 
 ### 9.3 Resilient game design
 
@@ -978,11 +992,13 @@ The profitability threshold from Section 9.2 implies specific design principles 
 
 #### The uniform participation theorem
 
-**Theorem.** In a Defifa game with BWA, if all $N$ tiers have equal supply ($n_i = n$ for all $i$), then no attacker controlling any fraction $\alpha$ of the total supply can profit from governance manipulation.
+**Theorem.** In a Defifa game under the voting referee, if all $N$ tiers have equal supply ($n_i = n$ for all $i$), then no attacker who holds the same fraction $\alpha$ of every tier can profit from governance manipulation.
 
-*Proof.* Under uniform supply, any buyer's ownership fraction is identical across all tiers: $\alpha_w = \alpha_v = \alpha$. The profitability condition requires $\alpha_w > \alpha_v \cdot (N-1)/((1-\phi)N - 1)$, which reduces to $1 > (N-1)/((1-\phi)N - 1)$. Since $(1-\phi)N - 1 < N - 1$ for any $\phi > 0$, the right side exceeds 1 — the condition can never be satisfied. The attacker always loses exactly the fee fraction $\phi$. $\square$
+*Proof.* The attacker holds the same fraction of every tier, so $\alpha_w = \alpha_v = \alpha$. The profitability condition requires $\alpha_w > \alpha_v \cdot (N-1)/((1-\phi)N - 1)$, which reduces to $1 > (N-1)/((1-\phi)N - 1)$. Since $(1-\phi)N - 1 < N - 1$ for any $\phi > 0$, the right side exceeds 1 — the condition can never be satisfied. The attacker always loses exactly the fee fraction $\phi$. $\square$
 
-This theorem establishes that **participation uniformity is the fundamental design variable** for game security. The closer a game's tier supplies are to uniform, the harder it is for any attacker to achieve the $\alpha_w > 1.08 \times \alpha_v$ threshold needed for profit.
+**Scope.** The proof assumes the attacker holds the same share of every tier. Equal supply does not force that: an attacker can buy tiers selectively. Under equal supply, an attacker who holds about 75% of the losing tiers' power (enough for a winner-take-all quorum) and more than $1.084 \times 0.75 \approx 81\%$ of the tier it names the winner meets the profitability condition, and so does a coalition holding more than half the tiers that splits the pot among them. Either one holds most of the money in the game. Equal supply therefore raises the cost of capture to a money majority; it does not make attacks unprofitable at any size.
+
+Within that scope, **participation uniformity is the fundamental design variable** for game security. The closer a game's tier supplies are to uniform, the harder it is for any attacker to achieve the $\alpha_w > 1.08 \times \alpha_v$ threshold needed for profit.
 
 The intuition: under uniform supply, any tokens the attacker buys in winning tiers to increase $\alpha_w$ also increase their ownership of the total supply, which means they're paying proportionally into the pot. Their revenue scales with $\alpha_w$ but so does their cost — the fees eat the margin.
 
@@ -1033,33 +1049,33 @@ The 32-team FIFA World Cup game exemplifies resilient design:
 
 5. **Clear resolution**: Tournament brackets provide unambiguous outcomes, reducing scorecard disputes to a mechanical verification.
 
-**Is there a proven ideal game design?** Yes, with qualification. The Uniform Participation Theorem proves that a game with perfectly uniform tier supply is impervious to profitable governance attacks regardless of attacker capital. The "ideal" is therefore any event structure that naturally produces uniform minting — and the World Cup is the canonical real-world example. The qualification: no mechanism can prevent a 51% attacker, just as no proof-of-stake protocol can. The defense is making 51% ownership prohibitively expensive through high, uniform participation.
+**Is there a proven ideal game design?** Only in part. The Uniform Participation Theorem shows that under uniform tier supply, an attacker who buys every tier evenly cannot profit, and an attacker who buys selectively needs most of the money in the game. The "ideal" is therefore any event structure that naturally produces uniform minting — and the World Cup is the canonical real-world example. No holder vote can stop a money majority, just as no proof-of-stake protocol can stop a 51% attacker. The defense is making that majority prohibitively expensive through high, uniform participation, or naming a different referee.
 
 ### 9.4 Governance hardening
 
-The defense stack in Section 9.2 — BWA, dead token economics, and resilient game design — provides strong structural guarantees. This section describes four implemented mechanisms that provide defense-in-depth against residual attack vectors. These are additive: each one independently strengthens the system, and they compose without interference.
+The defense stack in Section 9.2 — BWA, dead token economics, and resilient game design — provides strong structural guarantees. This section describes four implemented mechanisms: the governor's timelock, which applies under every referee, and three rules of `DefifaVotingReferee`. They provide defense-in-depth against residual attack vectors. These are additive: each one independently strengthens the system, and they compose without interference.
 
-#### 9.4.1 Post-ratification timelock
+#### 9.4.1 Governor timelock
 
-**Problem.** Without a timelock, `ratifyScorecardFrom` executes the scorecard instantly — the moment quorum is met and the grace period expires, anyone can call it and the weights are permanently locked. There is zero time for the community to react to fraud that slips through BWA.
+**Problem.** Without a timelock, a submitted scorecard could be ratified at once and the weights permanently locked. There would be no time to react to a wrong or fraudulent result.
 
-**Mechanism.** A mandatory delay $\tau_{\text{lock}}$ exists between a scorecard reaching quorum (after grace period) and its execution becoming available. During this window:
+**Mechanism.** The governor holds every scorecard the referee submits for $\tau_{\text{lock}}$ before anyone can ratify it. During this window:
 
-1. The scorecard enters the `QUEUED` state — visible but not yet executable.
-2. Multiple scorecards can reach `QUEUED` or `SUCCEEDED` simultaneously. The first to be ratified wins; others become `DEFEATED`.
-3. After $\tau_{\text{lock}}$ expires, the scorecard transitions to `SUCCEEDED` and can be ratified.
+1. The pending scorecard reads `QUEUED` — visible but not yet executable.
+2. The referee can submit a different scorecard, which replaces the pending one (now `DEFEATED`) and restarts $\tau_{\text{lock}}$. Resubmitting the pending scorecard reverts.
+3. After $\tau_{\text{lock}}$, the scorecard reads `SUCCEEDED` and anyone can ratify it.
 
-**Why competing scorecards race fairly.** Multiple scorecards can coexist in `QUEUED`/`SUCCEEDED` simultaneously. The first `ratifyScorecardFrom` call wins. Under BWA + graduated quorum, marshaling enough attestation power for a fraudulent competing scorecard is extremely expensive.
+**Under the voting referee.** `DefifaVotingReferee` forwards only the first approved scorecard per game. If a later approved scorecard could replace it, anyone could forward one just before the first became ratifiable and push the game past its timeout. Once forwarded, nothing in the voting referee can replace the scorecard, so for a holder vote the timelock is notice, not a second chance to correct.
 
 **Recommended parameters.** $\tau_{\text{lock}} = 3$–$7$ days. This is the same pattern used by Compound Governor, OpenZeppelin TimelockController, and Gnosis Safe — battle-tested in governance systems managing billions in TVL.
 
-**Implementation.** A `QUEUED` state exists between `ACTIVE` and `SUCCEEDED`. The `stateOf` function returns `QUEUED` when quorum is met, grace period has passed, and $\tau_{\text{lock}}$ has not yet elapsed. `ratifyScorecardFrom` only executes when the state is `SUCCEEDED` (timelock expired). The `timelockDuration` is configurable per game (set to 0 to disable).
+**Implementation.** `DefifaGovernor.stateOf` returns `QUEUED` while `block.timestamp < submittedAt + timelockDuration` and `SUCCEEDED` after. `ratifyScorecardFrom` only executes the pending scorecard in `SUCCEEDED`. The `timelockDuration` is set per game and may be 0.
 
 #### 9.4.2 Graduated quorum by scorecard concentration
 
 **Problem.** A flat quorum treats a scorecard assigning 100% to one tier like one distributing weight across 32 tiers. Concentrated scorecards move the most value, so they should need the broadest agreement.
 
-**Mechanism.** Quorum is a share of the most attestation possible, $V_{\text{BWA}} = (N-1) \times V_{\text{max}}$, rising with the largest tier weight's squared share:
+**Mechanism.** In `DefifaVotingReferee`, quorum is a share of the most attestation possible, $V_{\text{BWA}} = (N-1) \times V_{\text{max}}$, rising with the largest tier weight's squared share:
 
 $$\text{maxShare} = \frac{\max_i(w_i)}{W_{\text{total}}}$$
 
@@ -1078,7 +1094,7 @@ with `QUORUM_EVEN_BPS = 5_000` and `QUORUM_WINNER_TAKE_ALL_BPS = 7_500`.
 - **Nonlinear.** maxShare² is gentle for moderate concentration (the World Cup scorecard, largest share 40%, needs 54%) and steepest near winner-take-all.
 - **Floor of 1.** A one-tier game has $V_{\text{BWA}} = 0$, so its quorum is 1 and no scorecard can ratify; it falls through to NO_CONTEST.
 
-**Trade-off.** The 75% ceiling sets the cost of a fake winner-take-all. To force one, a coalition must hold 75% of every losing tier's attestation power, and the only value it can take is the remaining 25% of the losing stakes. That is at most a 33% return on the capital it locks in losing tiers, before fees, and that capital is lost if honest holders outvote it. Silent holders never lower this cost: quorum counts against the attestation possible, not the attestation cast. Default delegation covers passive holders, whose power goes to the default delegate unless they choose otherwise. A higher ceiling would raise the attack cost but let a small silent minority of a losing tier block a true winner-take-all result.
+**Trade-off.** The 75% ceiling sets what a fake winner-take-all needs: 75% of the losing tiers' aggregate attestation power, not 75% of each losing tier. A coalition can meet it with all of the thin tiers and less of the thick ones (Section 3.4). Silent holders never lower this bar: quorum counts against the attestation possible, not the attestation cast. Default delegation covers passive holders, whose power goes to the default delegate unless they choose otherwise. The ceiling also cuts the other way: holders of more than 25% of the losing tiers' power can block a true winner-take-all by withholding, and recover their stake when the game times out into NO_CONTEST. A higher ceiling would raise the attack cost but give that blocking power to a smaller minority.
 
 **Implementation.** At scorecard submission, `submitScorecardFor` finds the largest tier weight, computes $Q(S)$, and stores it in `quorumSnapshot` on the `DefifaScorecard` struct. `stateOf` compares attestations against this snapshot.
 
@@ -1090,11 +1106,11 @@ with `QUORUM_EVEN_BPS = 5_000` and `QUORUM_WINNER_TAKE_ALL_BPS = 7_500`.
 
 1. Each attestor's BWA weight is stored: `attestedWeightOf[msg.sender]`.
 2. `revokeAttestationFrom(gameId, scorecardId)` subtracts the stored weight from the scorecard's attestation count and clears the record.
-3. Revocation is only available while the scorecard state is `ACTIVE`. Once a scorecard enters `QUEUED` (grace period ended + quorum met), revocations are disabled.
+3. Revocation is only available while the scorecard state is `ACTIVE`. Once a scorecard is `SUCCEEDED` (grace period ended + quorum met), revocations are disabled.
 
-**Why ACTIVE-only.** Restricting revocation to the `ACTIVE` phase prevents the griefing loop (attest/revoke cycling that could block ratification). During ACTIVE, the grace period is still running, giving honest holders time to correct mistakes. Once `QUEUED`, the community has already demonstrated consensus and the timelock provides the final safety window.
+**Why ACTIVE-only.** Restricting revocation to the `ACTIVE` phase prevents the griefing loop (attest/revoke cycling that could block ratification). During ACTIVE, the grace period is still running, giving honest holders time to correct mistakes. Once `SUCCEEDED`, the holders have already demonstrated consensus, and anyone can forward the scorecard to the governor.
 
-**Effect.** This enables community self-correction during the debate window. If a fraudulent scorecard accumulates attestation through deception, honest holders can withdraw support before the grace period ends, causing it to drop below quorum. Combined with the timelock (Section 9.4.1), the overall correction window spans the grace period plus timelock duration.
+**Effect.** This enables community self-correction during the debate window. If a fraudulent scorecard accumulates attestation through deception, honest holders can withdraw support before the grace period ends, causing it to drop below quorum. The correction window is the grace period: once a scorecard is forwarded, the governor's timelock (Section 9.4.1) gives notice but the voting referee cannot replace it.
 
 **Implementation.** The `DefifaAttestations` struct stores `mapping(address => uint256) attestedWeightOf` (zero = not attested). The `count` field is mutable in both directions. The BWA weight recorded at attestation time is deterministic (based on snapshot timestamp), so revocation recomputes the exact same weight that was added.
 
@@ -1126,7 +1142,8 @@ The following table summarizes all governance deadlock scenarios and their resol
 
 | Scenario | Resolution |
 |:---------|:-----------|
-| No scorecard submitted | `scorecardTimeout` → NO_CONTEST → full refunds |
+| No scorecard submitted, or the referee never acts | `scorecardTimeout` → NO_CONTEST → full refunds |
+| Referee replaces its scorecard too late for the timelock | `scorecardTimeout` → NO_CONTEST → full refunds |
 | Scorecard submitted, quorum unreachable | `scorecardTimeout` → NO_CONTEST → full refunds |
 | Default delegate inaccessible | `scorecardTimeout` → NO_CONTEST → full refunds |
 | Attestation power in dead addresses | `scorecardTimeout` → NO_CONTEST → full refunds |
@@ -1134,9 +1151,7 @@ The following table summarizes all governance deadlock scenarios and their resol
 | All minters refund | Treasury balance = 0 → nothing to recover |
 | Insufficient participation | `minParticipation` threshold → NO_CONTEST → full refunds |
 
-The current design resolves the identified permanent-lock scenarios through either `scorecardTimeout` (time-bounded) or `minParticipation` (condition-based), provided these optional parameters are set.
-
-A game with both safety parameters set to 0 functions exactly as a minimal governance game — relying on the delegate and community coordination. The safety mechanisms add optionality for risk-averse game designers without adding mandatory complexity.
+The current design resolves the identified permanent-lock scenarios through `scorecardTimeout` (time-bounded, required for every game) or `minParticipation` (condition-based, optional).
 
 ---
 
@@ -1152,18 +1167,18 @@ The scorecard weight system ($\sum w_i = 10^{18}$) provides a flexible framework
 
 ### Governance security
 
-The attestation model (Section 3) achieves a balance between decentralization and efficiency. The per-tier cap on attestation power ($V_{\text{max}} = 10^9$) prevents any single tier from dominating governance, while a quorum of 50% to 75% of the attestation possible ensures broad participation. The checkpoint-based snapshot (at `snapshotTimestamp`, one second before submission, with pending reserves snapshotted at submission time) prevents vote-buying and reserve-minting manipulation, mint-phase-only delegation prevents last-minute manipulation, and scoring-phase-only submission prevents pre-accumulation of attestations.
+The governor counts no votes; each game's referee decides its result, and a game is as safe as its referee. The voting referee's attestation model (Section 3) achieves a balance between decentralization and efficiency. The per-tier cap on attestation power ($V_{\text{max}} = 10^9$) prevents any single tier from dominating governance, while a quorum of 50% to 75% of the attestation possible ensures broad participation. The checkpoint-based snapshot (at `snapshotTimestamp`, one second before submission, with pending reserves snapshotted at submission time) prevents vote-buying and reserve-minting manipulation, mint-phase-only delegation prevents last-minute manipulation, and scoring-phase-only submission prevents pre-accumulation of attestations.
 
-Section 9.2 introduces **benefit-weighted attestation** (BWA): the "perfect proportion" where a tier's governance power for a given scorecard equals $V_{\text{max}} \times (1 - w_i / W_{\text{total}})$. This structural mechanism makes self-serving scorecards unratifiable regardless of attacker capital — the beneficiaries of a scorecard cannot be the coalition that pushes it through. The dead token economics prove that even attacks overcoming BWA are unprofitable: tokens purchased for governance power in non-winning tiers return \$0 under the fraudulent scorecard, creating a guaranteed loss when combined with fee extraction. Section 9.3 formalizes the Uniform Participation Theorem, proving that games with equal tier supply are impervious to profitable governance attacks.
+Section 9.2 introduces **benefit-weighted attestation** (BWA): the "perfect proportion" where a tier's governance power for a given scorecard equals $V_{\text{max}} \times (1 - w_i / W_{\text{total}})$. This structural mechanism keeps a scorecard's beneficiaries from being the coalition that pushes it through. The dead token economics show that attacks overcoming BWA lose money for an attacker who buys every tier evenly: tokens purchased for governance power in non-winning tiers return \$0 under the fraudulent scorecard. Section 9.3's Uniform Participation Theorem shows that equal tier supply raises the cost of capture to a money majority. The voting referee can still be captured by an outsider buying thin tiers, by holders of more than half the tiers splitting the pot, or by bribing holders who lose nothing by a result.
 
 ### Safety mechanisms
 
 The NO_CONTEST system (Section 9.1) provides comprehensive fund-recovery guarantees through three complementary mechanisms:
 - **Minimum participation threshold**: early exit for non-viable games
-- **Scorecard timeout**: hard, trustless, time-bounded backstop for all deadlock scenarios
-- **Default attestation delegate**: social fast-path for routine governance resolution
+- **Scorecard timeout**: hard, trustless, time-bounded backstop for all deadlock scenarios, including a referee that never acts
+- **Default attestation delegate**: social fast-path for routine resolution under a voting referee
 
-These mechanisms are optional (disabled by setting to 0) and the game remains fully playable without them, preserving backward compatibility and supporting use cases where open-ended scoring is desired.
+The scorecard timeout is required for every game. The participation threshold and the default delegate are optional.
 
 ### Market efficiency
 
@@ -1177,19 +1192,19 @@ The fee-token flywheel (Section 7.3) creates a positive feedback loop between ga
 
 For game designers deploying Defifa games:
 
-1. **Participation uniformity is paramount**: The Uniform Participation Theorem (Section 9.3) proves that games with equal tier supply are impervious to profitable governance attacks. Choose events where all tiers attract organic interest — this is the single most important design decision.
+1. **Choose the referee first**: an address referee decides alone; a voting referee is as safe as its holders' spread. Under a voting referee, participation uniformity matters most: equal tier supply raises the cost of capture to a money majority (Section 9.3). Choose events where all tiers attract organic interest.
 2. **Tier count**: 4–32 tiers balances governance security with outcome expressiveness. Only add tiers that will attract meaningful participation; empty tiers are cheap governance power for attackers.
 3. **Reserve tokens**: Configure reserved rates on every tier to smooth supply and dilute attacker ownership in sparse tiers.
 4. **Pricing**: 0.01–0.1 ETH per NFT provides a balance between accessibility, gas efficiency, and attack resistance.
 5. **Refund phase**: 1–7 days gives meaningful optionality without excessive pot instability.
-6. **Attestation**: A trusted default delegate reduces coordination costs; 3–7 day grace period balances speed with security.
+6. **Timing**: A 3–7 day timelock gives notice under any referee. Under a voting referee, a trusted default delegate reduces coordination costs and a 3–7 day grace period balances speed with security; make sure the attestation delay, grace period and timelock fit inside the timeout.
 7. **Fees**: The default 7.5% split (5% Defifa + 2.5% base protocol) is competitive; additional organizer splits should not exceed 5% to keep effective rates under 12.5%.
-8. **Safety parameters**: For permissionless games, always set `scorecardTimeout` (90–180 days) and `minParticipation`. For trusted-organizer games, the `defaultAttestationDelegate` is sufficient.
+8. **Safety parameters**: `scorecardTimeout` is required; use 90–180 days for permissionless games and set `minParticipation`. A trusted organizer can be named as the referee.
 
 ### Synthesis
 
-Defifa implements a rigorous approach to prediction gaming through the composition of three well-understood mechanisms: parimutuel pooling for price formation, attestation governance for outcome resolution, and Juicebox V6 for treasury management. The mathematical analysis confirms that the system conserves value and converges to informationally efficient equilibria. The protocol token layer adds a novel incentive dimension that aligns participant, organizer, and protocol interests around game volume growth.
+Defifa implements a rigorous approach to prediction gaming through the composition of three well-understood mechanisms: parimutuel pooling for price formation, a referee with a timelock for outcome resolution, and Juicebox V6 for treasury management. The mathematical analysis confirms that the system conserves value and converges to informationally efficient equilibria. The protocol token layer adds a novel incentive dimension that aligns participant, organizer, and protocol interests around game volume growth.
 
 The elegance of Defifa resides in its architectural composability: prediction games with arbitrary outcomes, arbitrary tier structures, and arbitrary payout distributions emerge from the same set of twelve parameters (Eq. 1), executed deterministically by immutable smart contracts with a single, time-bounded governance input. From a 4-team presidential election to a 32-team World Cup, the same protocol handles it all — and the safety mechanisms ensure that every game resolves, one way or another.
 
-The most significant result is the Uniform Participation Theorem: **a game with uniform tier supply is provably impervious to profitable governance attacks regardless of attacker capital.** This transforms game design from an art into an engineering discipline — the designer's job is to choose events and tier structures that naturally produce uniform participation, and the cryptoeconomics handle the rest.
+The most useful result for voting-referee games is the Uniform Participation Theorem: **under uniform tier supply, an attacker who buys every tier evenly cannot profit, and one who buys selectively needs most of the money in the game.** The designer's job is to choose events and tier structures that naturally produce uniform participation, and to name a referee whose failure modes players accept.
