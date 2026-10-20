@@ -80,7 +80,8 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     /// @notice The minimum attestation grace period enforced during game initialization.
     uint256 public constant override MIN_ATTESTATION_GRACE_PERIOD = 1 days;
 
-    /// @notice The share of the attestation possible that an evenly split scorecard needs, in basis points.
+    /// @notice The baseline share of the attestation possible that a scorecard needs, in basis points: approached by a
+    /// scorecard spread thinly over many tiers.
     uint256 public constant override QUORUM_EVEN_BPS = 5000;
 
     /// @notice The share of the attestation possible that a winner-take-all scorecard needs, in basis points.
@@ -506,7 +507,8 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
         return _scorecardAttestationsOf[gameId][scorecardId].attestedWeightOf[account] != 0;
     }
 
-    /// @notice The baseline quorum: the attestation an evenly split scorecard needs to pass.
+    /// @notice The baseline quorum: 50% of the attestation possible, which a scorecard spread thinly over many tiers
+    /// approaches.
     /// @dev Integrations checking a specific scorecard should use `quorumOf`, which includes its concentration.
     /// @dev The attestation possible is `(N - 1) * MAX_ATTESTATION_POWER_TIER` for N quorum-eligible tiers, because a
     /// tier never attests to its own payout. An even split needs `QUORUM_EVEN_BPS` of it; more concentrated scorecards
@@ -642,7 +644,7 @@ contract DefifaVotingReferee is IDefifaVotingReferee {
     /// @dev BWA (Benefit-Weighted Attestation) reduces a tier's attestation power by how much
     /// that tier benefits from the scorecard. Power is reduced by `(tierWeight / totalCashOutWeight)`.
     /// This means a tier with 100% of the scorecard weight gets 0 attestation power for that scorecard,
-    /// while a tier with 0% weight retains full power. This prevents beneficiaries from self-attesting.
+    /// while a tier with 0% weight retains full power. Tiers that split a payout keep the unpaid share of their power.
     /// @param gameId The ID of the game.
     /// @param scorecardId The ID of the scorecard (determines tier weight lookup).
     /// @param account The account to compute BWA power for.

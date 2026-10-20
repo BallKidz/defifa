@@ -5,13 +5,13 @@
 | Item | Details |
 | --- | --- |
 | Scope | Game launch configuration, scorecard governance, and no-contest recovery |
-| Control posture | Permissionless launch, then collective governance plus bounded contract-controlled lifecycle paths |
+| Control posture | Permissionless launch, then each game's referee (an address, or a contract such as the holder-vote `DefifaVotingReferee`) plus bounded contract-controlled lifecycle paths |
 | Highest-risk actions | Launching with wrong immutable game settings, misconfiguring governance thresholds, and misunderstanding no-contest handling |
 | Recovery posture | Mostly replacement or documented no-contest handling; there is no broad post-launch owner override |
 
 ## Purpose
 
-`defifa` is unusual because game creation is permissionless but ongoing game control is intentionally narrow. The main administration job is understanding what is fixed at launch, what collective governance can still do, and what the deployer must do to finish settlement.
+`defifa` is unusual because game creation is permissionless but ongoing game control is intentionally narrow. The main administration job is understanding what is fixed at launch, what each game's referee can still do, and what the deployer must do to finish settlement.
 
 ## Control model
 

@@ -61,7 +61,7 @@ The contracts split responsibility as follows:
 | Role | Powers | How constrained |
 |------|--------|-----------------|
 | Game deployer or owner path | Configure a game's initial lifecycle wiring | Must not retain hidden post-launch powers |
-| Governor participants | Submit, attest to, and ratify scorecards | Must remain bounded by phase, quorum, and delegation rules |
+| Referee and ratifiers | The game's referee submits scorecards; anyone ratifies after the timelock; under `DefifaVotingReferee`, holders attest | Must remain bounded by phase, referee identity and timelock; voting-referee games also by quorum and delegation rules |
 | `DefifaHook` / `Defifa1155Hook` | Determine mint and final redeem economics | Must not over-credit players or under-account fees |
 
 ## Integration assumptions

@@ -122,7 +122,8 @@ interface IDefifaVotingReferee is IDefifaReferee {
     /// @return The minimum grace period in seconds.
     function MIN_ATTESTATION_GRACE_PERIOD() external view returns (uint256);
 
-    /// @notice The baseline quorum: the attestation an evenly split scorecard needs to pass.
+    /// @notice The baseline quorum: 50% of the attestation possible, which a scorecard spread thinly over many tiers
+    /// approaches.
     /// @dev More concentrated scorecards need more, up to `QUORUM_WINNER_TAKE_ALL_BPS` of the attestation possible. Use
     /// `quorumOf` for a specific scorecard.
     /// @param gameId The ID of the game.
@@ -135,7 +136,8 @@ interface IDefifaVotingReferee is IDefifaReferee {
     /// @return The quorum threshold.
     function quorumOf(uint256 gameId, uint256 scorecardId) external view returns (uint256);
 
-    /// @notice The share of the attestation possible that an evenly split scorecard needs, in basis points.
+    /// @notice The baseline share of the attestation possible that a scorecard needs, in basis points: approached by a
+    /// scorecard spread thinly over many tiers.
     /// @return The basis points.
     function QUORUM_EVEN_BPS() external view returns (uint256);
 

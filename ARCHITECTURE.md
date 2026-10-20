@@ -8,7 +8,7 @@ Defifa ships two game types side by side. `DefifaHook` is the ERC-721 game, one 
 
 ## System overview
 
-`DefifaHook`, `DefifaGovernor`, and `DefifaDeployer` form one game-state machine even though they are deployed separately. The hook owns game-piece NFT behavior, attestation delegation, and phase-sensitive cash-out weighting. The governor owns scorecard submission, attestation, quorum, and ratification. The deployer owns game launch, phased ruleset setup, and commitment fulfillment after governance decides the outcome.
+`DefifaHook`, `DefifaGovernor`, and `DefifaDeployer` form one game-state machine even though they are deployed separately. The hook owns game-piece NFT behavior, attestation delegation, and phase-sensitive cash-out weighting. The governor accepts each game's scorecard from the game's referee and ratifies it after a timelock; a referee contract such as `DefifaVotingReferee` owns any holder attestation and quorum. The deployer owns game launch, phased ruleset setup, and commitment fulfillment after governance decides the outcome.
 
 The deployer and governor are hook-agnostic. They call the hook by selector, and both hooks expose the selectors they use (`initialize`, `store`, `currentSupplyOfTier`, `adjustedPendingReservesFor`, `TOTAL_CASHOUT_WEIGHT`, `setTierCashOutWeightsTo`, and the attestation views), gated by `test/DefifaHookParity.t.sol`. Deployment is one `DefifaDeployer` plus `DefifaGovernor` pair per hook implementation, with the governor owned by its deployer. Both pairs share one `DefifaTiersHookStore` and one `DefifaTokenUriResolver`.
 
@@ -28,7 +28,8 @@ The deployer and governor are hook-agnostic. They call the hook by selector, and
 | `DefifaDeployer` | Launches games, sets phased rulesets, clones hooks, resolves ERC-2771 launch callers, initializes governance, and fulfills commitments | Launch-time and completion-time runtime surface |
 | `DefifaHook` | NFT minting, delegation, game-phase-aware cash-out behavior, and completion claims | ERC-721 game hook |
 | `Defifa1155Hook` | ERC-1155 position minting (one balance per tier), delegation, game-phase-aware cash-out behavior, and completion claims | ERC-1155 game hook |
-| `DefifaGovernor` | Scorecard submission, attestation weighting, quorum, grace periods, and ratification | Governance surface |
+| `DefifaGovernor` | Referee-only scorecard submission, timelock, and ratification | Governance surface |
+| `DefifaVotingReferee` | Sample referee: holder attestation, BWA weighting, quorum, grace periods; forwards a passing scorecard | Optional referee |
 | `DefifaHookLib` | Shared validation and weight math extracted from the hook, including the per-tier cash-out weight (`computeTierCashOutWeight`) and fee-token claim share (`tokensClaimFor`) both hooks use | Bytecode-management helper |
 | `Defifa1155HookLib` | ERC-1155 ID and amount logic (`tierIdOf`, `RESERVE_TOKEN_ID_OFFSET`, count-based attestation units, `(ids, amounts)` cash-out weight, mint price, claims, and burns); calls `DefifaHookLib` for shared rules | Bytecode-management helper |
 | `DefifaTiersHookStore` | `JB721TiersHookStore`, unchanged, plus count-based `recordMintCounts`, `recordBurnCounts` and `recordTransferForTier(tierId, from, to, count)` | Shared by both game types; required by the ERC-1155 hook |
@@ -39,7 +40,7 @@ The deployer and governor are hook-agnostic. They call the hook by selector, and
 - Canonical treasury accounting, project ownership, rulesets, terminals, and payout mechanics remain in `nana-core-v6`.
 - Tier storage, reserve minting mechanics, and generic ERC-721 behavior come from `nana-721-hook-v6`.
 - Both game types record tiers in `DefifaTiersHookStore`, the upstream store plus count-based records that must match the per-position originals (`test/DefifaTiersHookStore.t.sol`). ERC-1155 position ownership is `Defifa1155Hook`'s own OpenZeppelin `ERC1155` state, mirrored per tier in the store's holder views.
-- `DefifaGovernor` is trusted to ratify scorecards only through its quorum, grace-period, and timelock rules.
+- `DefifaGovernor` is trusted to ratify only the scorecard its game's referee submitted, after the timelock. A game is as safe as its referee: an address referee decides alone, and `DefifaVotingReferee` adds holder quorum and grace-period rules.
 - `DefifaDeployer` is trusted to convert governance output into the final completion envelope.
 
 ## Critical flows
