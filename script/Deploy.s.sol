@@ -14,6 +14,7 @@ import {ITypeface} from "lib/typeface/contracts/interfaces/ITypeface.sol";
 import {Defifa1155Hook} from "../src/Defifa1155Hook.sol";
 import {DefifaDeployer} from "../src/DefifaDeployer.sol";
 import {DefifaGovernor} from "../src/DefifaGovernor.sol";
+import {DefifaVotingReferee} from "../src/referees/DefifaVotingReferee.sol";
 import {DefifaHook} from "../src/DefifaHook.sol";
 import {DefifaTiersHookStore} from "../src/DefifaTiersHookStore.sol";
 import {DefifaTokenUriResolver} from "../src/DefifaTokenUriResolver.sol";
@@ -49,6 +50,7 @@ contract DeployScript is Script, Sphinx {
     bytes32 private constant _1155_HOOK_SALT = "Defifa1155HookV6_";
     bytes32 private constant _1155_GOVERNOR_SALT = "Defifa1155GovernorV6_";
     bytes32 private constant _1155_DEPLOYER_SALT = "Defifa1155DeployerV6_";
+    bytes32 private constant _VOTING_REFEREE_SALT = "DefifaVotingRefereeV6_";
 
     function configureSphinx() public override {
         sphinxConfig.projectName = "V6";
@@ -177,6 +179,19 @@ contract DeployScript is Script, Sphinx {
             governorSalt: _1155_GOVERNOR_SALT,
             deployerSalt: _1155_DEPLOYER_SALT
         });
+
+        // The sample holder-vote referee. One deployment judges games of both types.
+        {
+            // Perform the check for the referee.
+            (, bool _refereeIsDeployed) = _isDeployed({
+                salt: _VOTING_REFEREE_SALT,
+                creationCode: type(DefifaVotingReferee).creationCode,
+                arguments: abi.encode(_CONTROLLER)
+            });
+
+            // Deploy it if it has not been deployed yet.
+            if (!_refereeIsDeployed) new DefifaVotingReferee{salt: _VOTING_REFEREE_SALT}({controller: _CONTROLLER});
+        }
     }
 
     /// @notice Deploy a game type's governor and deployer, and hand the governor to the deployer.
