@@ -214,8 +214,7 @@ contract DefifaDeployer is
         JBAccountingContext memory context = terminal.accountingContextForTokenOf({projectId: gameId, token: token});
 
         // Get the current balance from the terminal's store.
-        uint256 pot = IJBMultiTerminal(address(terminal))
-            .STORE()
+        uint256 pot = IJBMultiTerminal(address(terminal)).STORE()
             .balanceOf({terminal: address(terminal), projectId: gameId, token: token});
 
         // Add any fulfilled commitments.
@@ -404,17 +403,13 @@ contract DefifaDeployer is
 
         // Send only the fee portion as payouts. The remaining balance stays as surplus for cash-outs.
         // Use the ruleset's baseCurrency — this matches the currency under which payout limits were stored
-        // at launch time, regardless of whether the token is native ETH or an ERC-20. Wrapped in try-catch so
-        // the final ruleset is always queued even if payout fails.
-        try terminal.sendPayoutsOf({
+        // at launch time, regardless of whether the token is native ETH or an ERC-20. Not wrapped in try/catch:
+        // the terminal already holds any split recipient that fails, and a payout that fails as a whole must
+        // revert here rather than leave the commitment in the pot. Whether a call reverts can depend on the gas
+        // the caller chose, so a swallowed failure would let any caller keep the fee in the pot for cash outs.
+        terminal.sendPayoutsOf({
             projectId: gameId, token: token, amount: feeAmount, currency: metadata.baseCurrency, minTokensPaidOut: 0
-        }) {}
-        catch (bytes memory reason) {
-            // Payout failed — fee stays in pot. Reset to 0 so currentGamePotOf
-            // doesn't double-count the fee.
-            fulfilledCommitmentsOf[gameId] = 0;
-            emit CommitmentPayoutFailed({gameId: gameId, amount: feeAmount, reason: reason, caller: _msgSender()});
-        }
+        });
 
         // Queue the final ruleset and emit.
         _queueFinalRuleset({gameId: gameId, metadata: metadata});
@@ -640,9 +635,8 @@ contract DefifaDeployer is
 
         // Give a contract referee its settings for this game.
         if (launchProjectData.refereeData.length != 0) {
-            IDefifaReferee(launchProjectData.referee).initializeGameFor({
-                gameId: gameId, data: launchProjectData.refereeData
-            });
+            IDefifaReferee(launchProjectData.referee)
+                .initializeGameFor({gameId: gameId, data: launchProjectData.refereeData});
         }
 
         // Transfer ownership to the specified owner.
